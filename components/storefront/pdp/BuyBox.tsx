@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { pdp as copy } from "@/lib/copy";
 import { UiIcon } from "../ui/UiIcon";
@@ -80,10 +81,14 @@ export function BuyBox({
         label={copy.buyBox.addToCart}
       />
 
-      <p className="inline-flex items-center gap-2 rounded-card bg-success/15 px-3 py-2 text-xs font-medium text-dark-1">
+      <Link
+        href="/garancija-vracila-denarja"
+        data-guarantee-link
+        className="inline-flex items-center gap-2 rounded-card bg-success/15 px-3 py-2 text-xs font-medium text-dark-1 underline-offset-2 hover:underline"
+      >
         <UiIcon name="star" className="h-4 w-4 text-success" />
         {copy.buyBox.guarantee}
-      </p>
+      </Link>
     </div>
   );
 }

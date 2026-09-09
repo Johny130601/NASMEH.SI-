@@ -28,6 +28,17 @@ describe("durable contact tickets", () => {
     expect(data.privacyAcceptedAt).toBeInstanceOf(Date); expect(data.privacyVersion).toBe("contact-v1");
     expect(data.attachments.create).toEqual([]); expect(data.orderId).toBeNull();
   });
+  it("persists structured details and allows photos for adverse reports", async () => {
+    const photo = new File(["png bytes"], "photo.png", { type: "image/png" });
+    mocks.save.mockResolvedValue(saved);
+    const details = { kind: "adverse" as const, batchNumber: "LOT 1" };
+    const result = await createContactTicket({ ...input, topic: "ADVERSE", reason: "REACTION", details }, [photo], null);
+    expect(result).toEqual({ ok: true, ticketId: "ticket-id", reference: "NP-RECEIPT" });
+    const data = mocks.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({ topic: "ADVERSE", details, attachments: { create: saved } });
+    expect(data.deliveries.create[0].recipient).toBe("compliance@example.test");
+    expect(typeof data.payloadHash).toBe("string");
+  });
   it("requires proof again when the submitted order is not owned by the current user", async () => {
     mocks.order.mockResolvedValue({ id: "o", number: "NS-2026-00001", userId: "owner", email: "buyer@example.test" });
     expect(await createContactTicket({ ...input, orderNumber: "NS-2026-00001" }, [], "other")).toEqual({ ok: false, error: "orderNotFound" });

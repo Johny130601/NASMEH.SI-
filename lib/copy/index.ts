@@ -21,3 +21,5 @@ export { account } from "./account";
 export { reviews } from "./reviews";
 export { promo } from "./promo";
 export { tracking } from "./tracking";
+export { returns } from "./returns";
+export { adverse } from "./adverse";

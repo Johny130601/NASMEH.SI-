@@ -668,6 +668,7 @@ model Ticket {
   name              String
   email             String
   message           String
+  details           Json?         // structured payload of dedicated forms: { kind: "withdrawal" | "adverse", ... }
   status            TicketStatus  @default(OPEN)
   privacyAcceptedAt DateTime
   privacyVersion    String

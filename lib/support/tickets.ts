@@ -25,8 +25,10 @@ export async function resolveContactOrder(input: ContactInput, userId: string | 
 }
 
 /** Durable creation is independent of SMTP. Only exact replays reuse a receipt. */
+const PHOTO_TOPICS: ReadonlySet<string> = new Set(["WRONG", "DAMAGED", "ADVERSE"]);
+
 export async function createContactTicket(input: ContactInput, files: File[], userId: string | null): Promise<ContactTicketResult> {
-  if (files.length && input.topic !== "WRONG" && input.topic !== "DAMAGED") return { ok: false, error: "photos" };
+  if (files.length && !PHOTO_TOPICS.has(input.topic)) return { ok: false, error: "photos" };
   // Hash supplied bytes before encoding so a changed attachment cannot reuse a key.
   const digests: string[] = [];
   for (const file of files) {
@@ -58,6 +60,7 @@ export async function createContactTicket(input: ContactInput, files: File[], us
         reference, submissionKey: input.requestKey, payloadHash,
         userId, orderId: order?.id ?? null, orderNumber: order?.number ?? null, orderProof: order?.proof ?? null,
         topic: input.topic, reason: input.reason, name: input.name, email: input.email, message: input.message,
+        ...(input.details ? { details: input.details as Prisma.InputJsonObject } : {}),
         privacyAcceptedAt: new Date(), privacyVersion: CONTACT_PRIVACY_VERSION,
         attachments: { create: saved },
         deliveries: { create: [

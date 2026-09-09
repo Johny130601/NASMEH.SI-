@@ -87,7 +87,7 @@ export const LEGAL_PAGES: LegalPageSeed[] = [
 <h2>4. Prostovoljna podaljšana garancija</h2>
 <p>Nad zakonsko pravico ponujamo 30-dnevno garancijo vračila denarja pod pogoji: predhodni kontakt, dokazilo o nakupu in fotografija izdelka. Podrobnosti posredujemo ob prijavi na info@nasmeh.si.</p>
 <h2>5. Vzorčni obrazec za odstop</h2>
-<p>Obrazec za odstop od pogodbe (ime in naslov potrošnika, številka naročila, datum, podpis) pošljite na info@nasmeh.si — spletni obrazec je v pripravi.</p>`,
+<p>Uporabite spletni obrazec spodaj ali prenesite vzorčni obrazec (PDF) in ga pošljite na info@nasmeh.si.</p>`,
   },
   {
     title: "Reklamacije",
@@ -103,5 +103,28 @@ export const LEGAL_PAGES: LegalPageSeed[] = [
 <p>Na prijavo odgovorimo najkasneje v enem delovnem dnevu. Rešitev reklamacije (popravilo, zamenjava, vračilo) izvedemo v zakonsko predpisanih rokih.</p>
 <h2>4. Izvensodno reševanje sporov</h2>
 <p>Če se ne moremo dogovoriti, lahko spor predložite v izvensodno reševanje potrošniških sporov (IRPS) pri pristojnem ponudniku v Sloveniji. Spletna platforma EU za reševanje sporov: ec.europa.eu/consumers/odr.</p>`,
+  },
+  {
+    // §12.4 voluntary 30-day guarantee: a marketing layer above the statutory
+    // 14 days. Draft until D4 sign-off; the migration inserts the same text
+    // only when the page is missing.
+    title: "Jamstvo vračila denarja",
+    slug: "garancija-vracila-denarja",
+    seoDescription:
+      "30-dnevno jamstvo vračila denarja Nasmeh.si — pogoji prostovoljne garancije nad zakonsko pravico do odstopa.",
+    body: `
+<h2>1. Kaj obljubljamo</h2>
+<p>Če z izdelkom niste zadovoljni, vam v 30 dneh od dostave vrnemo kupnino. To je prostovoljna obljuba Nasmeh.si nad zakonsko 14-dnevno pravico do odstopa, ki je opisana na strani Odstop od pogodbe.</p>
+<h2>2. Pogoji</h2>
+<ul>
+<li>Pred vračilom nas kontaktirajte prek strani Kontakt (tema Vračilo izdelkov) in navedite številko naročila.</li>
+<li>Priložite dokazilo o nakupu (potrditev naročila ali račun).</li>
+<li>Priložite fotografijo izdelka in embalaže.</li>
+<li>Jamstvo velja za prvi nakup posameznega izdelka in za največ en kos posameznega izdelka na naročilo.</li>
+</ul>
+<h2>3. Vračilo kupnine</h2>
+<p>Kupnino vrnemo na prvotno plačilno sredstvo najkasneje v 14 dneh po potrditvi zahtevka. Stroške povratne pošiljke, kadar jo zahtevamo, krije kupec.</p>
+<h2>4. Razmerje do zakonskih pravic</h2>
+<p>Jamstvo ne omejuje zakonskih pravic potrošnika: pravice do odstopa od pogodbe in uveljavljanja reklamacij zaradi stvarne napake.</p>`,
   },
 ];

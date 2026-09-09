@@ -34,6 +34,7 @@ export const contact = {
     MISSING_CODE: "Pozabil/-a sem uporabiti kodo",
     UNSUITABLE: "Izdelek mi ne ustreza",
     RETURN_QUESTION: "Vprašanje o postopku vračila",
+    WITHDRAWAL: "Odstop od pogodbe (14 dni)",
     WRONG_ITEM: "Prejel/-a sem napačen izdelek",
     MISSING_ITEM: "Del naročila manjka",
     EXTRA_ITEM: "Prejel/-a sem dodaten izdelek",

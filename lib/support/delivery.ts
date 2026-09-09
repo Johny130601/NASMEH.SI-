@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
 import { authEmailSchema } from "@/lib/auth-validation";
 import { sendMail } from "@/lib/email/mailer";
-import { renderSupportStaffEmail, renderSupportCustomerEmail } from "@/lib/email/templates/support-ticket";
+import { renderSupportStaffEmail, renderSupportCustomerEmail, ticketDetailsKind } from "@/lib/email/templates/support-ticket";
 
 const LEASE_MS = 5 * 60_000;
 export interface TicketDeliveryCounters { processed: number; sent: number; failed: number; skipped: number }
@@ -25,7 +25,7 @@ async function deliverOne(id: string): Promise<"sent" | "failed" | "skipped"> {
     const recipient = authEmailSchema.parse(delivery.recipient);
     const content = delivery.kind === "STAFF"
       ? renderSupportStaffEmail(delivery.ticket)
-      : renderSupportCustomerEmail({ reference: delivery.ticket.reference });
+      : renderSupportCustomerEmail({ reference: delivery.ticket.reference, kind: ticketDetailsKind(delivery.ticket.details) });
     await sendMail({
       ...content, to: recipient,
       ...(delivery.kind === "STAFF" ? { replyTo: authEmailSchema.parse(delivery.ticket.email) } : {}),

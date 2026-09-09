@@ -550,6 +550,7 @@ async function seedMenus() {
         { label: "Sledi naročilu", href: "/sledi" },
         { label: "Odstop od pogodbe", href: "/odstop-od-pogodbe" },
         { label: "Reklamacije", href: "/reklamacije" },
+        { label: "Prijava neželenega učinka", href: "/prijava-nezelenega-ucinka" },
       ],
     },
     {
@@ -570,6 +571,7 @@ async function seedMenus() {
         { label: "Politika piškotkov", href: "/politika-piskotkov" },
         { label: "Odstop od pogodbe", href: "/odstop-od-pogodbe" },
         { label: "Reklamacije", href: "/reklamacije" },
+        { label: "Jamstvo vračila denarja", href: "/garancija-vracila-denarja" },
       ],
     },
     {

@@ -7,6 +7,7 @@ import { contact } from "@/lib/copy/contact";
 import { db } from "@/lib/db";
 import { buildMetadata } from "@/lib/seo";
 import { getContactSettings } from "@/lib/support/settings";
+import { TOPIC_CODES } from "@/lib/support/topics";
 
 export const dynamic = "force-dynamic";
 
@@ -17,8 +18,13 @@ export const metadata: Metadata = buildMetadata({
   noindex: true,
 });
 
-export default async function ContactPage() {
-  const [session, settings] = await Promise.all([auth(), getContactSettings()]);
+export default async function ContactPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tema?: string }>;
+}) {
+  const [session, settings, params] = await Promise.all([auth(), getContactSettings(), searchParams]);
+  const initialTopic = TOPIC_CODES.find((code) => code === params.tema) ?? null;
   const orders = session?.user?.id ? await db.order.findMany({
     where: { userId: session.user.id },
     select: { number: true, status: true, createdAt: true },
@@ -41,6 +47,7 @@ export default async function ContactPage() {
           isSignedIn={!!session?.user?.id}
           accountOrders={orders.map(order => ({ ...order, createdAt: order.createdAt.toISOString() }))}
           defaults={{ name: session?.user?.name ?? "", email: session?.user?.email ?? "" }}
+          initialTopic={initialTopic}
         />
         <aside className="rounded-card bg-light-3 p-6" aria-labelledby="contact-channels-title">
           <h2 id="contact-channels-title" className="text-lg font-semibold">{contact.channels.title}</h2>

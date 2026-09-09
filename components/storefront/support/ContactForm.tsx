@@ -17,6 +17,8 @@ interface ContactFormProps {
   isSignedIn: boolean;
   accountOrders: ContactOrder[];
   defaults: { name: string; email: string };
+  /** Preselected topic from a validated `?tema=` link (complaints page CTAs). */
+  initialTopic?: TopicCode | null;
 }
 
 const selectClass = "min-h-[3.25rem] w-full rounded-input border border-light-1 bg-white px-4 text-base outline-none focus:border-brand";
@@ -38,10 +40,10 @@ function orderLabel(order: ContactOrder) {
   return `${order.number} · ${status} · ${date}`;
 }
 
-export function ContactForm({ settings, challenge, requestKey: initialRequestKey, isSignedIn, accountOrders, defaults }: ContactFormProps) {
+export function ContactForm({ settings, challenge, requestKey: initialRequestKey, isSignedIn, accountOrders, defaults, initialTopic = null }: ContactFormProps) {
   const [requestKey] = useState(initialRequestKey);
-  const [topic, setTopic] = useState<TopicCode | null>(null);
-  const [reason, setReason] = useState<ReasonCode>("OTHER");
+  const [topic, setTopic] = useState<TopicCode | null>(initialTopic);
+  const [reason, setReason] = useState<ReasonCode>(initialTopic ? topicReasons[initialTopic][0] : "OTHER");
   const [accountOrder, setAccountOrder] = useState("");
   const [lookupEmail, setLookupEmail] = useState("");
   const [lookupNumber, setLookupNumber] = useState("");
