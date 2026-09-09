@@ -64,6 +64,7 @@ The `package.json` scripts assume a POSIX shell, Docker Compose v2 and a fixed s
 | POSIX shell | `npm start` runs `scripts/start-standalone.sh` (links private media into the standalone dir); Playwright's `webServer` calls it | Git Bash or WSL on Windows (backlog B6 ports it to Node) |
 | Playwright Chromium | `test:e2e` | `npx playwright install chromium` |
 | Free ports 5543 (db), 11025/18025 (Mailpit SMTP/UI), 4317 (e2e server), 3000 (dev/preview) | fixed in `docker-compose.override.yml`, `.env.example`, `playwright.config.ts` | nothing else listening |
+| Postgres reachable on **both** loopbacks (127.0.0.1 and ::1) when not using the compose `db` | `localhost` resolves to `::1` first on Windows; a non-listening `::1` costs ~2 s per new connection, which exhausts Prisma's 2 s transaction-start window under concurrency (found 2026-09-09). Docker publishes both families automatically. | `pg_isready -h ::1 -p 5543` |
 
 Bootstrap from a clean checkout:
 
@@ -459,6 +460,7 @@ Found by reading the working tree against this plan. None blocks Phase 6 step 3;
 | B8 | `checkEmailExistsAction` relies on the in-memory rate limit alone (documented in code) | Phase 9 step 1: Turnstile elevation |
 | B9 | `scripts/migrate-review-uploads.cjs` fsyncs directory handles, which Windows rejects with `EPERM`; the first `npm run dev` on Windows fails in `predev` until `review-uploads` exists (observed 2026-09-09) | Phase 6 step 6 with B6: tolerate directory-fsync `EPERM`/`EINVAL` on `win32` only, keep the guard semantics, cover it in the existing migration unit tests |
 | B10 | `npm run db:seed` runs `tsx` without loading `.env`, so it needs `DATABASE_URL` exported in the shell, unlike the Prisma CLI (observed 2026-09-09) | Phase 6 step 6: load `.env` in `prisma/seed.ts` (`process.loadEnvFile`, Node ≥ 20.12) or keep the export documented in §2.1 |
+| B12 | Next.js 15.5 Node-runtime middleware does not await the cloned request body's `finalize()`, so a Server Action can read a still-streaming upload mid-way and lose its leading multipart parts (review/support photos). Upstream vercel/next.js#85416, fixed by PR #85418 in Next 16; no 15.x backport exists. `middleware.ts` works around it by draining a tee of every request body before continuing (see the [build-verify record](testing/build-verify-2026-09-09.md)) | Phase 9 step 1: upgrade to Next 16.x (with the fix) and remove the middleware drain; until then keep the drain and its comment |
 
 ## 7. Change log
 

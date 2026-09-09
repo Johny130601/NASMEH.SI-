@@ -40,7 +40,13 @@ export async function submitReviewAction(formData: FormData): Promise<ReviewSubm
     recommend: formData.get("recommend") === "on" || formData.get("recommend") === "true",
     ratingToken: formData.get("ratingToken") ?? "",
   });
-  if (!parsed.success) return { ok: false, error: copy.form.invalid };
+  if (!parsed.success) {
+    // Field names only (no values): enough to diagnose a client/decoder mismatch.
+    console.warn(
+      `[reviews] invalid submission: issues=${parsed.error.issues.map((issue) => issue.path.join(".") || "(root)").join(",")} keys=${[...formData.keys()].join(",")}`,
+    );
+    return { ok: false, error: copy.form.invalid };
+  }
   const input = parsed.data;
   const session = await auth();
   const secret = getEnv().AUTH_SECRET;

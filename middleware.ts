@@ -24,12 +24,41 @@ const ALLOWED_WHEN_LOCKED = ["/vzdrzevanje", "/prijava", "/admin"];
  * Runs on the Node.js runtime (Prisma lookup per matched page request).
  */
 export default async function middleware(request: NextRequest) {
+  await drainRequestBody(request);
   if (await isMaintenanceLocked(request)) {
     const url = request.nextUrl.clone();
     url.pathname = "/vzdrzevanje";
     return NextResponse.rewrite(url);
   }
   return authMiddleware(request as never);
+}
+
+/**
+ * Next.js 15.5's Node.js middleware runtime clones every request body for the
+ * middleware and swaps the buffered copy back in with `finalize()`, but does
+ * not await that call (vercel/next.js#85416, fixed upstream in 16.x by
+ * PR #85418). A Server Action can therefore attach to a still-streaming body
+ * and miss the chunks already buffered for it: multipart uploads (review and
+ * support photos) lose their leading parts. Reading a tee of the body to the
+ * end guarantees the whole upload has arrived, so the swap has completed
+ * before any route handler reads it. The original `request.body` stays
+ * undisturbed because Next's adapter re-wraps the request afterwards. Bodies
+ * are tiny except photo uploads, which Next buffers in full anyway.
+ */
+async function drainRequestBody(request: NextRequest): Promise<void> {
+  if (request.method === "GET" || request.method === "HEAD" || !request.body) return;
+  const tee = request.clone().body;
+  if (!tee) return;
+  const reader = tee.getReader();
+  try {
+    while (!(await reader.read()).done) {
+      // Discard: the route handler reads Next's buffered copy, not this tee.
+    }
+  } catch {
+    // An aborted upload fails in the route handler exactly as before.
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 async function isMaintenanceLocked(request: NextRequest): Promise<boolean> {

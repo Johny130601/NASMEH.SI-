@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { verifyTurnstile } from "@/lib/turnstile";
 
-type EnvKey = "NODE_ENV" | "TURNSTILE_TEST_TOKEN" | "TURNSTILE_SECRET_KEY";
+type EnvKey = "NODE_ENV" | "TURNSTILE_TEST_TOKEN" | "TURNSTILE_SECRET_KEY" | "NASMEH_E2E";
 
 function setEnv(values: Partial<Record<EnvKey, string | undefined>>) {
+  // The e2e harness flag also enables the bypass; never inherit it from the
+  // shell running the unit suite.
+  vi.stubEnv("NASMEH_E2E", undefined);
   for (const [key, value] of Object.entries(values)) {
     vi.stubEnv(key, value);
   }
