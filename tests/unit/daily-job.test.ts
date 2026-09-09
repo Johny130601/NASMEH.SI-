@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ confirmations: vi.fn(), reviews: vi.fn(), tickets: vi.fn(), env: vi.fn() }));
+const mocks = vi.hoisted(() => ({ confirmations: vi.fn(), shipped: vi.fn(), reviews: vi.fn(), tickets: vi.fn(), env: vi.fn() }));
 vi.mock("@/lib/env", () => ({ getEnv: mocks.env }));
 vi.mock("@/lib/orders/confirmation-delivery", () => ({ retryPendingOrderConfirmations: mocks.confirmations }));
+vi.mock("@/lib/orders/shipped-delivery", () => ({ retryPendingShippedEmails: mocks.shipped }));
 vi.mock("@/lib/jobs/review-requests", () => ({ sendDueReviewRequests: mocks.reviews }));
 vi.mock("@/lib/support/delivery", () => ({ retryPendingTicketEmails: mocks.tickets }));
 import { POST } from "@/app/api/jobs/daily/route";
@@ -11,7 +12,8 @@ const request = (authorization = "Bearer job-secret") => new Request("http://loc
 });
 beforeEach(() => {
   vi.resetAllMocks(); mocks.env.mockReturnValue({ JOBS_SECRET: "job-secret" });
-  mocks.confirmations.mockResolvedValue(zero); mocks.reviews.mockResolvedValue(zero); mocks.tickets.mockResolvedValue(zero);
+  mocks.confirmations.mockResolvedValue(zero); mocks.shipped.mockResolvedValue(zero);
+  mocks.reviews.mockResolvedValue(zero); mocks.tickets.mockResolvedValue(zero);
 });
 afterEach(() => vi.restoreAllMocks());
 describe("daily delivery job", () => {
@@ -19,7 +21,7 @@ describe("daily delivery job", () => {
     mocks.confirmations.mockResolvedValue({ processed: 1, sent: 0, failed: 1, skipped: 0 });
     const response = await POST(request());
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ ...zero, confirmationRetries: { processed: 1, sent: 0, failed: 1, skipped: 0 }, ticketRetries: zero });
+    expect(await response.json()).toEqual({ ...zero, confirmationRetries: { processed: 1, sent: 0, failed: 1, skipped: 0 }, shippedRetries: zero, ticketRetries: zero });
     expect(mocks.reviews).toHaveBeenCalledOnce();
   });
   it("does not report successful or intentionally skipped work as failure", async () => {
@@ -30,12 +32,19 @@ describe("daily delivery job", () => {
     mocks.reviews.mockResolvedValue({ processed: 1, sent: 0, failed: 1, skipped: 0 });
     expect((await POST(request())).status).toBe(503);
   });
+  it("returns retryable failure when only a shipped notification fails", async () => {
+    const shipped = { processed: 1, sent: 0, failed: 1, skipped: 0 };
+    mocks.shipped.mockResolvedValue(shipped);
+    const response = await POST(request());
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ ...zero, confirmationRetries: zero, shippedRetries: shipped, ticketRetries: zero });
+  });
   it("returns retryable failure when only a support ticket email fails", async () => {
     const tickets = { processed: 2, sent: 1, failed: 1, skipped: 0 };
     mocks.tickets.mockResolvedValue(tickets);
     const response = await POST(request());
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ ...zero, confirmationRetries: zero, ticketRetries: tickets });
+    expect(await response.json()).toEqual({ ...zero, confirmationRetries: zero, shippedRetries: zero, ticketRetries: tickets });
   });
   it("treats already-claimed ticket emails as skips rather than delivery failures", async () => {
     mocks.tickets.mockResolvedValue({ processed: 2, sent: 0, failed: 0, skipped: 2 });
@@ -50,7 +59,7 @@ describe("daily delivery job", () => {
   });
   it.each(["", "Bearer invalid", "Bearer job-secret-extra"])("rejects unauthorized jobs before any side effects: %s", async authorization => {
     expect((await POST(request(authorization))).status).toBe(401);
-    expect(mocks.confirmations).not.toHaveBeenCalled(); expect(mocks.reviews).not.toHaveBeenCalled();
-    expect(mocks.tickets).not.toHaveBeenCalled();
+    expect(mocks.confirmations).not.toHaveBeenCalled(); expect(mocks.shipped).not.toHaveBeenCalled();
+    expect(mocks.reviews).not.toHaveBeenCalled(); expect(mocks.tickets).not.toHaveBeenCalled();
   });
 });

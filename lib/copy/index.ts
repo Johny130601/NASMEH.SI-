@@ -20,3 +20,4 @@ export { checkout, orders } from "./checkout";
 export { account } from "./account";
 export { reviews } from "./reviews";
 export { promo } from "./promo";
+export { tracking } from "./tracking";

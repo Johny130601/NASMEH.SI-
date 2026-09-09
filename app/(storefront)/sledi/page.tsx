@@ -1,81 +1,43 @@
 import type { Metadata } from "next";
-import { lookupOrderAction } from "@/app/(storefront)/actions/checkout";
-import { formatEUR } from "@/lib/pricing";
+import { getAuthChallengeProps } from "@/lib/auth-challenge";
 import { buildMetadata } from "@/lib/seo";
-import { orders } from "@/lib/copy";
-import { LookupForm } from "@/components/storefront/checkout/LookupForm";
+import { tracking as copy } from "@/lib/copy/tracking";
+import { TrackingLookup } from "@/components/storefront/tracking/TrackingLookup";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = buildMetadata({
-  title: orders.lookup.title,
+  title: copy.title,
+  description: copy.description,
   path: "/sledi",
   noindex: true,
 });
 
-/** Guest order lookup (§11.3) — backend for the Phase 6 tracking page. */
+/**
+ * Public tracking (§12.3): tracking number or e-mail + order number. Links
+ * from the shipped email and the account only prefill; every lookup still
+ * passes the challenge and rate limit in the Server Action.
+ */
 export default async function TrackOrderPage({
   searchParams,
 }: {
-  searchParams: Promise<{ email?: string; narocilo?: string }>;
+  searchParams: Promise<{ sledenje?: string; email?: string; narocilo?: string }>;
 }) {
-  const { email = "", narocilo = "" } = await searchParams;
-  const result =
-    email && narocilo
-      ? await lookupOrderAction({ email, orderNumber: narocilo })
-      : null;
-  const found = result && result.ok ? result : null;
-  const attempted = email !== "" && narocilo !== "";
+  const params = await searchParams;
+  const clip = (value: string | undefined, max: number) => (value ?? "").slice(0, max);
 
   return (
     <section className="mx-auto max-w-md px-(--padding) py-16">
-      <h1 className="text-[2rem]">{orders.lookup.title}</h1>
-      <LookupForm defaultEmail={email} defaultNumber={narocilo} />
-
-      {found ? (
-          <div className="mt-8 rounded-card border border-light-2 bg-white p-5" data-lookup-result>
-            <dl className="flex flex-col gap-2 text-sm">
-              <div className="flex justify-between">
-                <dt className="text-mid-2">{orders.lookup.statusLabel}</dt>
-                <dd className="font-medium text-dark-1" data-lookup-status>
-                  {orders.lookup.statuses[
-                    found.status as keyof typeof orders.lookup.statuses
-                  ] ?? found.status}
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-mid-2">{orders.lookup.methodLabel}</dt>
-                <dd className="text-dark-1">{found.shippingMethod ?? "—"}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-mid-2">{orders.lookup.trackingLabel}</dt>
-                <dd className="text-dark-1">
-                  {found.trackingNumber
-                    ? `${found.carrier ?? ""} ${found.trackingNumber}`
-                    : "—"}
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-mid-2">{orders.lookup.itemsLabel}</dt>
-                <dd className="text-dark-1">{found.itemCount}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-mid-2">{orders.lookup.totalLabel}</dt>
-                <dd className="text-dark-1">{formatEUR(found.totalCents)}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-mid-2">{orders.lookup.dateLabel}</dt>
-                <dd className="text-dark-1">
-                  {new Date(found.createdAt).toLocaleDateString("sl-SI")}
-                </dd>
-              </div>
-            </dl>
-          </div>
-        ) : attempted ? (
-          <p role="alert" className="mt-8 text-sm text-error">
-            {orders.lookup.notFound}
-          </p>
-        ) : null}
+      <h1 className="text-[2rem]">{copy.title}</h1>
+      <p className="mt-3 text-sm text-mid-1">{copy.intro}</p>
+      <TrackingLookup
+        challenge={getAuthChallengeProps()}
+        defaults={{
+          trackingNumber: clip(params.sledenje, 80),
+          email: clip(params.email, 254),
+          orderNumber: clip(params.narocilo, 20),
+        }}
+      />
     </section>
   );
 }

@@ -107,8 +107,10 @@ test("full guest purchase: checkout → pay → confirmation → email+invoice �
     message.Attachments?.some((a) => a.FileName.endsWith(".pdf")),
   ).toBe(true);
 
-  // guest lookup finds the order
+  // guest lookup finds the order (tracking page, e-mail + order-number mode)
   await page.goto(`/sledi?email=${encodeURIComponent(email)}&narocilo=${number}`);
+  await expect(page.locator('[data-track-form="order"] input[name="orderNumber"]')).toHaveValue(number);
+  await page.locator('[data-track-form="order"] button[type="submit"]').click();
   await expect(page.locator("[data-lookup-result]")).toBeVisible();
   await expect(page.locator("[data-lookup-status]")).toHaveText("Plačano");
 });

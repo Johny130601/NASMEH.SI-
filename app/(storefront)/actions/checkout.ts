@@ -168,47 +168,5 @@ export async function clearCartAfterPurchaseAction(input: { orderNumber: string 
   return clearPurchasedCart(input);
 }
 
-/** Guest order lookup (§11.3): email + order number → status/tracking. */
-export async function lookupOrderAction(input: {
-  email: string;
-  orderNumber: string;
-}): Promise<
-  | {
-      ok: true;
-      number: string;
-      status: string;
-      shippingMethod: string | null;
-      trackingNumber: string | null;
-      carrier: string | null;
-      itemCount: number;
-      totalCents: number;
-      createdAt: string;
-    }
-  | { ok: false }
-> {
-  const email = z.email().safeParse(input.email?.trim().toLowerCase());
-  const number = z
-    .string()
-    .trim()
-    .regex(/^NS-\d{4}-\d{5}$/)
-    .safeParse(input.orderNumber?.trim().toUpperCase());
-  if (!email.success || !number.success) return { ok: false };
-
-  const order = await db.order.findFirst({
-    where: { number: number.data, email: email.data },
-    include: { items: true },
-  });
-  if (!order) return { ok: false };
-
-  return {
-    ok: true,
-    number: order.number,
-    status: order.status,
-    shippingMethod: order.shippingMethod,
-    trackingNumber: order.trackingNumber,
-    carrier: order.carrier,
-    itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0),
-    totalCents: order.totalCents,
-    createdAt: order.createdAt.toISOString(),
-  };
-}
+// Guest order lookup (§11.3) lives in actions/tracking.ts since Phase 6 step 3:
+// challenge-guarded, rate-limited, with the carrier link and delivery estimate.

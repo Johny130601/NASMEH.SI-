@@ -15,7 +15,7 @@ One row per phase. The linked record is the only evidence that counts (rule 11).
 | 3 Cart, checkout, orders | repaired locally: 319 unit / 80 browser at repair time | [repairs](testing/phase-3-repairs-2026-09-09.md), [audit](testing/phase-3-audit-2026-09-09.md) | **G1** real Stripe/PayPal/Turnstile sandbox acceptance not executed ([checklist](testing/phase-3-sandbox-checklist.md)); Klarna SI eligibility unconfirmed |
 | 4 Promotions | complete | [plan](plans/phase-4.md) | — |
 | 5 Accounts, reviews | locally accepted: 512 unit / 94 browser | [acceptance](testing/phase-5-acceptance-2026-09-09.md) | host scheduling of `/api/jobs/daily` (G3) |
-| 6 Support, content | steps 1–2 complete: 587 unit / 103 browser at step 2; steps 3–6 not started | [step 1](testing/phase-6-step-1-2026-09-09.md), [step 2](testing/phase-6-step-2-2026-09-09.md) | step 3–6 designs in [plans/phase-6.md](plans/phase-6.md) |
+| 6 Support, content | steps 1–3 complete: 630 unit / 106 browser at step 3; steps 4–6 not started | [step 1](testing/phase-6-step-1-2026-09-09.md), [step 2](testing/phase-6-step-2-2026-09-09.md), [step 3](testing/phase-6-step-3-2026-09-09.md), [build-verify run](testing/build-verify-2026-09-09.md) | step 4–6 designs in [plans/phase-6.md](plans/phase-6.md) |
 | 7 Admin | not started | — | checkpoints defined in the Phase 7 section |
 | 9 Hardening, go-live | not started | — | may start after Phase 7; G1 can run as soon as D5 sandbox keys exist |
 | 8 Growth [P2] | post-launch | — | — |
@@ -275,8 +275,8 @@ Phases 4, 5, 6 all depend only on Phase 3 and may be sequenced to taste; the man
 |---|---|---|---|
 | 1 | Contact triage → `Ticket` + routed mail (3) | complete | [step 1](testing/phase-6-step-1-2026-09-09.md) |
 | 2 | Shopping navigation, page simplification, legacy redirects, delivery in checkout (1, 2) | complete | [step 2](testing/phase-6-step-2-2026-09-09.md) |
-| 3 | Public tracking `/sledi` by tracking number **or** email + order number; shared `markOrderShipped` / `markOrderDelivered` transitions; shipped email; `shippedAt` (4) | not started, **next** | — |
-| 4 | Withdrawal page with online model form → ticket and downloadable PDF; 30-day guarantee page; Reklamacije CTA; dedicated adverse-event form (5, 6) | not started | — |
+| 3 | Public tracking `/sledi` by tracking number **or** email + order number; shared `markOrderShipped` / `markOrderDelivered` transitions; shipped email; `shippedAt` (4) | complete | [step 3](testing/phase-6-step-3-2026-09-09.md) |
+| 4 | Withdrawal page with online model form → ticket and downloadable PDF; 30-day guarantee page; Reklamacije CTA; dedicated adverse-event form (5, 6) | not started, **next** | — |
 | 5 | Back-in-stock alerts: restock-aware stock helper, durable alert queue on the subscription row, alert email + unsubscribe, daily-job stream (7) | not started | — |
 | 6 | Full Phase 6 regression, Docker, responsive review, backlog cleanup B1/B2/B6, review-boss, doc and AGENTS.md updates | not started | — |
 

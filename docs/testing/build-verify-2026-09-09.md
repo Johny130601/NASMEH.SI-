@@ -35,6 +35,7 @@ Companion to [the run plan](../plans/build-and-verify-2026-09-09.md). Every numb
 | `npm run test` (Vitest) | **587 passed / 52 files**, 0 failed, after the fixes (initial run on Windows: 573 passed, 14 failed in 2 files) |
 | `npm run build` | pass: compiled in 44 s, 44 routes, `.next/standalone/server.js` present (background build with `.env`); a second build with the Playwright env produced the artifact every phase run below uses |
 | `docker compose build` | deferred until restart |
+| **Final full pass on commit `4aed04c`** | unit **587/587** (also with the e2e environment exported, after the Turnstile bypass test learned to clear `NASMEH_E2E` itself); browser **103/103 passed** in 1.6 min against one standalone server, zero flaky. A first full pass had failed the catalog tab count (7 cards instead of 5) because two ACTIVE `review-<uuid>` fixture products survived the two aborted group runs during the B12 investigation; `nasmeh_e2e` was dropped, migrated and re-seeded before the final pass |
 
 ## Phase verification
 

@@ -1,8 +1,10 @@
 import { Prisma, type Order } from "@prisma/client";
 import { db } from "@/lib/db";
 import { isTestMode } from "@/lib/turnstile";
+import { configuredCarriers, getShippingMethods, normalizeTrackingNumber } from "@/lib/tracking";
 import { deliverOrderConfirmation } from "./confirmation-delivery";
 import { deductOrderInventory } from "./inventory";
+import { deliverOrderShipped } from "./shipped-delivery";
 
 interface TimelineEvent { at: string; event: string; detail?: string }
 
@@ -201,6 +203,86 @@ export async function markPaymentCancelled(
     });
     return { outcome: "ignored" };
   });
+}
+
+// ---------- Fulfilment (operator-driven, §12.3 / §14.7) ----------
+
+export type FulfillmentResult =
+  | { ok: true; orderNumber: string; status: "SHIPPED" | "DELIVERED" }
+  | { ok: false; reason: "not_found" | "invalid_transition" | "missing_tracking" | "unknown_carrier" };
+
+export interface ShipmentInput {
+  carrier: string;
+  trackingNumber: string;
+  /** Who performed the transition (admin id, "job", "e2e"); recorded in the timeline. */
+  actor: string;
+}
+
+const FULFILLMENT_TX = { maxWait: 10_000, timeout: 20_000 };
+
+async function lockOrderById(tx: Prisma.TransactionClient, orderId: string): Promise<Order | null> {
+  await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Order" WHERE "id" = ${orderId} FOR UPDATE`);
+  return tx.order.findUnique({ where: { id: orderId } });
+}
+
+/**
+ * PAID/PROCESSING → SHIPPED. The carrier must be one the store ships with and
+ * the tracking number is stored normalised. The first shipment stamps
+ * `shippedAt`; the shipped email is queued durably and sent post-commit.
+ */
+export async function markOrderShipped(orderId: string, input: ShipmentInput): Promise<FulfillmentResult> {
+  const trackingNumber = normalizeTrackingNumber(input.trackingNumber);
+  if (!trackingNumber) return { ok: false, reason: "missing_tracking" };
+  const carrier = input.carrier.trim();
+  if (!configuredCarriers(await getShippingMethods()).includes(carrier)) {
+    return { ok: false, reason: "unknown_carrier" };
+  }
+
+  const result = await db.$transaction(async (tx): Promise<FulfillmentResult> => {
+    const order = await lockOrderById(tx, orderId);
+    if (!order) return { ok: false, reason: "not_found" };
+    if (order.status !== "PAID" && order.status !== "PROCESSING") {
+      return { ok: false, reason: "invalid_transition" };
+    }
+    await tx.order.update({
+      where: { id: order.id },
+      data: {
+        status: "SHIPPED",
+        carrier,
+        trackingNumber,
+        shippedAt: order.shippedAt ?? new Date(),
+        shippedEmailPending: true,
+        shippedEmailLeaseUntil: null,
+        shippedEmailLastError: null,
+        timeline: timelinePush(order, "shipped", `${carrier}:${input.actor}`),
+      },
+    });
+    return { ok: true, orderNumber: order.number, status: "SHIPPED" };
+  }, FULFILLMENT_TX);
+
+  if (result.ok) {
+    // Delivery failure never loses the transition; the daily job retries.
+    try {
+      await deliverOrderShipped(orderId);
+    } catch (error) {
+      console.error("Shipped notification remains pending", error);
+    }
+  }
+  return result;
+}
+
+/** SHIPPED → DELIVERED. The database trigger stamps `deliveredAt` once. */
+export async function markOrderDelivered(orderId: string, input: { actor: string }): Promise<FulfillmentResult> {
+  return db.$transaction(async (tx): Promise<FulfillmentResult> => {
+    const order = await lockOrderById(tx, orderId);
+    if (!order) return { ok: false, reason: "not_found" };
+    if (order.status !== "SHIPPED") return { ok: false, reason: "invalid_transition" };
+    await tx.order.update({
+      where: { id: order.id },
+      data: { status: "DELIVERED", timeline: timelinePush(order, "delivered", input.actor) },
+    });
+    return { ok: true, orderNumber: order.number, status: "DELIVERED" };
+  }, FULFILLMENT_TX);
 }
 
 /** Partial refunds preserve fulfillment; only a full refund becomes REFUNDED. */

@@ -10,6 +10,7 @@ import { renderOrderConfirmationEmail } from "./templates/order-confirmation";
 import { renderVerifyAccountEmail } from "./templates/verify-account";
 import { renderResetPasswordEmail } from "./templates/reset-password";
 import { renderReviewRequestEmail, type ReviewRequestItem } from "./templates/review-request";
+import { renderOrderShippedEmail } from "./templates/order-shipped";
 
 let transporter: Transporter | null = null;
 
@@ -100,6 +101,20 @@ export async function sendOrderConfirmationEmail(
     attachments: [
       { filename: `racun-${order.number}.pdf`, content: invoicePdf },
     ],
+  });
+}
+
+/** Shipped notification with the carrier link (§12.3); stable Message-ID per order. */
+export async function sendOrderShippedEmail(
+  order: Order,
+  details: { trackingLink: string | null; estimate: string | null },
+) {
+  const trackingPageUrl = `${siteUrl()}/sledi?sledenje=${encodeURIComponent(order.trackingNumber ?? "")}`;
+  return sendMail({
+    to: order.email,
+    subject: `${copy.orderShipped.subjectPrefix} ${order.number} — Nasmeh.si`,
+    messageId: `<order-shipped.${order.id}@nasmeh.si>`,
+    html: renderOrderShippedEmail(order, { ...details, trackingPageUrl }),
   });
 }
 

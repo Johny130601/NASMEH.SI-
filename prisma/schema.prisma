@@ -278,6 +278,11 @@ model Order {
   invoiceIssuedAt       DateTime?
   paidAt                DateTime?
   deliveredAt           DateTime? // first delivery; stamped by DB trigger, independent of later edits
+  shippedAt             DateTime? // first shipment; set once by markOrderShipped
+  shippedEmailPending   Boolean            @default(false)
+  shippedEmailSentAt    DateTime?
+  shippedEmailLeaseUntil DateTime?
+  shippedEmailLastError String?
   stockDeducted         Boolean            @default(false) // single-decrement guard
   cartClearedAt         DateTime?
   refundRequired        Boolean            @default(false)
@@ -301,6 +306,7 @@ model Order {
   @@index([userId])
   @@index([email])
   @@index([status, deliveredAt])
+  @@index([trackingNumber])
 }
 
 // Webhook idempotency (AGENTS §5.5): handlers must be safe to receive twice

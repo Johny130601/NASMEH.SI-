@@ -31,6 +31,18 @@ export const email = {
     totalLabel: "Skupaj",
     footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
   },
+  orderShipped: {
+    subjectPrefix: "Naročilo je odposlano",
+    heading: "Vaše naročilo je na poti!",
+    body: "Pošiljko smo predali prevozniku. Številka naročila:",
+    carrierLabel: "Prevoznik",
+    trackingLabel: "Številka sledenja",
+    carrierLink: "Spremljaj pošiljko pri prevozniku",
+    noLink: "Povezava za sledenje pri tem prevozniku ni na voljo; številko vnesite na strani Sledi naročilu.",
+    estimateLabel: "Predviden prihod",
+    cta: "Sledi naročilu",
+    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+  },
   verifyAccount: {
     subject: "Potrdite svoj račun — Nasmeh.si",
     heading: "Dobrodošli na Nasmeh.si!",

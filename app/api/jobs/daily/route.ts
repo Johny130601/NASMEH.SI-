@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getEnv } from "@/lib/env";
 import { retryPendingOrderConfirmations } from "@/lib/orders/confirmation-delivery";
+import { retryPendingShippedEmails } from "@/lib/orders/shipped-delivery";
 import { sendDueReviewRequests } from "@/lib/jobs/review-requests";
 import { retryPendingTicketEmails } from "@/lib/support/delivery";
 
@@ -18,10 +19,11 @@ export async function POST(request: Request) {
 
   try {
     const confirmationRetries = await retryPendingOrderConfirmations();
+    const shippedRetries = await retryPendingShippedEmails();
     const reviews = await sendDueReviewRequests();
     const ticketRetries = await retryPendingTicketEmails();
-    return NextResponse.json({ ...reviews, confirmationRetries, ticketRetries }, {
-      status: reviews.failed || confirmationRetries.failed || ticketRetries.failed ? 503 : 200,
+    return NextResponse.json({ ...reviews, confirmationRetries, shippedRetries, ticketRetries }, {
+      status: reviews.failed || confirmationRetries.failed || shippedRetries.failed || ticketRetries.failed ? 503 : 200,
     });
   } catch {
     console.error("Daily delivery job requires retry");

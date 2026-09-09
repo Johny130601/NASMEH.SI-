@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { trackingUrl } from "@/lib/tracking";
+import {
+  configuredCarriers, deliveryEstimate, normalizeTrackingNumber, resolveShippingMethod, trackingUrl,
+} from "@/lib/tracking";
 const setting = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/settings", () => ({ getSetting: setting }));
 beforeEach(() => setting.mockReset());
@@ -23,5 +25,42 @@ describe("configured carrier tracking links", () => {
     expect(setting).not.toHaveBeenCalled();
     setting.mockResolvedValue({ ps: "https://posta.test/{number}", gls: "https://gls.test/{number}" });
     expect(await trackingUrl("unknown carrier", "123")).toBeNull();
+  });
+});
+
+describe("tracking number normalisation", () => {
+  it.each([
+    [" gls 1234 5678 ", "GLS12345678"],
+    ["ab-12-cd-34", "AB-12-CD-34"],
+    ["\tRR123456789SI\n", "RR123456789SI"],
+  ])("normalises %j to %s", (input, expected) => {
+    expect(normalizeTrackingNumber(input)).toBe(expected);
+  });
+
+  it.each(["", "   ", "abc", "12345", "x".repeat(41), "bad number!", "číslo1234", null, 42, undefined])("rejects %j", (value) => {
+    expect(normalizeTrackingNumber(value)).toBeNull();
+  });
+});
+
+describe("shipping method resolution", () => {
+  const methods = [
+    { id: "ps-standard", carrier: " Pošta Slovenije ", label: "Pošta Slovenije — standard", priceCents: 390, estimate: "2–4 delovna dneva" },
+    { id: "ps-express", carrier: "Pošta Slovenije", label: "Pošta Slovenije — express", priceCents: 690, estimate: "1–2 delovna dneva" },
+    { id: "gls", carrier: "GLS", label: "GLS — paketna dostava", priceCents: 490, estimate: "2–3 delovni dnevi" },
+  ];
+
+  it("matches the snapshotted label first, then the id, otherwise nothing", () => {
+    expect(resolveShippingMethod("GLS — paketna dostava", methods)?.id).toBe("gls");
+    expect(resolveShippingMethod("ps-express", methods)?.label).toBe("Pošta Slovenije — express");
+    expect(resolveShippingMethod("DHL Express", methods)).toBeNull();
+    expect(resolveShippingMethod(null, methods)).toBeNull();
+    expect(resolveShippingMethod("gls", [])).toBeNull();
+  });
+
+  it("derives the delivery estimate and the distinct carrier list", () => {
+    expect(deliveryEstimate("GLS — paketna dostava", methods)).toBe("2–3 delovni dnevi");
+    expect(deliveryEstimate("unknown", methods)).toBeNull();
+    expect(configuredCarriers(methods)).toEqual(["Pošta Slovenije", "GLS"]);
+    expect(configuredCarriers([])).toEqual([]);
   });
 });
