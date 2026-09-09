@@ -46,7 +46,13 @@ async function hash(handle) {
 
 async function syncDirectory(directory) {
   const handle = await fs.open(directory, constants.O_RDONLY | constants.O_NOFOLLOW);
-  try { await handle.sync(); } finally { await handle.close(); }
+  try { await handle.sync(); }
+  catch (error) {
+    // Windows cannot flush a directory handle (EPERM/EINVAL). File contents are
+    // still fsynced by the caller; only the directory-entry flush is skipped there.
+    if (process.platform !== "win32" || !["EPERM", "EINVAL"].includes(error.code)) throw error;
+  }
+  finally { await handle.close(); }
 }
 
 async function compareExisting(source, destination) {
@@ -70,7 +76,8 @@ async function migrateFile(source, destination, privateDirectory) {
     } catch (error) {
       if (error.code !== "EEXIST") throw error;
       existed = true;
-      output = await openRegular(destination);
+      // Read-write: sync() below needs write access on Windows (EPERM otherwise).
+      output = await openRegular(destination, constants.O_RDWR);
     }
     if (!existed) {
       const buffer = Buffer.alloc(64 * 1024);

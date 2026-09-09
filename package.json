@@ -6,7 +6,7 @@
     "predev": "node scripts/migrate-review-uploads.cjs",
     "dev": "next dev",
     "build": "next build",
-    "start": "./scripts/start-standalone.sh",
+    "start": "node scripts/start-standalone.cjs",
     "lint": "eslint . && tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "docker compose --profile tools up -d db mailpit --wait && npm run db:seed && playwright test",

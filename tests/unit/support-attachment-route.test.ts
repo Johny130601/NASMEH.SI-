@@ -1,3 +1,4 @@
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), find: vi.fn(), read: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ auth: mocks.auth }));
@@ -17,7 +18,8 @@ describe("private support attachment access", () => {
     expect(response.headers.get("content-type")).toBe("image/webp"); expect(response.headers.get("content-disposition")).toBe(`inline; filename="${filename}"`);
     expect(response.headers.get("cache-control")).toBe("private, no-store"); expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(mocks.find).toHaveBeenCalledWith({ where: { id: "attachment-1" }, include: { ticket: { select: { userId: true, reference: true } } } });
-    expect(mocks.read).toHaveBeenCalledWith(`/private/support-uploads/${filename}`);
+    // path.join keeps the expectation valid on Windows separators too.
+    expect(mocks.read).toHaveBeenCalledWith(path.join("/private/support-uploads", filename));
   });
   it("denies unauthenticated access without consulting the file store", async () => {
     mocks.auth.mockResolvedValue(null); const response = await get(); expect(response.status).toBe(404);
