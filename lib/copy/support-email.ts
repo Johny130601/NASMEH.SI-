@@ -1,0 +1,30 @@
+/** Phase 6 step 1: transactional support delivery, never marketing. */
+export const supportEmail = {
+  staff: {
+    subjectPrefix: "Novo sporočilo za podporo",
+    heading: "Prejeli ste sporočilo za podporo",
+    reference: "Oznaka zahtevka",
+    topic: "Tema",
+    reason: "Podrobnejši razlog",
+    name: "Ime prijavitelja",
+    email: "E-pošta iz obrazca (lastništvo naslova ni potrjeno)",
+    order: "Številka naročila",
+    orderProof: "Preverjanje konteksta naročila",
+    proofAccount: "Prijavljeni imetnik računa",
+    proofEmailNumber: "Ujemanje e-pošte in številke naročila; lastništvo e-pošte ni potrjeno",
+    proofUnknown: "Kontekst naročila ni preverjen",
+    message: "Sporočilo",
+    photos: "Priložene fotografije",
+    photo: "Fotografija",
+    photoAccess: "Fotografije so zasebne; za ogled se prijavite z ustreznim dostopom.",
+    footer: "Ta zahtevek sam po sebi ne spreminja in ne prekliče naročila.",
+  },
+  customer: {
+    subjectPrefix: "Prejeli smo vaše sporočilo",
+    heading: "Vaše sporočilo smo prejeli",
+    body: "Sporočilo je zabeleženo in ga bo pregledala naša ekipa.",
+    reference: "Oznaka zahtevka",
+    ignore: "Če nam niste pisali, lahko to potrdilo prezrete.",
+    footer: "Nasmeh.si — potrdilo o prejemu sporočila.",
+  },
+} as const;

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" role="img" aria-label="Paket popolna rutina — placeholder">
+  <rect width="800" height="800" fill="rgb(242, 242, 247)"/>
+  <circle cx="400" cy="340" r="170" fill="rgb(0, 168, 143)" fill-opacity="0.12"/>
+  <rect x="300" y="270" width="90" height="140" rx="14" fill="rgb(0, 168, 143)" fill-opacity="0.3"/>
+  <rect x="405" y="250" width="90" height="160" rx="14" fill="rgb(0, 168, 143)" fill-opacity="0.45"/>
+  <rect x="352" y="300" width="90" height="110" rx="14" fill="rgb(255, 255, 255)" fill-opacity="0.85"/>
+  <text x="400" y="580" text-anchor="middle" font-family="'Plus Jakarta Sans','Helvetica Neue',Arial,sans-serif" font-size="42" font-weight="500" fill="rgb(28, 28, 30)">Paket popolna rutina</text>
+  <text x="400" y="636" text-anchor="middle" font-family="'Plus Jakarta Sans','Helvetica Neue',Arial,sans-serif" font-size="24" fill="rgb(99, 99, 102)">Nasmeh.si</text>
+</svg>

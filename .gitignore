@@ -1,0 +1,32 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+next-env.d.ts
+
+# env & secrets
+.env
+.env.local
+.env.*.local
+
+# testing
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# data & backups
+backups/
+*.tsbuildinfo
+
+# uploads volume (keep dir + committed placeholders, ignore user content)
+public/uploads/*
+!public/uploads/.gitkeep
+!public/uploads/placeholder-*.svg
+review-uploads/
+support-uploads/
+
+# os / misc
+.DS_Store

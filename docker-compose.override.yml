@@ -1,0 +1,9 @@
+# LOCAL DEV ONLY — publishes Postgres on the host so `npm run dev`, Prisma CLI
+# and Playwright on this machine can reach it (DATABASE_URL → localhost:5543).
+# Host port is 5543 (not 5432) to avoid colliding with a local Postgres install.
+# Production compose deliberately does NOT publish db: delete this file on the
+# server (it is merged automatically whenever it exists).
+services:
+  db:
+    ports:
+      - "5543:5432"

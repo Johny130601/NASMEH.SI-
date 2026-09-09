@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1100" role="img" aria-label="Nasmeh.si — predstavitveni vizual (placeholder)">
+  <rect width="900" height="1100" fill="rgb(242, 242, 247)"/>
+  <circle cx="450" cy="460" r="260" fill="rgb(0, 168, 143)" fill-opacity="0.12"/>
+  <circle cx="450" cy="460" r="170" fill="rgb(0, 168, 143)" fill-opacity="0.28"/>
+  <path d="M330 460 Q450 560 570 460" stroke="rgb(255, 255, 255)" stroke-width="26" fill="none" stroke-linecap="round"/>
+  <text x="450" y="840" text-anchor="middle" font-family="'Plus Jakarta Sans','Helvetica Neue',Arial,sans-serif" font-size="52" font-weight="500" fill="rgb(28, 28, 30)">Nasmeh, ki ga opazite</text>
+  <text x="450" y="900" text-anchor="middle" font-family="'Plus Jakarta Sans','Helvetica Neue',Arial,sans-serif" font-size="28" fill="rgb(99, 99, 102)">Nasmeh.si</text>
+</svg>

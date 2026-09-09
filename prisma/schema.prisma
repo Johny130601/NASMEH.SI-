@@ -1,0 +1,704 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Auth & users ----------
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+model User {
+  id              String       @id @default(cuid())
+  email           String       @unique
+  name            String?
+  passwordHash    String?
+  sessionVersion  Int          @default(0)
+  role            Role         @default(CUSTOMER)
+  emailVerified   DateTime?
+  image           String?
+  marketingOptIn  Boolean      @default(false)
+  marketingOptIns ConsentLog[]
+  accounts        Account[]
+  sessions        Session[]
+  addresses       Address[]
+  orders          Order[]
+  cart            Cart?
+  reviews         Review[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  authTokens      AuthToken[]
+  supportTickets  Ticket[]
+}
+
+// Auth.js adapter models (OAuth slots in phase 2; credentials uses JWT sessions)
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model ConsentLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  visitorId String?
+  kind      String // cookie | marketing-email | terms
+  version   String
+  choices   Json
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([visitorId])
+}
+
+// ---------- Catalog ----------
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+model Product {
+  id               String                    @id @default(cuid())
+  title            String
+  slug             String                    @unique
+  status           ProductStatus             @default(DRAFT)
+  description      String                    @default("")
+  badges           Json? // USP chips / badge pills
+  customFields     Json? // HiSmile-style metafields
+  accordions       Json? // PDP accordion content
+  faq              Json? // PDP FAQ entries
+  education        Json? // PDP education sections
+  seoTitle         String?
+  seoDescription   String?
+  visibleInCatalog Boolean                   @default(true)
+  visibleInSearch  Boolean                   @default(true)
+  hiddenDeal       Boolean                   @default(false) // deal-SKU, unlisted
+  variants         Variant[]
+  media            MediaImage[]
+  backInStock      BackInStockSubscription[]
+  collections      CollectionProduct[]
+  reviews          Review[]
+  bundle           Bundle?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+}
+
+model Variant {
+  id                  String                    @id @default(cuid())
+  productId           String
+  product             Product                   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  title               String                    @default("")
+  sku                 String                    @unique
+  priceCents          Int
+  compareAtPriceCents Int?
+  costCents           Int?
+  barcode             String?
+  weightGrams         Int?
+  stock               Int                       @default(0)
+  maxCartQuantity     Int                       @default(5) // bundles/gifts: 1
+  priceHistory        PriceHistory[]
+  orderItems          OrderItem[]
+  cartItems           CartItem[]
+  bundleItems         BundleItem[]
+  backInStock         BackInStockSubscription[]
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+
+  @@index([productId])
+}
+
+// Omnibus (ZVPot) compliance record — append-only, written by lib/price-history
+model PriceHistory {
+  id                  String   @id @default(cuid())
+  variantId           String
+  variant             Variant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  priceCents          Int
+  compareAtPriceCents Int?
+  createdAt           DateTime @default(now())
+
+  @@index([variantId, createdAt])
+}
+
+enum MediaKind {
+  GALLERY
+  CARD
+  HERO
+}
+
+model MediaImage {
+  id        String    @id @default(cuid())
+  productId String
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  alt       String    @default("")
+  sortOrder Int       @default(0)
+  kind      MediaKind @default(GALLERY)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([productId, kind, sortOrder])
+  @@index([productId, sortOrder])
+}
+
+enum CollectionType {
+  MANUAL
+  RULES
+}
+
+model Collection {
+  id             String              @id @default(cuid())
+  title          String
+  slug           String              @unique
+  type           CollectionType      @default(MANUAL)
+  rules          Json?
+  bannerImage    String?
+  seoTitle       String?
+  seoDescription String?
+  noindex        Boolean             @default(false)
+  products       CollectionProduct[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+}
+
+model CollectionProduct {
+  collectionId String
+  productId    String
+  position     Int        @default(0)
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, productId])
+  @@index([productId])
+}
+
+// ---------- Bundles ----------
+
+model Bundle {
+  id         String       @id @default(cuid())
+  productId  String       @unique // the sellable bundle Product (variant.maxCartQuantity = 1)
+  product    Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  priceCents Int
+  active     Boolean      @default(true)
+  items      BundleItem[]
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+}
+
+model BundleItem {
+  id        String  @id @default(cuid())
+  bundleId  String
+  bundle    Bundle  @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  variantId String
+  variant   Variant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  quantity  Int     @default(1)
+
+  @@unique([bundleId, variantId])
+  @@index([variantId])
+}
+
+// ---------- Orders ----------
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+model Order {
+  id                    String             @id @default(cuid())
+  number                String             @unique // NS-2026-00042
+  status                OrderStatus        @default(PENDING)
+  userId                String?
+  user                  User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  email                 String
+  phone                 String?
+  currency              String             @default("EUR")
+  subtotalCents         Int
+  discountCents         Int                @default(0)
+  shippingCents         Int                @default(0)
+  shippingMethod        String?
+  totalCents            Int
+  vatCents              Int
+  vatRatePercent        Int                @default(22)
+  shippingAddress       Json
+  billingAddress        Json?
+  paymentProvider       String?
+  stripePaymentIntentId String?
+  paypalOrderId         String?
+  trackingNumber        String?
+  carrier               String?
+  invoiceNumber         String?            @unique // = order number (documented)
+  checkoutKey           String?            @unique // idempotent order creation
+  invoiceIssuedAt       DateTime?
+  paidAt                DateTime?
+  deliveredAt           DateTime? // first delivery; stamped by DB trigger, independent of later edits
+  stockDeducted         Boolean            @default(false) // single-decrement guard
+  cartClearedAt         DateTime?
+  refundRequired        Boolean            @default(false)
+  refundedCents         Int                @default(0)
+  fulfillmentIssue      String?
+  confirmationEmailPending Boolean         @default(false)
+  confirmationEmailSentAt DateTime?
+  confirmationEmailLeaseUntil DateTime?
+  confirmationEmailLastError String?
+  marketingOptIn        Boolean            @default(false)
+  couponCode            String?
+  couponSnapshot        Json? // {code,type,percentOff,amountOffCents,discountCents}
+  timeline              Json               @default("[]")
+  items                 OrderItem[]
+  redemptions           CouponRedemption[]
+  reviewRequest         ReviewRequest?
+  supportTickets        Ticket[]
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  @@index([userId])
+  @@index([email])
+  @@index([status, deliveredAt])
+}
+
+// Webhook idempotency (AGENTS §5.5): handlers must be safe to receive twice
+model ProcessedEvent {
+  id        String   @id @default(cuid())
+  provider  String // stripe | paypal
+  eventId   String   @unique
+  type      String
+  createdAt DateTime @default(now())
+
+  @@index([provider])
+}
+
+// Abandoned-checkout capture (§8.4): email recorded at step 1 + signed
+// recovery token stored. Recovery EMAILS need ESP → Phase 8.
+model AbandonedCheckout {
+  id            String   @id @default(cuid())
+  email         String
+  cartSnapshot  Json
+  recoveryToken String   @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([email])
+}
+
+// One redemption row per (coupon, order) — per-customer limits + idempotency
+model CouponRedemption {
+  id        String   @id @default(cuid())
+  couponId  String
+  coupon    Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  email     String
+  orderId   String   @unique
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([couponId])
+  @@index([email])
+}
+
+// Atomic sequence for order/invoice numbers
+model Counter {
+  key   String @id
+  value Int    @default(0)
+}
+
+model OrderItem {
+  id             String   @id @default(cuid())
+  orderId        String
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId      String?
+  variant        Variant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  title          String // snapshot
+  sku            String // snapshot
+  unitPriceCents Int // snapshot, VAT-inclusive
+  vatRatePercent Int      @default(22)
+  quantity       Int
+  discountLabel  String?
+  giftLabel      String?
+  properties     Json? // _free_gift, bundle component expansion
+  review         Review?
+
+  @@index([orderId])
+  @@index([variantId])
+}
+
+// ---------- Promotions ----------
+
+enum CouponType {
+  PERCENT
+  FIXED
+  FIXED_PRODUCT
+  FREE_SHIPPING
+  BXGY // [P2 — model only, NO runtime logic in P4]
+}
+
+model Coupon {
+  id                    String             @id @default(cuid())
+  code                  String             @unique
+  type                  CouponType
+  percentOff            Int?
+  amountOffCents        Int?
+  usageLimitTotal       Int?
+  usageLimitPerCustomer Int?
+  usedCount             Int                @default(0)
+  startsAt              DateTime?
+  endsAt                DateTime?
+  minSpendCents         Int?
+  eligibility           Json?
+  exclusions            Json?
+  stackable             Boolean            @default(false) // no stacking by default
+  active                Boolean            @default(true)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  couponRedemptions     CouponRedemption[]
+}
+
+enum PromoTrigger {
+  ANY_CART
+  MIN_SPEND
+  PRODUCTS
+}
+
+// Code-less automatic discounts [P2 — model only]
+model Promotion {
+  id             String       @id @default(cuid())
+  name           String
+  active         Boolean      @default(false)
+  triggerType    PromoTrigger @default(ANY_CART)
+  minSpendCents  Int?
+  productIds     Json?
+  percentOff     Int?
+  amountOffCents Int?
+  startsAt       DateTime?
+  endsAt         DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+// Gift-with-purchase engine [P2 — model only]
+model FreeGiftRule {
+  id              String       @id @default(cuid())
+  name            String
+  active          Boolean      @default(false)
+  triggerType     PromoTrigger @default(MIN_SPEND)
+  minSpendCents   Int?
+  productIds      Json?
+  giftVariantPool Json // [{ variantId, weight }]
+  maxPerOrder     Int          @default(1)
+  autoAdd         Boolean      @default(true)
+  displayCopy     String       @default("")
+  startsAt        DateTime?
+  endsAt          DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+// Single-use expiring auth tokens (verify email, password reset) — stored as SHA-256 hashes
+model AuthToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String // VERIFY_EMAIL | RESET_PASSWORD
+  expiresAt DateTime
+  usedAt    DateTime?
+  activationData Json? // verification binds the shopper's chosen credentials and consent
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// Durable review-request delivery, claimed before SMTP; sentAt records actual acceptance.
+model ReviewRequest {
+  id      String   @id @default(cuid())
+  orderId String   @unique
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  sentAt  DateTime?
+  leaseUntil DateTime?
+  leaseToken String?
+  attempts Int @default(0)
+  lastError String?
+  createdAt DateTime @default(now())
+}
+
+// ---------- Reviews ----------
+
+enum ReviewStatus {
+  PENDING
+  PUBLISHED
+  REJECTED
+}
+
+model Review {
+  id            String       @id @default(cuid())
+  productId     String
+  product       Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId        String?
+  user          User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  orderItemId   String?      @unique // verified-buyer link
+  orderItem     OrderItem?   @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  rating        Int // 1–5
+  title         String?
+  text          String       @default("")
+  photos        Json? // ≤4 upload paths
+  attributes    Json? // optional: stopnja občutljivosti, bi priporočili
+  status        ReviewStatus @default(PENDING)
+  merchantReply String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([productId, status])
+  @@index([userId])
+}
+
+// ---------- Cart ----------
+
+model Cart {
+  id         String     @id @default(cuid())
+  userId     String?    @unique
+  user       User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guestToken String?    @unique
+  items      CartItem[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+}
+
+model CartItem {
+  id         String  @id @default(cuid())
+  cartId     String
+  cart       Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variantId  String
+  variant    Variant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  quantity   Int
+  properties Json?
+
+  @@unique([cartId, variantId])
+  @@index([variantId])
+}
+
+// ---------- Customer addresses ----------
+
+model Address {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label      String?
+  fullName   String
+  line1      String
+  line2      String?
+  postalCode String // SI: 4 digits
+  city       String
+  country    String   @default("SI")
+  phone      String?
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// ---------- Config & content ----------
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+enum ContentTemplate {
+  DEFAULT
+  LEGAL
+  CONTACT
+  HELP
+  LANDING
+}
+
+model ContentPage {
+  id             String          @id @default(cuid())
+  title          String
+  slug           String          @unique
+  body           String          @default("")
+  template       ContentTemplate @default(DEFAULT)
+  seoTitle       String?
+  seoDescription String?
+  published      Boolean         @default(false)
+  reviewed       Boolean         @default(false) // D4: false = draft pending legal review
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+// ---------- Marketing ----------
+
+enum SubscriberStatus {
+  PENDING
+  CONFIRMED
+  UNSUBSCRIBED
+}
+
+// Double opt-in marketing subscriber (GDPR/ZEKom-1, spec §13.1)
+model Subscriber {
+  id           String           @id @default(cuid())
+  email        String           @unique
+  status       SubscriberStatus @default(PENDING)
+  confirmToken String           @unique
+  confirmedAt  DateTime?
+  source       String           @default("footer")
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+}
+
+// Back-in-stock capture (spec §5/§6): stored subscription, double opt-in;
+// alert SENDING completes in Phase 6.
+model BackInStockSubscription {
+  id           String           @id @default(cuid())
+  email        String
+  productId    String
+  product      Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId    String?
+  variant      Variant?         @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  status       SubscriberStatus @default(PENDING)
+  confirmToken String           @unique
+  confirmedAt  DateTime?
+  source       String           @default("back-in-stock")
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([email, productId])
+  @@index([productId])
+  @@index([variantId])
+}
+
+model Menu {
+  id        String   @id @default(cuid())
+  handle    String   @unique // header | utility | footer-* | mobile
+  title     String   @default("")
+  items     Json // tree: [{ label, href, color?, children?, featured? }]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum TicketTopic {
+  TRACKING
+  CHANGE
+  CANCEL
+  RETURN
+  WRONG
+  DAMAGED
+  ADVICE
+  ADVERSE
+  OTHER
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
+}
+
+enum TicketEmailKind {
+  STAFF
+  CUSTOMER
+}
+
+// Phase 6 step 1: requests are durable before any SMTP delivery.
+model Ticket {
+  id                String        @id @default(cuid())
+  reference         String        @unique
+  submissionKey     String        @unique
+  payloadHash       String
+  userId            String?
+  user              User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  orderId           String?
+  order             Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  orderNumber       String?
+  orderProof        String?       // ACCOUNT or EMAIL_NUMBER; lookup never grants purchase access
+  topic             TicketTopic
+  reason            String?
+  name              String
+  email             String
+  message           String
+  status            TicketStatus  @default(OPEN)
+  privacyAcceptedAt DateTime
+  privacyVersion    String
+  attachments       TicketAttachment[]
+  deliveries        TicketEmailDelivery[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([orderId])
+  @@index([status, createdAt])
+}
+
+model TicketAttachment {
+  id        String   @id @default(cuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  filename  String   @unique
+  size      Int
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+}
+
+model TicketEmailDelivery {
+  id         String          @id @default(cuid())
+  ticketId   String
+  ticket     Ticket          @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  kind       TicketEmailKind
+  recipient  String
+  sentAt     DateTime?
+  attempts   Int             @default(0)
+  leaseToken String?
+  leaseUntil DateTime?
+  lastError  String?
+  createdAt  DateTime        @default(now())
+
+  @@unique([ticketId, kind])
+  @@index([sentAt, leaseUntil])
+}

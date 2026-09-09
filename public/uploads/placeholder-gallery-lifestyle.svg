@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 1280" role="img" aria-label="Uporaba izdelka — placeholder">
+  <rect width="880" height="1280" fill="rgb(0, 168, 143)" fill-opacity="0.08"/>
+  <circle cx="440" cy="520" r="240" fill="rgb(0, 168, 143)" fill-opacity="0.18"/>
+  <path d="M320 520 Q440 640 560 520" stroke="rgb(255, 255, 255)" stroke-width="30" fill="none" stroke-linecap="round"/>
+  <text x="440" y="900" text-anchor="middle" font-family="'Plus Jakarta Sans','Helvetica Neue',Arial,sans-serif" font-size="34" fill="rgb(99, 99, 102)">Uporaba</text>
+  <text x="440" y="1120" text-anchor="middle" font-family="'Plus Jakarta Sans','Helvetica Neue',Arial,sans-serif" font-size="26" fill="rgb(174, 174, 178)">Nasmeh.si</text>
+</svg>

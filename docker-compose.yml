@@ -1,0 +1,82 @@
+name: nasmeh
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # internal compose network — overrides the localhost URL from .env
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/nasmeh
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - uploads:/app/public/uploads
+      - review_uploads:/app/review-uploads
+      - support_uploads:/app/support-uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    # Optional: attach to the host's existing reverse-proxy network
+    # (create once on the host: `docker network create proxy`,
+    #  then point Traefik/nginx at app:3000)
+    # networks:
+    #   - default
+    #   - proxy
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: nasmeh
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d nasmeh"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    # Deliberately NOT published to the host (AGENTS §6).
+    # Local dev publishes 5543 via docker-compose.override.yml.
+
+  adminer:
+    image: adminer
+    profiles: ["tools"]
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  mailpit:
+    image: axllent/mailpit
+    profiles: ["tools"]
+    restart: unless-stopped
+    ports:
+      - "18025:8025" # web UI (8025 avoided — commonly taken by other projects)
+      - "11025:1025" # SMTP (SMTP_HOST=localhost SMTP_PORT=11025 for local dev)
+
+volumes:
+  pgdata:
+  uploads:
+  review_uploads:
+  support_uploads:
+
+# Optional external proxy network — uncomment on the host together with the
+# app service `networks:` block above.
+# networks:
+#   proxy:
+#     external: true

@@ -1,0 +1,57 @@
+/** Transactional email copy (Phase 0 proof + Phase 1 verification). */
+export const email = {
+  proof: {
+    subject: "Nasmeh.si — pošta deluje",
+    heading: "Poštna storitev deluje",
+    body: "To je preizkusno sporočilo transakcijske pošte Nasmeh.si (SMTP/Nodemailer).",
+    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+  },
+  verifySubscription: {
+    subject: "Potrdite prijavo na e-novice — Nasmeh.si",
+    heading: "Potrdite svojo prijavo",
+    body: "Hvala za prijavo na e-novice Nasmeh.si! Za potrditev kliknite spodnji gumb.",
+    cta: "Potrdi prijavo",
+    ignore: "Če se niste prijavili, to sporočilo preprosto prezrite.",
+    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+  },
+  backInStock: {
+    subject: "Potrdite obvestilo o zalogi — Nasmeh.si",
+    heading: "Potrdite obvestilo o zalogi",
+    body: "Hvala! Da aktivirate obvestilo o zalogi za izdelek",
+    bodySuffix: ", kliknite spodnji gumb.",
+    cta: "Aktiviraj obvestilo",
+    ignore: "Če obvestila niste zahtevali, to sporočilo preprosto prezrite.",
+    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+  },
+  orderConfirmation: {
+    subjectPrefix: "Potrditev naročila",
+    heading: "Hvala za vaše naročilo!",
+    body: "Vaše naročilo je bilo uspešno prejeto in plačano. Račun je priložen v prilogi (PDF).",
+    deliveryNote: "Predviden rok dostave je 2–4 delovne dni. Ob odpošiljanju prejmete sporočilo s številko sledenja.",
+    totalLabel: "Skupaj",
+    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+  },
+  verifyAccount: {
+    subject: "Potrdite svoj račun — Nasmeh.si",
+    heading: "Dobrodošli na Nasmeh.si!",
+    body: "Za aktivacijo računa kliknite spodnji gumb (povezava velja 24 ur).",
+    cta: "Aktiviraj račun",
+    ignore: "Če računa niste ustvarili, to sporočilo preprosto prezrite.",
+    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+  },
+  resetPassword: {
+    subject: "Ponastavitev gesla — Nasmeh.si",
+    heading: "Ponastavitev gesla",
+    body: "Prejeli smo zahtevo za ponastavitev gesla. Povezava velja 1 uro.",
+    cta: "Nastavi novo geslo",
+    ignore: "Če ponastavitve niste zahtevali, to sporočilo preprosto prezrite — geslo ostane nespremenjeno.",
+    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+  },
+  reviewRequest: {
+    subjectPrefix: "Kako vam je ustrezal nakup",
+    heading: "Kako ste zadovoljni z nakupom?",
+    body: "Nekaj dni je od dostave — vaše mnenje pomaga drugim kupcem (in nam). Ocenite izdelke s klikom na zvezdice:",
+    photosNote: "Za najlepše mnenje priložite tudi fotografijo ali dve.",
+    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+  },
+} as const;
