@@ -32,6 +32,8 @@ export default async function SearchPage({
     priceCents: result.priceCents,
     compareAtPriceCents: result.compareAtPriceCents,
     stock: result.stock,
+    soldOut: result.soldOut,
+    backorderNote: null,
     maxCartQuantity: 5,
     imageUrl: result.imageUrl,
     imageAlt: result.imageAlt,

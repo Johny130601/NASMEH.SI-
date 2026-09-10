@@ -9,6 +9,9 @@ export interface CatalogProduct {
   priceCents: number;
   compareAtPriceCents: number | null;
   stock: number;
+  /** Sold out for display: no stock and no backorder allowed (§14.2). */
+  soldOut: boolean;
+  backorderNote: string | null;
   maxCartQuantity: number;
   imageUrl: string | null;
   imageAlt: string;
@@ -112,6 +115,8 @@ export function toCatalogProduct(
     priceCents: variant.priceCents,
     compareAtPriceCents: variant.compareAtPriceCents,
     stock: variant.stock,
+    soldOut: variant.stock <= 0 && !variant.allowBackorder,
+    backorderNote: variant.stock <= 0 && variant.allowBackorder ? variant.backorderNote : null,
     maxCartQuantity: variant.maxCartQuantity,
     imageUrl: product.media[0]?.url ?? null,
     imageAlt: product.media[0]?.alt ?? product.title,
@@ -142,6 +147,8 @@ export async function getCatalogProducts(options?: {
   const ratings = await fetchRatings(rows.map((row) => row.id));
 
   let products = rows
+    // HIDE (§14.2): a fully sold-out product without backorders leaves the lists.
+    .filter((row) => row.soldOutBehavior !== "HIDE" || row.variants.some((variant) => variant.stock > 0 || variant.allowBackorder))
     .map((row) => toCatalogProduct(row, ratings))
     .filter((row): row is CatalogProduct => row !== null);
 

@@ -29,6 +29,7 @@ async function resolveVariant(variantId: string) {
       id: true,
       maxCartQuantity: true,
       stock: true,
+      allowBackorder: true,
       product: { select: { status: true, hiddenDeal: true } },
     },
   });
@@ -45,7 +46,7 @@ export async function addToCartAction(input: unknown): Promise<CartActionResult>
   if (!parsed.success) return { ok: false, count: 0 };
 
   const variant = await resolveVariant(parsed.data.variantId);
-  if (!variant || variant.stock <= 0) return { ok: false, count: 0 };
+  if (!variant || (variant.stock <= 0 && !variant.allowBackorder)) return { ok: false, count: 0 };
 
   const session = await auth();
   const lines = await addToCart(

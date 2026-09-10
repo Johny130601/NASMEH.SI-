@@ -59,13 +59,15 @@ export async function deductOrderInventory(tx: Prisma.TransactionClient, items: 
   if (invalidSnapshot || deductions.length === 0) {
     return { ok: false as const, reason: "invalid_inventory_snapshot" };
   }
-  const variants = await tx.$queryRaw<Array<{ id: string; stock: number }>>(Prisma.sql`
-    SELECT "id", "stock" FROM "Variant"
+  const variants = await tx.$queryRaw<Array<{ id: string; stock: number; allowBackorder: boolean }>>(Prisma.sql`
+    SELECT "id", "stock", "allowBackorder" FROM "Variant"
     WHERE "id" IN (${Prisma.join(deductions.map((line) => line.variantId))})
     ORDER BY "id" FOR UPDATE
   `);
   const stock = new Map(variants.map((variant) => [variant.id, variant.stock]));
-  const insufficient = deductions.find((line) => (stock.get(line.variantId) ?? -1) < line.quantity);
+  const backorder = new Set(variants.filter((variant) => variant.allowBackorder).map((variant) => variant.id));
+  // Backorderable variants (§14.2) may go below zero; every other line must be covered.
+  const insufficient = deductions.find((line) => !backorder.has(line.variantId) && (stock.get(line.variantId) ?? -1) < line.quantity);
   if (insufficient) return { ok: false as const, reason: `stockout:${insufficient.variantId}` };
 
   for (const line of deductions) {

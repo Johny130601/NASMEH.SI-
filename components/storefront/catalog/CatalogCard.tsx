@@ -27,7 +27,7 @@ export function CatalogCard({
   testToken?: string | null;
 }) {
   const href = `/izdelek/${product.slug}`;
-  const soldOut = product.stock <= 0;
+  const soldOut = product.soldOut;
   const discounted =
     product.compareAtPriceCents !== null &&
     product.compareAtPriceCents > product.priceCents;
@@ -96,6 +96,10 @@ export function CatalogCard({
           )}
           )
         </p>
+      ) : null}
+
+      {product.backorderNote ? (
+        <p className="mt-1 text-xs text-warning" data-backorder-note>{product.backorderNote}</p>
       ) : null}
 
       {product.variantCount > 1 ? (

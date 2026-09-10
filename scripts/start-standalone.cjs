@@ -43,6 +43,8 @@ fs.cpSync(path.join(projectDir, ".next", "static"), path.join(standaloneDir, ".n
 ensurePersistentLink("review-uploads", "review-media");
 fs.mkdirSync(path.join(projectDir, "support-uploads"), { recursive: true });
 ensurePersistentLink("support-uploads", "support-media");
+fs.mkdirSync(path.join(projectDir, "catalog-uploads"), { recursive: true });
+ensurePersistentLink("catalog-uploads", "catalog-media");
 
 const server = spawn(process.execPath, [path.join(standaloneDir, "server.js")], { stdio: "inherit" });
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => server.kill(signal));

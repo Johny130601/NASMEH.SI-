@@ -84,10 +84,10 @@ export async function placeOrder(rawInput: unknown): Promise<PlaceOrderResult> {
     }));
     const required = collectInventoryRequirements(items);
     if (required.invalidSnapshot) return { ok: false, error: "stock:bundle" };
-    const stock = await db.variant.findMany({ where: { id: { in: required.deductions.map(line => line.variantId) } }, select: { id: true, stock: true, title: true } });
+    const stock = await db.variant.findMany({ where: { id: { in: required.deductions.map(line => line.variantId) } }, select: { id: true, stock: true, title: true, allowBackorder: true } });
     for (const line of required.deductions) {
       const variant = stock.find(value => value.id === line.variantId);
-      if (!variant || variant.stock < line.quantity) return { ok: false, error: `stock:${variant?.title ?? line.variantId}` };
+      if (!variant || (!variant.allowBackorder && variant.stock < line.quantity)) return { ok: false, error: `stock:${variant?.title ?? line.variantId}` };
     }
 
     const order = await db.$transaction(async tx => {

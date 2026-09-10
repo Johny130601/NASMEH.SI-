@@ -62,11 +62,14 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
   const product = await getProduct(slug);
   if (!product) return {};
+  // A hidden, fully sold-out product still answers but asks not to be indexed.
+  const hidden = product.soldOutBehavior === "HIDE" && !product.variants.some((variant) => variant.stock > 0 || variant.allowBackorder);
   return buildMetadata({
     title: product.seoTitle ?? product.title,
     description: product.seoDescription ?? product.description,
     path: `/izdelek/${product.slug}`,
     image: product.media[0]?.url,
+    noindex: hidden,
   });
 }
 
@@ -101,7 +104,8 @@ export default async function ProductPage({
     ? (product.education as Array<{ heading: string; body: string }>)
     : [];
   const badges = parseBadges(product.badges);
-  const soldOut = variant.stock <= 0;
+  const soldOut = variant.stock <= 0 && !variant.allowBackorder;
+  const backorder = variant.stock <= 0 && variant.allowBackorder;
   const discounted =
     variant.compareAtPriceCents !== null &&
     variant.compareAtPriceCents > variant.priceCents;
@@ -360,7 +364,10 @@ export default async function ProductPage({
                   )
                 </p>
               ) : null}
-              {!soldOut && env.STRIPE_KLARNA_ENABLED === "true" ? (
+              {backorder ? (
+                <p className="mt-2 text-sm text-warning" data-backorder-note>{copy.buyBox.backorder}{variant.backorderNote ? ` ${variant.backorderNote}` : ""}</p>
+              ) : null}
+              {!soldOut && product.klarnaEligible && env.STRIPE_KLARNA_ENABLED === "true" ? (
                 <p className="mt-1 text-xs text-mid-2">
                   {copy.buyBox.klarnaPrefix}{" "}
                   {formatEUR(klarnaInstallmentCents(variant.priceCents))}{" "}
@@ -469,7 +476,7 @@ export default async function ProductPage({
 
       {/* 15. Sticky bottom buy bar */}
       <StickyBuyBar
-        klarnaEnabled={env.STRIPE_KLARNA_ENABLED === "true"}
+        klarnaEnabled={product.klarnaEligible && env.STRIPE_KLARNA_ENABLED === "true"}
         productSlug={product.slug}
         variantId={variant.id}
         sku={variant.sku}

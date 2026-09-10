@@ -113,6 +113,12 @@ enum ProductStatus {
   ARCHIVED
 }
 
+// Sold-out behaviour (§14.2): keep the card with "Obvestite me", or hide the product from lists.
+enum SoldOutBehavior {
+  NOTIFY
+  HIDE
+}
+
 model Product {
   id               String                    @id @default(cuid())
   title            String
@@ -129,6 +135,8 @@ model Product {
   visibleInCatalog Boolean                   @default(true)
   visibleInSearch  Boolean                   @default(true)
   hiddenDeal       Boolean                   @default(false) // deal-SKU, unlisted
+  soldOutBehavior  SoldOutBehavior           @default(NOTIFY)
+  klarnaEligible   Boolean                   @default(true)
   variants         Variant[]
   media            MediaImage[]
   backInStock      BackInStockSubscription[]
@@ -152,6 +160,8 @@ model Variant {
   weightGrams         Int?
   stock               Int                       @default(0)
   maxCartQuantity     Int                       @default(5) // bundles/gifts: 1
+  allowBackorder      Boolean                   @default(false) // purchasable below zero stock
+  backorderNote       String?
   priceHistory        PriceHistory[]
   orderItems          OrderItem[]
   cartItems           CartItem[]
@@ -208,6 +218,8 @@ model Collection {
   type           CollectionType      @default(MANUAL)
   rules          Json?
   bannerImage    String?
+  bannerImageMobile String?
+  hideBannerText Boolean             @default(false)
   seoTitle       String?
   seoDescription String?
   noindex        Boolean             @default(false)

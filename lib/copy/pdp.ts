@@ -12,6 +12,7 @@ export const pdp = {
     delivery: "Dostava in vračila",
   },
   buyBox: {
+    backorder: "Trenutno ni na zalogi — naročite zdaj, pošljemo takoj, ko izdelek prispe.",
     omnibusPrefix: "Najnižja cena v zadnjih 30 dneh",
     klarnaPrefix: "ali 3 obroka po",
     klarnaSuffix: "s Klarna",

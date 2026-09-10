@@ -18,6 +18,7 @@ export interface SearchResult {
   imageUrl: string | null;
   imageAlt: string;
   stock: number;
+  soldOut: boolean;
   variantId: string;
   sku: string;
 }
@@ -55,6 +56,7 @@ export async function searchProducts(
       priceCents: number | null;
       compareAtPriceCents: number | null;
       stock: number | null;
+      allowBackorder: boolean | null;
       imageUrl: string | null;
       imageAlt: string | null;
       variantId: string | null;
@@ -62,7 +64,7 @@ export async function searchProducts(
     }>
   >(
     `SELECT p."slug", p."title",
-            v."priceCents", v."compareAtPriceCents", v."stock",
+            v."priceCents", v."compareAtPriceCents", v."stock", v."allowBackorder",
             v."id" AS "variantId", v."sku",
             m."url" AS "imageUrl", m."alt" AS "imageAlt"
      FROM "Product" p
@@ -79,6 +81,8 @@ export async function searchProducts(
        LIMIT 1
      ) m ON true
      WHERE p."status" = 'ACTIVE' AND p."visibleInSearch" = true
+       AND (p."soldOutBehavior" <> 'HIDE' OR EXISTS (
+         SELECT 1 FROM "Variant" hv WHERE hv."productId" = p."id" AND (hv."stock" > 0 OR hv."allowBackorder")))
        AND ${whereClause}
      ORDER BY p."createdAt" ASC
      LIMIT ${Math.min(Math.max(limit, 1), 50)}`,
@@ -95,6 +99,7 @@ export async function searchProducts(
       imageUrl: row.imageUrl,
       imageAlt: row.imageAlt ?? row.title,
       stock: row.stock ?? 0,
+      soldOut: (row.stock ?? 0) <= 0 && !row.allowBackorder,
       variantId: row.variantId ?? "",
       sku: row.sku ?? row.slug,
     }));

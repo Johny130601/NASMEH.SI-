@@ -41,6 +41,7 @@ COPY --from=builder --chown=node:node /app/scripts/migrate-review-uploads.cjs ./
 RUN mkdir -p /app/public/uploads && chown node:node /app/public/uploads
 RUN mkdir -p /app/review-uploads && chown node:node /app/review-uploads
 RUN mkdir -p /app/support-uploads && chown node:node /app/support-uploads
+RUN mkdir -p /app/catalog-uploads && chown node:node /app/catalog-uploads
 
 USER node
 EXPOSE 3000

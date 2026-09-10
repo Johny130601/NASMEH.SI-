@@ -467,6 +467,8 @@ async function seedSettings() {
       },
     },
     // Auto-publish verified reviews with rating ≥ N stars (0 = moderation always)
+    // Low-stock threshold for the dashboard and product list (§14.2)
+    { key: "inventory.lowStockThreshold", value: 5 },
     { key: "reviews.autoPublishMinStars", value: 0 },
     { key: "reviews.requestDelayDays", value: 7 },
     {

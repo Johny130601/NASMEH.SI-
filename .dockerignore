@@ -15,5 +15,6 @@ public/uploads/*
 !public/uploads/placeholder-*.svg
 review-uploads
 support-uploads
+catalog-uploads
 Dockerfile
 docker-compose*.yml

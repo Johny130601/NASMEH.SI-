@@ -27,6 +27,7 @@ public/uploads/*
 !public/uploads/placeholder-*.svg
 review-uploads/
 support-uploads/
+catalog-uploads/
 
 # os / misc
 .DS_Store

@@ -23,9 +23,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [products, pages] = await Promise.all([
     db.product.findMany({
       where: { status: "ACTIVE", visibleInCatalog: true },
-      select: { slug: true, updatedAt: true },
+      select: { slug: true, updatedAt: true, soldOutBehavior: true, variants: { select: { stock: true, allowBackorder: true } } },
       orderBy: { createdAt: "asc" },
-    }),
+    }).then((rows) => rows.filter((row) => row.soldOutBehavior !== "HIDE" || row.variants.some((variant) => variant.stock > 0 || variant.allowBackorder))),
     db.contentPage.findMany({
       where: { published: true, slug: { notIn: RETIRED_SLUGS } },
       select: { slug: true, updatedAt: true },
