@@ -1,6 +1,6 @@
 # Phase 6 — Support and content
 
-**Date:** 2026-09-10. **Status:** steps 1–5 complete and locally verified (step 5 back-in-stock alerts delivered 2026-09-10). Step 6 is in progress. Source: GENERAL_PLAN.md Phase 6 and NASMEH_FEATURES.md §3/§12/§13.1–13.2. The step 6 scope below describes intended work until its acceptance record exists.
+**Date:** 2026-09-10. **Status:** all six steps complete and locally verified; **Phase 6 is locally accepted** ([step 6 record](../testing/phase-6-step-6-2026-09-10.md), review-boss findings below). Source: GENERAL_PLAN.md Phase 6 and NASMEH_FEATURES.md §3/§12/§13.1–13.2. Next: Phase 7 step 1.
 
 ## User checkpoints
 
@@ -13,7 +13,7 @@ The user explicitly requested a stop and report after each numbered main step. C
 3. Public order tracking — **complete and locally verified** (2026-09-09, commit after `4aed04c`): [acceptance record](../testing/phase-6-step-3-2026-09-09.md). Delivered as designed below, with one deviation: browser tests call `markOrderShipped` directly (the cart-persistence pattern) instead of a test-only Server Action.
 4. Returns, complaints and adverse-event reporting — **complete and locally verified** (2026-09-10): [acceptance record](../testing/phase-6-step-4-2026-09-10.md). Delivered as designed below; the IRPS provider name stays a D4 legal input.
 5. Back-in-stock alerts — **complete and locally verified** (2026-09-10): [acceptance record](../testing/phase-6-step-5-2026-09-10.md). Delivered as designed below with three deviations recorded there: browser tests call the stock helper directly instead of a test-mode action (the step 3 pattern); a tampered unsubscribe link renders the invalid-link page like the confirm routes rather than a bare 400; the helper takes positional arguments without a `reason` field.
-6. Full Phase 6 regression, Docker, desktop/mobile review and backlog cleanup — **in progress** (2026-09-10); scope in "Step 6 scope" below. **Next checkpoint.** Each earlier step still receives checks appropriate to its own changes.
+6. Full Phase 6 regression, Docker, desktop/mobile review and backlog cleanup — **complete and locally verified** (2026-09-10): [acceptance record](../testing/phase-6-step-6-2026-09-10.md); findings and their resolutions in "Step 6 review-boss pass" below. Each earlier step still receives checks appropriate to its own changes.
 
 ## Step 1 design
 
@@ -120,15 +120,42 @@ Acceptance list: GENERAL_PLAN Phase 6, "Step 5". Record: `docs/testing/phase-6-s
 - Review-boss checklist per GENERAL_PLAN §2 rule 3, including a phase-discipline check that no Phase 7 UI leaked in.
 - Docs: acceptance record `phase-6-step-6-<date>.md`; update AGENTS.md §3 (new routes and `lib/inventory`), §5.11 (remove the step 2 stop instruction), §8 (stock helper convention); update the GENERAL_PLAN status ledger and this file's header.
 
+## Step 6 review-boss pass (2026-09-10)
+
+Checked against GENERAL_PLAN §2 rule 3 on the final step 6 tree. Findings were fixed in the step 6 change, not filed.
+
+| # | Check | Finding | Resolution |
+|---|---|---|---|
+| F1 | AGENTS §8.11 a11y: keyboard focus on the new forms | The shared `:focus-visible` ring in `app/globals.css` covered `a, button, input, summary, [tabindex]` but not `select` and `textarea`; the reason/product selects and the description/items textareas signalled focus only through a border-colour change | `select` and `textarea` added to the shared rule; scripted Tab walk: every control on `/sledi`, `/odstop-od-pogodbe` and `/prijava-nezelenega-ucinka` is reachable and shows a focus indicator |
+| F2 | SSR-SEO (§3.3), backlog B1 | `app/sitemap.ts` listed only the homepage and content pages | Catalog page, ACTIVE catalog-visible products (sold-out included) and the adverse-event route added; noindex families excluded; unit test `sitemap.test.ts` and extended `ssr.spec.ts` assertions |
+| F3 | Dead code, backlog B2 | `lib/copy/stubs.ts` and `components/storefront/StubPage.tsx` had no consumers | Deleted with their `lib/copy` export |
+| F4 | Runtime log hygiene | One `TypeError: controller[kState].transformAlgorithm is not a function` per browser run, right after the expected stock-out webhook failure of `phase3-webhook-acceptance.spec.ts` | Upstream Node 22 TransformStream race (nodejs/node#62036, vercel/next.js#75994) when a client closes a streaming response early; no request fails. Recorded as backlog B13 for the Phase 9 Next/Node upgrade; no code change |
+| F5 | AGENTS §8.1–8.12 conventions | Grep audits: no hex colours outside the token file, no Slovenian literals outside `lib/copy`, no secret behind `NEXT_PUBLIC_`, every Server Action and Route Handler with input parses it with zod or verifies a signature/secret; `priceCents` appears in client components only as server-provided props and no action accepts a price | No finding |
+| F6 | Money and inventory write paths (rule 13) | Prices through `lib/price-history`; stock increases through `lib/inventory/stock.ts` (seed included); decrements only through `deductOrderInventory` | No finding; convention documented as AGENTS §8.13 |
+| F7 | Admin role re-check | The `/admin` layout and `app/admin/ocene/actions.ts` re-check the session role server-side; the private media routes check ownership or role | No finding |
+| F8 | Phase discipline | `app/admin` holds only the Phase 5 moderation screen and its index; no Phase 7 UI and no P2 promo logic leaked in | No finding |
+| F9 | No copied HiSmile assets (§15) | The only match is the schema comment "HiSmile-style metafields", a pattern reference | No finding |
+| F10 | SSR / JS-disabled | `/sledi` (3 forms, noindex), `/odstop-od-pogodbe` (2 forms, 9 controls) and `/prijava-nezelenega-ucinka` (2 forms, 21 controls) render headings, forms and controls without JavaScript | No finding |
+
+### Placeholders to replace before launch (rule 12, definition of done 7)
+
+- `support.contact` mailboxes, hours and response promise are `.test` values (gate G2).
+- The `company` Setting carries seed registration, VAT and invoice data (gate G4).
+- The IRPS provider sentence on `/reklamacije` and the `reviewed = false` legal drafts (terms, privacy, cookies, withdrawal, guarantee) are legal input (D4).
+- Carrier tracking-URL templates, methods and rates are seeded defaults until the carrier accounts exist (D6).
+- Turnstile keys are empty locally; the guard runs in test mode only under the e2e harness (the real challenge is part of gate G1).
+- Hero and PDP media are placeholders (D2).
+
 ## Known-gap cleanup map
 
 | Backlog item (GENERAL_PLAN §6) | Step |
 |---|---|
-| B1 sitemap products/catalog | 6 |
-| B2 dead stub code | 6 |
-| B4 subscription notified/lease state | 5 |
-| B5 tracking page, transitions, shipped email | 3 |
-| B6 POSIX-only start script | 6 (optional) |
-| B7 withdrawal draft sentence | 4 |
-| B9 Windows directory-fsync in the review-media guard | 6 (with B6) |
-| B10 seed script does not load `.env` | 6 |
+| B1 sitemap products/catalog | 6 — closed 2026-09-10 |
+| B2 dead stub code | 6 — closed 2026-09-10 |
+| B4 subscription notified/lease state | 5 — closed 2026-09-10 |
+| B5 tracking page, transitions, shipped email | 3 — closed 2026-09-09 |
+| B6 POSIX-only start script | closed 2026-09-09 in the build-and-verify run (`ea9f013`) |
+| B7 withdrawal draft sentence | 4 — closed 2026-09-10 |
+| B9 Windows directory-fsync in the review-media guard | closed 2026-09-09 in the build-and-verify run (`ea9f013`) |
+| B10 seed script does not load `.env` | closed 2026-09-09 in the build-and-verify run (`ea9f013`) |
+| B13 upstream TransformStream race in the server log (step 6 finding F4) | Phase 9 step 1 with B12 |

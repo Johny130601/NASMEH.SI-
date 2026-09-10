@@ -78,8 +78,16 @@ test("sitemap.xml and robots.txt", async ({ request }) => {
   const xml = await sitemap.text();
   expect(xml).toContain("pogoji-poslovanja");
   expect(xml).toContain("politika-piskotkov");
+  // Backlog B1: catalog, visible ACTIVE products (sold-out included) and indexable routes.
+  for (const listed of ["/trgovina", "/izdelek/belilni-trakci-za-zobe", "/izdelek/belilni-trakci-potovalni-7", "/prijava-nezelenega-ucinka", "/garancija-vracila-denarja"]) {
+    expect(xml, listed).toContain(`${listed}</loc>`);
+  }
   for (const retired of ["pomoc", "o-nas", "razisli", "dostava", "paketi"]) {
     expect(xml).not.toContain(`/${retired}</loc>`);
+  }
+  for (const hidden of ["/cart", "/checkout", "/racun", "/iskanje", "/kontakt", "/sledi", "/prijava", "/odjava-zaloga", "/potrdi", "/admin"]) {
+    expect(xml, hidden).not.toContain(`${hidden}</loc>`);
+    expect(xml, hidden).not.toContain(`${hidden}/`);
   }
 
   const robots = await request.get("/robots.txt");

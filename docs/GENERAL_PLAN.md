@@ -1,6 +1,6 @@
 # Nasmeh.si — GENERAL PLAN OF EVERYTHING
 
-**Version:** 1.1 · **Date:** 2026-09-10 · **Status:** Phases 0–2 and 4 complete; Phase 3 repaired locally with real-provider acceptance outstanding (gate G1); Phase 5 locally accepted; Phase 6 steps 1–5 complete and locally verified, step 6 in progress; Phases 7 and 9 not started
+**Version:** 1.2 · **Date:** 2026-09-10 · **Status:** Phases 0–2 and 4 complete; Phase 3 repaired locally with real-provider acceptance outstanding (gate G1); Phase 5 locally accepted; Phase 6 locally accepted (all six steps, Docker build and run smoke on the workstation); Phase 7 next; Phase 9 not started
 **Grounding documents (do not contradict):** `AGENTS.md` (decided architecture), `docs/NASMEH_FEATURES.md` (feature spec, cited below as "§N"), `docs/HISMILE_FEATURES.md`, `docs/research/01–07`.
 
 ## 0. Status ledger
@@ -15,8 +15,8 @@ One row per phase. The linked record is the only evidence that counts (rule 11).
 | 3 Cart, checkout, orders | repaired locally: 319 unit / 80 browser at repair time | [repairs](testing/phase-3-repairs-2026-09-09.md), [audit](testing/phase-3-audit-2026-09-09.md) | **G1** real Stripe/PayPal/Turnstile sandbox acceptance not executed ([checklist](testing/phase-3-sandbox-checklist.md)); Klarna SI eligibility unconfirmed |
 | 4 Promotions | complete | [plan](plans/phase-4.md) | — |
 | 5 Accounts, reviews | locally accepted: 512 unit / 94 browser | [acceptance](testing/phase-5-acceptance-2026-09-09.md) | host scheduling of `/api/jobs/daily` (G3) |
-| 6 Support, content | steps 1–5 complete: 679 unit / 111 browser at step 5; step 6 in progress | [step 1](testing/phase-6-step-1-2026-09-09.md), [step 2](testing/phase-6-step-2-2026-09-09.md), [step 3](testing/phase-6-step-3-2026-09-09.md), [step 4](testing/phase-6-step-4-2026-09-10.md), [step 5](testing/phase-6-step-5-2026-09-10.md), [build-verify run](testing/build-verify-2026-09-09.md) | step 6 scope in [plans/phase-6.md](plans/phase-6.md) |
-| 7 Admin | not started | — | checkpoints defined in the Phase 7 section |
+| 6 Support, content | locally accepted: 682 unit / 111 browser at step 6; Docker build and run smoke pass | [step 1](testing/phase-6-step-1-2026-09-09.md), [step 2](testing/phase-6-step-2-2026-09-09.md), [step 3](testing/phase-6-step-3-2026-09-09.md), [step 4](testing/phase-6-step-4-2026-09-10.md), [step 5](testing/phase-6-step-5-2026-09-10.md), [step 6](testing/phase-6-step-6-2026-09-10.md), [build-verify run](testing/build-verify-2026-09-09.md) | mailboxes and hours (G2), host cron for the five daily streams (G3), company data (G4), IRPS provider and legal review (D4) |
+| 7 Admin | next: step 1 not started | — | checkpoints defined in the Phase 7 section; step designs go to `plans/phase-7.md` before step 1 (b) |
 | 9 Hardening, go-live | not started | — | may start after Phase 7; G1 can run as soon as D5 sandbox keys exist |
 | 8 Growth [P2] | post-launch | — | — |
 
@@ -47,7 +47,7 @@ This plan sequences the entire build into **Phases 0–9**. Every phase runs the
 7. **Slovenian copy lives in `lib/copy/`** from the first component (AGENTS.md §8.5); money formatting only via `lib/pricing` (AGENTS.md §8.10).
 8. **Never copy HiSmile assets** — names, copy lines, imagery, pink identity (§15, AGENTS.md §1).
 9. **Every phase ends deployable.** `main` always builds a working Docker image; a broken build blocks everything.
-10. **Checkpoint discipline (Phase 6 onward).** Each phase is split into numbered steps in its phase plan. Complete and verify one step, write its acceptance record (`docs/testing/phase-N-step-M-<date>.md`), update the status ledger (§0), then **stop and report** before the next step. A progress message is not a stop.
+10. **Checkpoint discipline (Phase 6 onward).** Each phase is split into numbered steps in its phase plan. Complete and verify one step, write its acceptance record (`docs/testing/phase-N-step-M-<date>.md`), update the status ledger (§0), then **stop and report** before the next step. A progress message is not a stop. *Direction of 2026-09-10:* the user asked for the remaining Phase 6 steps and the later phases to run in order without a stop between checkpoints; records, commits and ledger updates stay per step.
 11. **Evidence over claims.** A phase or step is "green" only if a record under `docs/testing/` from the same run says so. Older "all gates green" lines inside phase plans are history, not status (the Phase 3 audit is the precedent). Never restate a count that the run being reported did not produce.
 12. **Definition of ready.** Step (b) of any step starts only when §2.1 holds on the workstation, the step's migration is designed, and its external inputs are present or replaced by a documented placeholder (`.test` mailboxes, seeded templates, test drivers). Placeholders are listed in the step's plan section so Phase 9 can replace them.
 13. **Shared write paths.** Money and inventory state have one write path each: prices → `lib/price-history` (exists); order payment states → `lib/orders/transitions` (exists), extended with shipped/delivered in Phase 6 step 3; stock increases → the restock-aware stock helper from Phase 6 step 5, while `deductOrderInventory` stays the single decrement path. Once a helper exists no other code writes that column; seed and tests go through the helper too.
@@ -278,7 +278,7 @@ Phases 4, 5, 6 all depend only on Phase 3 and may be sequenced to taste; the man
 | 3 | Public tracking `/sledi` by tracking number **or** email + order number; shared `markOrderShipped` / `markOrderDelivered` transitions; shipped email; `shippedAt` (4) | complete | [step 3](testing/phase-6-step-3-2026-09-09.md) |
 | 4 | Withdrawal page with online model form → ticket and downloadable PDF; 30-day guarantee page; Reklamacije CTA; dedicated adverse-event form (5, 6) | complete | [step 4](testing/phase-6-step-4-2026-09-10.md) |
 | 5 | Back-in-stock alerts: restock-aware stock helper, durable alert queue on the subscription row, alert email + unsubscribe, daily-job stream (7) | complete | [step 5](testing/phase-6-step-5-2026-09-10.md) |
-| 6 | Full Phase 6 regression, Docker, responsive review, backlog cleanup B1/B2/B6, review-boss, doc and AGENTS.md updates | in progress, **next** | — |
+| 6 | Full Phase 6 regression, Docker, responsive review, backlog cleanup B1/B2/B6, review-boss, doc and AGENTS.md updates | complete | [step 6](testing/phase-6-step-6-2026-09-10.md) |
 
 Sequencing decisions (v1.1):
 - **Step 3 builds the fulfilment transitions without an admin UI.** `lib/orders/transitions` gains `markOrderShipped` (PAID/PROCESSING → SHIPPED, requires carrier + tracking number, stamps `shippedAt` once, queues the shipped email with the same pending/lease/retry fields as the confirmation email) and `markOrderDelivered`. Phase 7 step 2 only adds the screen. Operators cannot ship from the UI until then, which is acceptable because go-live follows Phase 7; tests and seeds call the transition through a test-mode action. A minimal `/admin/narocila` screen now was considered and rejected to keep the checkpoint small.
@@ -426,12 +426,12 @@ Gates are not decisions; they are work someone outside the codebase must do. Eac
 
 | # | Gate | Needed by | Earliest start | Status (2026-09-09) |
 |---|---|---|---|---|
-| **G0** | Workstation per §2.1 (Node, Docker, Git, POSIX shell, Playwright) | every step (b) | now | **missing on the analysed machine** |
+| **G0** | Workstation per §2.1 (Node, Docker, Git, POSIX shell, Playwright) | every step (b) | now | **complete on the workstation** (2026-09-10): portable Node 22 and Postgres 16, Git 2.55, Docker Desktop engine 29.7.2 with Compose v5, Playwright Chromium; `npm start` runs the Node script (B6), so no POSIX shell is needed; the image itself builds on `node:20-alpine` |
 | **G1** | Phase 3 real-provider sandbox acceptance ([checklist](testing/phase-3-sandbox-checklist.md)); Klarna SI eligibility decision | Phase 9 step 6 | as soon as D5 sandbox keys exist | not executed |
 | **G2** | Support/compliance mailboxes, support hours, response promise, return address (`support.contact`; seeds use `.test`) | Phase 6 step 4 content; launch | now | placeholders |
 | **G3** | Host scheduler invoking `POST /api/jobs/daily` with `JOBS_SECRET` (confirmations, reviews, tickets, plus the shipped and restock streams after Phase 6) | Phase 9 step 5 | Phase 9 step 5 | not scheduled |
 | **G4** | Company registration/VAT/invoice data replacing the seed placeholders (`company` Setting) | Phase 9 step 4 | now | placeholders |
-| **G5** | Repository hygiene: confirm the Phase 5–6 work is committed on `main`; acceptance records cite the commit | Phase 6 step 3 start | now | unverifiable from the analysed snapshot |
+| **G5** | Repository hygiene: confirm the Phase 5–6 work is committed on `main`; acceptance records cite the commit | Phase 6 step 3 start | now | satisfied: `main` carries steps 1–6 (`791b6a0` step 4, `2b3807e` step 5, step 6 commit cited in its record) |
 | **D7** | Abandoned-checkout emails: spec §16 lists them P1, while §13.2, AGENTS.md §5.9 and this plan defer ESP flows to Phase 8B. The plan follows AGENTS.md; confirm, or pull 8B item 6 forward | before Phase 9 sign-off | now | open |
 
 ## 5. Definition of done (any phase)
@@ -450,21 +450,23 @@ Found by reading the working tree against this plan. None blocks Phase 6 step 3;
 
 | # | Gap | Fix in |
 |---|---|---|
-| B1 | `app/sitemap.ts` lists only the homepage and content pages; `/trgovina` and product PDPs are absent, which contradicts the SSR-SEO strategy (§3.3) | Phase 6 step 6: add the catalog page and ACTIVE, catalog-visible products; keep noindex routes out |
-| B2 | `lib/copy/stubs.ts` and `components/storefront/StubPage.tsx` have no consumers | Phase 6 step 6: delete |
+| B1 | `app/sitemap.ts` lists only the homepage and content pages; `/trgovina` and product PDPs are absent, which contradicts the SSR-SEO strategy (§3.3) | Phase 6 step 6: add the catalog page and ACTIVE, catalog-visible products; keep noindex routes out. **Closed 2026-09-10** |
+| B2 | `lib/copy/stubs.ts` and `components/storefront/StubPage.tsx` have no consumers | Phase 6 step 6: delete. **Closed 2026-09-10** |
 | B3 | `ContentTemplate.HELP` survives the Help Centre removal | Phase 7 step 5: enum migration with the template picker |
-| B4 | `BackInStockSubscription` reuses `SubscriberStatus`; no notified or lease state, so alerts cannot be tracked | Phase 6 step 5 migration |
-| B5 | `/sledi` prints carrier + number as text, never calls `lib/tracking.ts`, has no estimate and no tracking-number mode; `Order` has no `shippedAt`, no shipped/delivered transitions and no shipped email template | Phase 6 step 3 |
-| B6 | `scripts/start-standalone.sh` is POSIX-only; `npm start` and Playwright fail on Windows without Git Bash/WSL | Phase 6 step 6, optional: port to `scripts/start-standalone.cjs` if development continues on Windows |
-| B7 | The seeded withdrawal draft says the online form "je v pripravi" | Phase 6 step 4 data migration: replace only the unreviewed seed sentence (step 2 pattern) |
+| B4 | `BackInStockSubscription` reuses `SubscriberStatus`; no notified or lease state, so alerts cannot be tracked | Phase 6 step 5 migration. **Closed 2026-09-10** |
+| B5 | `/sledi` prints carrier + number as text, never calls `lib/tracking.ts`, has no estimate and no tracking-number mode; `Order` has no `shippedAt`, no shipped/delivered transitions and no shipped email template | Phase 6 step 3. **Closed 2026-09-09** |
+| B6 | `scripts/start-standalone.sh` is POSIX-only; `npm start` and Playwright fail on Windows without Git Bash/WSL | Phase 6 step 6, optional: port to `scripts/start-standalone.cjs` if development continues on Windows. **Closed 2026-09-09** in the build-and-verify run (`ea9f013`) |
+| B7 | The seeded withdrawal draft says the online form "je v pripravi" | Phase 6 step 4 data migration: replace only the unreviewed seed sentence (step 2 pattern). **Closed 2026-09-10** |
 | B8 | `checkEmailExistsAction` relies on the in-memory rate limit alone (documented in code) | Phase 9 step 1: Turnstile elevation |
-| B9 | `scripts/migrate-review-uploads.cjs` fsyncs directory handles, which Windows rejects with `EPERM`; the first `npm run dev` on Windows fails in `predev` until `review-uploads` exists (observed 2026-09-09) | Phase 6 step 6 with B6: tolerate directory-fsync `EPERM`/`EINVAL` on `win32` only, keep the guard semantics, cover it in the existing migration unit tests |
-| B10 | `npm run db:seed` runs `tsx` without loading `.env`, so it needs `DATABASE_URL` exported in the shell, unlike the Prisma CLI (observed 2026-09-09) | Phase 6 step 6: load `.env` in `prisma/seed.ts` (`process.loadEnvFile`, Node ≥ 20.12) or keep the export documented in §2.1 |
+| B9 | `scripts/migrate-review-uploads.cjs` fsyncs directory handles, which Windows rejects with `EPERM`; the first `npm run dev` on Windows fails in `predev` until `review-uploads` exists (observed 2026-09-09) | Phase 6 step 6 with B6: tolerate directory-fsync `EPERM`/`EINVAL` on `win32` only, keep the guard semantics, cover it in the existing migration unit tests. **Closed 2026-09-09** (`ea9f013`) |
+| B10 | `npm run db:seed` runs `tsx` without loading `.env`, so it needs `DATABASE_URL` exported in the shell, unlike the Prisma CLI (observed 2026-09-09) | Phase 6 step 6: load `.env` in `prisma/seed.ts` (`process.loadEnvFile`, Node ≥ 20.12) or keep the export documented in §2.1. **Closed 2026-09-09** (`ea9f013`) |
 | B12 | Next.js 15.5 Node-runtime middleware does not await the cloned request body's `finalize()`, so a Server Action can read a still-streaming upload mid-way and lose its leading multipart parts (review/support photos). Upstream vercel/next.js#85416, fixed by PR #85418 in Next 16; no 15.x backport exists. `middleware.ts` works around it by draining a tee of every request body before continuing (see the [build-verify record](testing/build-verify-2026-09-09.md)) | Phase 9 step 1: upgrade to Next 16.x (with the fix) and remove the middleware drain; until then keep the drain and its comment |
+| B13 | Node 22's TransformStream race (`TypeError: controller[kState].transformAlgorithm is not a function`, nodejs/node#62036, vercel/next.js#75994) logs once per browser run when a client closes a streaming response early (observed after the stock-out webhook case); no request fails | Phase 9 step 1 with B12: re-check after the Next/Node upgrade; no action in Phase 6 (step 6 finding F4) |
 
 ## 7. Change log
 
+- **v1.2 (2026-09-10):** Phase 6 steps 3–6 delivered and recorded; status ledger, checkpoint table, backlog (B1/B2/B4/B5/B6/B7/B9/B10 closed, B13 added) and gates G0/G5 updated; the user's 2026-09-10 direction to run through the remaining steps and phases without a stop is noted under rule 10; AGENTS.md §3/§5.11/§6/§8.13 updated in the step 6 change. No spec scope was added or removed.
 - **v1.1 (2026-09-09):** added the status ledger (§0), rules 10–13 and the §2.1 workstation prerequisites, the Phase 3 status line, the Phase 6 checkpoint table, sequencing decisions and per-step acceptance, the Phase 7 and Phase 9 checkpoint splits, the external-gate tracker (§4.1) with G0–G5 and D7, definition-of-done items 6–7, and the known-gap backlog (§6). Step 3–6 designs were added to [plans/phase-6.md](plans/phase-6.md). No spec scope was added or removed; Help Centre, About Us, Explore and the Dostava page remain out of scope.
 - **v1.0 (2026-09-09):** initial sequencing of Phases 0–9.
 
-*Current checkpoint: Phase 6 steps 1–5 are complete and locally verified; **step 6** (regression, Docker, review, cleanup) is in progress. On 2026-09-10 the user directed the run to continue through the remaining steps and phases without a stop between checkpoints; records, commits and this ledger are still produced per step. Then Phase 7 admin operations → Phase 9 launch hardening → Phase 8 growth. G1 real-provider acceptance runs as soon as D5 sandbox keys exist and remains a launch gate; D1/D2/D4/D5/D6 and G2–G4 are launch dependencies; D3 ESP selection is deferred growth planning and does not block Phase 6.*
+*Current checkpoint: Phase 6 is complete and locally accepted (2026-09-10). Work continues with **Phase 7 step 1** (admin shell, roles, permission matrix, TOTP 2FA, session management) once `plans/phase-7.md` holds the step designs, per the user's 2026-09-10 direction to run through the remaining steps and phases without a stop between checkpoints; records, commits and this ledger are still produced per step. Then Phase 9 launch hardening → Phase 8 growth. G1 real-provider acceptance runs as soon as D5 sandbox keys exist and remains a launch gate; D1/D2/D4/D5/D6 and G2–G4 are launch dependencies; D3 ESP selection is deferred growth planning and does not block Phase 6.*

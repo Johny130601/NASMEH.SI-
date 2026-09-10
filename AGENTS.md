@@ -37,7 +37,7 @@ Hard rules (from the master spec, §15):
 ```
 /
 ├── app/                    # Next.js App Router — ALL routes for all three surfaces
-│   ├── (storefront)/       # public storefront: /, /trgovina, /izdelek/[slug], /cart, /checkout, /racun, /kontakt …
+│   ├── (storefront)/       # public storefront: /, /trgovina, /izdelek/[slug], /cart, /checkout, /racun, /kontakt, /sledi, /odstop-od-pogodbe, /reklamacije, /prijava-nezelenega-ucinka, token routes (/potrdi*, /odjava-zaloga) …
 │   ├── admin/              # admin dashboard (/admin/...) — role-gated (ADMIN)
 │   └── api/                # Route Handlers: /api/webhooks/stripe, /api/webhooks/paypal, public JSON endpoints
 ├── components/
@@ -49,6 +49,12 @@ Hard rules (from the master spec, §15):
 │   ├── promo/              # promo engine — PURE functions (see §7)
 │   ├── payments/           # Stripe + PayPal clients, webhook handlers
 │   ├── pricing.ts          # VAT math, Omnibus 30-day-low lookups
+│   ├── price-history.ts    # the ONLY write path for Variant prices (appends PriceHistory)
+│   ├── inventory/          # stock.ts: the ONLY write path for stock increases (arms restock alerts); restock.ts operator entry
+│   ├── orders/             # transitions.ts (paid/shipped/delivered state machine), confirmation + shipped email delivery
+│   ├── jobs/               # streams of POST /api/jobs/daily (review requests, restock alerts)
+│   ├── support/            # tickets, topic routing, private attachments, ticket-mail delivery
+│   ├── back-in-stock/      # signed one-click unsubscribe tokens
 │   ├── auth.ts             # Auth.js config
 │   └── copy/               # Slovenian UI copy files (see §7)
 ├── prisma/
@@ -106,7 +112,7 @@ Supporting tables not listed: `PriceHistory`, `ConsentLog`, email/template table
 8. **Config-driven merchandising.** Marquee, badges, hero slot, thresholds, pixel IDs, shipping rates are `Setting`/admin data. HiSmile's whole promo engine is content, not code (07 §9.3) — operators must be able to launch a campaign without a deploy.
 9. **Transactional email only at P1.** SMTP + MJML/React-email covers order/shipping/auth emails. ESP marketing flows (welcome series, abandoned cart) are deliberately deferred; the data model (consent, customer) is built so the ESP plugs in later.
 10. **Delivery information in checkout.** Per the user's 2026-09-09 scope correction, delivery methods, prices, estimates and destination eligibility are handled in checkout using shipping settings. Do not build a separate `/dostava` page. Existing cart/PDP shipping summaries and the separately planned public order-tracking page remain in scope.
-11. **Shopping-focused navigation and page scope.** Per the user's 2026-09-09 screenshot direction, use promotion/account rows, a shop mega-menu with product links and two Nasmeh featured cards, and a highlighted bundles link. Remove Help Centre, About Us and Explore pages/links; keep contact, tracking and legal links in the footer, plus the account and existing support/ticket flows. Preserve product copy, PDP FAQs and Nasmeh's own teal tokens; the screenshot is a layout reference, not permission to copy branding or assets. Legacy URLs redirect: `/pomoc` → `/kontakt`, `/o-nas` and `/razisli` → `/`, `/dostava` → `/checkout`, `/paketi` → `/trgovina?kolekcija=paketi`. Phase 6 step 2 is now the navigation/page simplification checkpoint, not a Help Centre build; stop and report after it before starting steps 3–6.
+11. **Shopping-focused navigation and page scope.** Per the user's 2026-09-09 screenshot direction, use promotion/account rows, a shop mega-menu with product links and two Nasmeh featured cards, and a highlighted bundles link. Remove Help Centre, About Us and Explore pages/links; keep contact, tracking and legal links in the footer, plus the account and existing support/ticket flows. Preserve product copy, PDP FAQs and Nasmeh's own teal tokens; the screenshot is a layout reference, not permission to copy branding or assets. Legacy URLs redirect: `/pomoc` → `/kontakt`, `/o-nas` and `/razisli` → `/`, `/dostava` → `/checkout`, `/paketi` → `/trgovina?kolekcija=paketi`. Phase 6 step 2 delivered this simplification (2026-09-09).
 
 ### Design-token decision (TBD — with recommendation)
 
@@ -145,7 +151,7 @@ docker compose --profile tools up -d # also adminer (DB UI) on demand
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe; webhook endpoint `/api/webhooks/stripe` |
 | `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID` | PayPal; webhook `/api/webhooks/paypal` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` | Transactional mail |
-| `JOBS_SECRET` | Dedicated Bearer secret for `POST /api/jobs/daily`; host scheduler invokes it for confirmation, review and ticket-email retries. Never expose it to the browser. |
+| `JOBS_SECRET` | Dedicated Bearer secret for `POST /api/jobs/daily`; the host scheduler invokes it once a day for the five delivery streams: order-confirmation retries, shipped-email retries, review requests, restock alerts and ticket-email retries. Never expose it to the browser. |
 | `NEXT_PUBLIC_*` | Anything the browser needs (site URL, Stripe publishable key, GTM ID) — **never** put secrets behind `NEXT_PUBLIC_` |
 
 Secrets live in the host's `.env` (gitignored). No secret is ever baked into the image.
@@ -196,6 +202,7 @@ Workflow rules:
 10. **VAT-inclusive display, always.** Money is stored as integer cents; formatting/VAT breakdown ("vključen DDV 22 %: €X") goes through `lib/pricing` helpers — never format currency inline.
 11. **Accessibility and SSR are features.** Semantic landmarks, descriptive alt text, keyboard-navigable menus/modals, content in initial HTML. We're beating HiSmile on exactly these axes — don't regress them.
 12. **Copy patterns, never assets.** Mechanics from the research dossiers are fair game; HiSmile names, copy lines, imagery, and the pink identity are not.
+13. **Stock increases go through the stock helper.** Any code that raises `Variant.stock` calls `setVariantStockInTx` / `adjustVariantStockInTx` from `lib/inventory/stock.ts` inside the caller's transaction: the helper locks the row and arms back-in-stock alerts on a 0 → N transition in the same transaction; sending happens post-commit (`lib/inventory/restock.ts`) with the daily job as the retry path. `deductOrderInventory` (paid orders) stays the only decrement path. Seeds and tests use the helper too; a hand-written `stock` update is a bug.
 
 ---
 

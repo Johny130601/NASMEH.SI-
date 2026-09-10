@@ -136,7 +136,7 @@ h3 {
 }
 
 /* Shared focus-visible ring (a11y, AGENTS §8.11) */
-:where(a, button, input, summary, [tabindex]):focus-visible {
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
   outline: 2px solid rgb(var(--brand));
   outline-offset: 2px;
 }

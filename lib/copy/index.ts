@@ -10,7 +10,6 @@ export { newsletter } from "./newsletter";
 export { legal } from "./legal";
 export { maintenance } from "./maintenance";
 export { notFound } from "./notFound";
-export { stubs } from "./stubs";
 export { catalog } from "./catalog";
 export { pdp } from "./pdp";
 export { search } from "./search";
