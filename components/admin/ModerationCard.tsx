@@ -20,6 +20,8 @@ interface PendingReview {
   photos: string[];
   createdAt: string;
   email: string | null;
+  customerName: string | null;
+  orderNumber: string | null;
   productTitle: string;
   productSlug: string;
 }
@@ -54,9 +56,14 @@ export function ModerationCard({ review }: { review: PendingReview }) {
         <RatingStars rating={{ average: review.rating, count: 1 }} showCount={false} />
         <span className="text-sm font-medium text-dark-1">{review.productTitle}</span>
         <span className="text-xs text-mid-2">
-          {review.email ?? "—"} · {review.createdAt}
+          {review.customerName ? `${review.customerName} · ` : ""}{review.email ?? "—"} · {review.createdAt}
         </span>
       </div>
+      <p className="mt-1 text-xs text-mid-2" data-review-verified={review.orderNumber ? "yes" : "no"}>
+        {review.orderNumber ? (
+          <>{copy.admin.verified} · {copy.admin.orderLink} <a href={`/admin/narocila/${review.orderNumber}`} className="underline underline-offset-4">{review.orderNumber}</a></>
+        ) : copy.admin.unverified}
+      </p>
       {review.title ? (
         <p className="mt-2 text-sm font-medium text-dark-1">{review.title}</p>
       ) : null}

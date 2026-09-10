@@ -1,6 +1,6 @@
 # Phase 7 — Admin dashboard (WooCommerce parity)
 
-**Date:** 2026-09-10. **Status:** steps 1–3 complete and locally verified ([step 1](../testing/phase-7-step-1-2026-09-10.md), [step 2](../testing/phase-7-step-2-2026-09-10.md), [step 3](../testing/phase-7-step-3-2026-09-10.md)); step 4 in progress. Source: GENERAL_PLAN.md Phase 7 and NASMEH_FEATURES.md §14. Runs under the user's 2026-09-10 direction: steps execute in order without a stop between checkpoints; every step still ends with an acceptance record (`docs/testing/phase-7-step-N-<date>.md`), a ledger update and a commit.
+**Date:** 2026-09-10. **Status:** steps 1–4 complete and locally verified ([step 1](../testing/phase-7-step-1-2026-09-10.md), [step 2](../testing/phase-7-step-2-2026-09-10.md), [step 3](../testing/phase-7-step-3-2026-09-10.md), [step 4](../testing/phase-7-step-4-2026-09-10.md)); step 5 in progress. Source: GENERAL_PLAN.md Phase 7 and NASMEH_FEATURES.md §14. Runs under the user's 2026-09-10 direction: steps execute in order without a stop between checkpoints; every step still ends with an acceptance record (`docs/testing/phase-7-step-N-<date>.md`), a ledger update and a commit.
 
 ## Checkpoints
 
@@ -9,8 +9,8 @@ The general plan's seven steps, with two spec items it left unassigned placed ex
 1. Admin shell, dashboard home, roles and permission matrix, TOTP 2FA, session management — **complete and locally verified** (2026-09-10): [acceptance record](../testing/phase-7-step-1-2026-09-10.md). Findings fixed in the step: the Auth.js middleware no longer re-issues session cookies (logout race), 390 px overflow on two screens.
 2. Orders, fulfilment, refunds, packing slip, notes, resend mail; customers and GDPR; ticket inbox — **complete and locally verified** (2026-09-10): [acceptance record](../testing/phase-7-step-2-2026-09-10.md). Deviations recorded there: refund lines carry a signed adjustment instead of automatic discount proration; provider secrets stay out of the database.
 3. Products, variants, media, inventory, bundles, collections, back-in-stock list and manual send — **complete and locally verified** (2026-09-10): [acceptance record](../testing/phase-7-step-3-2026-09-10.md). Deviations recorded there: managed media lives in the persistent `catalog-uploads/` volume behind a public route (the production server lists `public/` once at startup); variants may be deleted under guards while products are archived.
-4. Coupons with the `/koda` link and QR generator; full review moderation absorbing `/admin/ocene` — **in progress**.
-5. CMS: homepage editor, pages with template picker, menus, marquee, popup, media library, email template editor with test-send — not started.
+4. Coupons with the `/koda` link and QR generator; full review moderation absorbing `/admin/ocene` — **complete and locally verified** (2026-09-10): [acceptance record](../testing/phase-7-step-4-2026-09-10.md). Validity windows are entered in the store's time zone; used coupons are deactivated, never deleted.
+5. CMS: homepage editor, pages with template picker, menus, marquee, popup, media library, email template editor with test-send — **in progress**.
 6. Settings: shipping, tracking templates, tax/invoice/payments, marketing/SEO/consent/store, `support.contact` — not started.
 7. Full Phase 7 regression, Docker, responsive review, review-boss with the §14 checklist — not started.
 

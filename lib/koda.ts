@@ -1,14 +1,10 @@
-import { z } from "zod";
+import { kodaCodeSchema } from "./koda-code";
 
 /** /koda/{CODE} scaffold constants (§7.2; redemption engine in Phase 4). */
 export const KODA_COOKIE = "nasmeh_koda";
 export const KODA_MAX_AGE_S = 60 * 60 * 24 * 30;
 
-export const kodaCodeSchema = z
-  .string()
-  .trim()
-  .toUpperCase()
-  .regex(/^[A-Z0-9][A-Z0-9-]{2,23}$/);
+export { kodaCodeSchema };
 
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";

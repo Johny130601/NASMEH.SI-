@@ -76,5 +76,9 @@ export const reviews = {
     saveSettings: "Shrani nastavitve ocen",
     error: "Spremembe ni bilo mogoče shraniti. Poskusite znova.",
     done: "Shranjeno.",
+    filters: { title: "Filtri", product: "Izdelek", rating: "Ocena", photos: "Samo s fotografijami", all: "Vsi", apply: "Filtriraj", reset: "Počisti" },
+    verified: "Preverjen nakup",
+    unverified: "Nepreverjeno mnenje",
+    orderLink: "Naročilo",
   },
 } as const;

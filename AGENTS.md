@@ -56,7 +56,8 @@ Hard rules (from the master spec, §15):
 │   ├── support/            # tickets, topic routing, private attachments, ticket-mail delivery
 │   ├── back-in-stock/      # signed one-click unsubscribe tokens
 │   ├── auth.ts             # Auth.js config
-│   ├── admin/              # permission matrix, access gate (requirePermission), TOTP, pre-auth, dashboard/catalog queries, managed media
+│   ├── admin/              # permission matrix, access gate (requirePermission), TOTP, pre-auth, dashboard/catalog/coupon/review queries, managed media
+│   ├── koda-code.ts        # coupon code schema shared by /koda, the cart and the admin form (no server imports)
 │   └── copy/               # Slovenian UI copy files (see §7)
 ├── prisma/
 │   ├── schema.prisma

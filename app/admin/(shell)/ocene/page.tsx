@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePagePermission } from "@/lib/admin/access";
+import { listReviews, parseReviewFilters, REVIEW_STATUSES, reviewCounts, reviewedProducts } from "@/lib/admin/reviews";
 import { reviewPhotoPaths } from "@/lib/reviews/photos";
-import { db } from "@/lib/db";
-import { buildMetadata } from "@/lib/seo";
 import { reviews as copy } from "@/lib/copy";
 import { ReviewSettings } from "@/components/admin/ReviewSettings";
 import { getSetting } from "@/lib/settings";
@@ -12,47 +11,70 @@ import { ModerationCard } from "@/components/admin/ModerationCard";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = buildMetadata({
-  title: copy.admin.title,
-  path: "/admin/ocene",
-  noindex: true,
-});
+export const metadata: Metadata = { title: copy.admin.title, robots: { index: false, follow: false } };
 
-/** /admin/ocene — minimal operable moderation queue (§14.9). */
-export default async function AdminReviewsPage({ searchParams }: { searchParams: Promise<{ status?: string | string[] }> }) {
+const inputClass = "rounded-input border border-light-1 bg-white px-3 py-2 text-sm text-dark-1";
+
+/** /admin/ocene — moderation queue with filters and verified-purchase linkage (§14.9). */
+export default async function AdminReviewsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requirePagePermission("reviews:moderate");
-  const query = await searchParams;
-  const status = query.status === "PUBLISHED" || query.status === "REJECTED" ? query.status : "PENDING";
-  const pending = await db.review.findMany({
-    where: { status },
-    orderBy: { createdAt: "asc" },
-    include: {
-      product: { select: { title: true, slug: true } },
-      orderItem: { include: { order: { select: { email: true } } } },
-    },
-  });
-
-  const [autoPublish, delay] = await Promise.all([
+  const filters = parseReviewFilters(await searchParams);
+  const [queue, counts, products, autoPublish, delay] = await Promise.all([
+    listReviews(filters), reviewCounts(), reviewedProducts(),
     getSetting<unknown>("reviews.autoPublishMinStars"), getSetting<unknown>("reviews.requestDelayDays"),
   ]);
   const initial: ReviewSettingsValues = {
     autoPublishMinStars: autoPublish === 4 || autoPublish === 5 ? autoPublish : 0,
     requestDelayDays: typeof delay === "number" && Number.isInteger(delay) && delay >= 7 && delay <= 10 ? delay : 7,
   };
+  const statusLabels = { PENDING: copy.admin.pending, PUBLISHED: copy.admin.published, REJECTED: copy.admin.rejected } as const;
+  const keep = (status: string) => {
+    const params = new URLSearchParams({ status });
+    if (filters.product) params.set("izdelek", filters.product);
+    if (filters.rating) params.set("ocena", String(filters.rating));
+    if (filters.withPhotos) params.set("foto", "1");
+    return `?${params.toString()}`;
+  };
+
   return (
-    <section className="mx-auto max-w-(--container-narrow) px-(--padding) py-16">
+    <section className="mx-auto max-w-(--container-wide)" data-admin-reviews>
       <h1 className="text-[2rem]">{copy.admin.title}</h1>
       <ReviewSettings initial={initial} />
       <nav aria-label={copy.admin.title} className="mt-5 flex flex-wrap gap-4">
-        {([ ["PENDING", copy.admin.pending], ["PUBLISHED", copy.admin.published], ["REJECTED", copy.admin.rejected] ] as const).map(([value, label]) => (
-          <Link key={value} href={`?status=${value}`} aria-current={status === value ? "page" : undefined} className="text-sm underline underline-offset-4">{label}</Link>
+        {REVIEW_STATUSES.map((value) => (
+          <Link key={value} href={keep(value)} aria-current={filters.status === value ? "page" : undefined} className={`text-sm underline underline-offset-4 ${filters.status === value ? "font-medium" : ""}`} data-review-status={value}>
+            {statusLabels[value]} ({counts[value]})
+          </Link>
         ))}
       </nav>
-      {pending.length === 0 ? (
+      <form method="get" className="mt-4 flex flex-wrap items-end gap-3 rounded-card border border-light-2 bg-white p-4" aria-label={copy.admin.filters.title} data-review-filters>
+        <input type="hidden" name="status" value={filters.status} />
+        <label className="flex flex-col gap-1 text-xs text-mid-1">
+          {copy.admin.filters.product}
+          <select name="izdelek" defaultValue={filters.product} className={inputClass}>
+            <option value="">{copy.admin.filters.all}</option>
+            {products.map((product) => <option key={product.slug} value={product.slug}>{product.title}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-mid-1">
+          {copy.admin.filters.rating}
+          <select name="ocena" defaultValue={filters.rating ?? ""} className={inputClass}>
+            <option value="">{copy.admin.filters.all}</option>
+            {[5, 4, 3, 2, 1].map((stars) => <option key={stars} value={stars}>{stars} ★</option>)}
+          </select>
+        </label>
+        <label className="flex items-center gap-2 pb-2 text-sm">
+          <input type="checkbox" name="foto" value="1" defaultChecked={filters.withPhotos} className="size-4 accent-brand" />
+          {copy.admin.filters.photos}
+        </label>
+        <button type="submit" className="rounded-btn bg-dark-1 px-4 py-2 text-sm text-white">{copy.admin.filters.apply}</button>
+        <Link href={`?status=${filters.status}`} className="rounded-btn border border-light-1 px-4 py-2 text-sm">{copy.admin.filters.reset}</Link>
+      </form>
+      {queue.length === 0 ? (
         <p className="mt-6 text-sm text-mid-2">{copy.admin.empty}</p>
       ) : (
-        <ul className="mt-8 flex flex-col gap-4" data-mod-queue>
-          {pending.map((review) => (
+        <ul className="mt-6 flex flex-col gap-4" data-mod-queue>
+          {queue.map((review) => (
             <li key={review.id}>
               <ModerationCard
                 review={{
@@ -64,7 +86,9 @@ export default async function AdminReviewsPage({ searchParams }: { searchParams:
                   merchantReply: review.merchantReply,
                   status: review.status,
                   createdAt: review.createdAt.toLocaleDateString("sl-SI"),
-                  email: review.orderItem?.order.email ?? null,
+                  email: review.orderItem?.order.email ?? review.user?.email ?? null,
+                  customerName: review.user?.name ?? null,
+                  orderNumber: review.orderItem?.order.number ?? null,
                   productTitle: review.product.title,
                   productSlug: review.product.slug,
                 }}
