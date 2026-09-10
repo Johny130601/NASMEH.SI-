@@ -9,6 +9,7 @@ import {
   changeVariantPriceInTx,
   recordInitialPriceInTx,
 } from "../lib/price-history";
+import { setVariantStockInTx } from "../lib/inventory/stock";
 import { LEGAL_PAGES } from "./seed-legal";
 import { PDP_CONTENT } from "./seed-pdp";
 import { DEFAULT_CONTACT_SETTINGS } from "../lib/support/settings";
@@ -140,9 +141,10 @@ async function seedCatalog() {
           data: {
             title: item.title,
             maxCartQuantity: item.maxCartQuantity,
-            stock: item.stock,
           },
         });
+        // Stock changes go through the restock-aware helper (plan rule 13).
+        await setVariantStockInTx(tx, existing.id, item.stock);
         await changeVariantPriceInTx(tx, {
           variantId: existing.id,
           priceCents: item.priceCents,

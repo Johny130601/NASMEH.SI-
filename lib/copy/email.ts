@@ -23,6 +23,16 @@ export const email = {
     ignore: "Če obvestila niste zahtevali, to sporočilo preprosto prezrite.",
     footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
   },
+  backInStockAlert: {
+    subjectPrefix: "Spet na zalogi",
+    heading: "Izdelek je spet na zalogi!",
+    body: "Izdelek, za katerega ste želeli obvestilo, je spet na voljo:",
+    priceLabel: "Cena",
+    cta: "Poglej izdelek",
+    unsubscribe: "To je edino obvestilo za ta izdelek. Ne želite več obvestil o zalogi za ta izdelek?",
+    unsubscribeCta: "Odjava",
+    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+  },
   orderConfirmation: {
     subjectPrefix: "Potrditev naročila",
     heading: "Hvala za vaše naročilo!",

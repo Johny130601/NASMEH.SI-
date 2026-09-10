@@ -1,6 +1,6 @@
 # Nasmeh.si — GENERAL PLAN OF EVERYTHING
 
-**Version:** 1.1 · **Date:** 2026-09-09 · **Status:** Phases 0–2 and 4 complete; Phase 3 repaired locally with real-provider acceptance outstanding (gate G1); Phase 5 locally accepted; Phase 6 steps 1–2 complete and stopped at the step 2 checkpoint; steps 3–6 designed in v1.1 and not started
+**Version:** 1.1 · **Date:** 2026-09-10 · **Status:** Phases 0–2 and 4 complete; Phase 3 repaired locally with real-provider acceptance outstanding (gate G1); Phase 5 locally accepted; Phase 6 steps 1–5 complete and locally verified, step 6 in progress; Phases 7 and 9 not started
 **Grounding documents (do not contradict):** `AGENTS.md` (decided architecture), `docs/NASMEH_FEATURES.md` (feature spec, cited below as "§N"), `docs/HISMILE_FEATURES.md`, `docs/research/01–07`.
 
 ## 0. Status ledger
@@ -15,7 +15,7 @@ One row per phase. The linked record is the only evidence that counts (rule 11).
 | 3 Cart, checkout, orders | repaired locally: 319 unit / 80 browser at repair time | [repairs](testing/phase-3-repairs-2026-09-09.md), [audit](testing/phase-3-audit-2026-09-09.md) | **G1** real Stripe/PayPal/Turnstile sandbox acceptance not executed ([checklist](testing/phase-3-sandbox-checklist.md)); Klarna SI eligibility unconfirmed |
 | 4 Promotions | complete | [plan](plans/phase-4.md) | — |
 | 5 Accounts, reviews | locally accepted: 512 unit / 94 browser | [acceptance](testing/phase-5-acceptance-2026-09-09.md) | host scheduling of `/api/jobs/daily` (G3) |
-| 6 Support, content | steps 1–4 complete: 660 unit / 109 browser at step 4; steps 5–6 not started | [step 1](testing/phase-6-step-1-2026-09-09.md), [step 2](testing/phase-6-step-2-2026-09-09.md), [step 3](testing/phase-6-step-3-2026-09-09.md), [step 4](testing/phase-6-step-4-2026-09-10.md), [build-verify run](testing/build-verify-2026-09-09.md) | step 5–6 designs in [plans/phase-6.md](plans/phase-6.md) |
+| 6 Support, content | steps 1–5 complete: 679 unit / 111 browser at step 5; step 6 in progress | [step 1](testing/phase-6-step-1-2026-09-09.md), [step 2](testing/phase-6-step-2-2026-09-09.md), [step 3](testing/phase-6-step-3-2026-09-09.md), [step 4](testing/phase-6-step-4-2026-09-10.md), [step 5](testing/phase-6-step-5-2026-09-10.md), [build-verify run](testing/build-verify-2026-09-09.md) | step 6 scope in [plans/phase-6.md](plans/phase-6.md) |
 | 7 Admin | not started | — | checkpoints defined in the Phase 7 section |
 | 9 Hardening, go-live | not started | — | may start after Phase 7; G1 can run as soon as D5 sandbox keys exist |
 | 8 Growth [P2] | post-launch | — | — |
@@ -277,8 +277,8 @@ Phases 4, 5, 6 all depend only on Phase 3 and may be sequenced to taste; the man
 | 2 | Shopping navigation, page simplification, legacy redirects, delivery in checkout (1, 2) | complete | [step 2](testing/phase-6-step-2-2026-09-09.md) |
 | 3 | Public tracking `/sledi` by tracking number **or** email + order number; shared `markOrderShipped` / `markOrderDelivered` transitions; shipped email; `shippedAt` (4) | complete | [step 3](testing/phase-6-step-3-2026-09-09.md) |
 | 4 | Withdrawal page with online model form → ticket and downloadable PDF; 30-day guarantee page; Reklamacije CTA; dedicated adverse-event form (5, 6) | complete | [step 4](testing/phase-6-step-4-2026-09-10.md) |
-| 5 | Back-in-stock alerts: restock-aware stock helper, durable alert queue on the subscription row, alert email + unsubscribe, daily-job stream (7) | not started, **next** | — |
-| 6 | Full Phase 6 regression, Docker, responsive review, backlog cleanup B1/B2/B6, review-boss, doc and AGENTS.md updates | not started | — |
+| 5 | Back-in-stock alerts: restock-aware stock helper, durable alert queue on the subscription row, alert email + unsubscribe, daily-job stream (7) | complete | [step 5](testing/phase-6-step-5-2026-09-10.md) |
+| 6 | Full Phase 6 regression, Docker, responsive review, backlog cleanup B1/B2/B6, review-boss, doc and AGENTS.md updates | in progress, **next** | — |
 
 Sequencing decisions (v1.1):
 - **Step 3 builds the fulfilment transitions without an admin UI.** `lib/orders/transitions` gains `markOrderShipped` (PAID/PROCESSING → SHIPPED, requires carrier + tracking number, stamps `shippedAt` once, queues the shipped email with the same pending/lease/retry fields as the confirmation email) and `markOrderDelivered`. Phase 7 step 2 only adds the screen. Operators cannot ship from the UI until then, which is acceptable because go-live follows Phase 7; tests and seeds call the transition through a test-mode action. A minimal `/admin/narocila` screen now was considered and rejected to keep the checkpoint small.
@@ -467,4 +467,4 @@ Found by reading the working tree against this plan. None blocks Phase 6 step 3;
 - **v1.1 (2026-09-09):** added the status ledger (§0), rules 10–13 and the §2.1 workstation prerequisites, the Phase 3 status line, the Phase 6 checkpoint table, sequencing decisions and per-step acceptance, the Phase 7 and Phase 9 checkpoint splits, the external-gate tracker (§4.1) with G0–G5 and D7, definition-of-done items 6–7, and the known-gap backlog (§6). Step 3–6 designs were added to [plans/phase-6.md](plans/phase-6.md). No spec scope was added or removed; Help Centre, About Us, Explore and the Dostava page remain out of scope.
 - **v1.0 (2026-09-09):** initial sequencing of Phases 0–9.
 
-*Current checkpoint: Phase 6 step 2 is complete and locally verified; work resumes with **step 3, public order tracking**, once G0 and G5 are satisfied. Steps 3–6 follow in order with a stop after each. Then Phase 7 admin operations → Phase 9 launch hardening → Phase 8 growth. G1 real-provider acceptance runs as soon as D5 sandbox keys exist and remains a launch gate; D1/D2/D4/D5/D6 and G2–G4 are launch dependencies; D3 ESP selection is deferred growth planning and does not block Phase 6.*
+*Current checkpoint: Phase 6 steps 1–5 are complete and locally verified; **step 6** (regression, Docker, review, cleanup) is in progress. On 2026-09-10 the user directed the run to continue through the remaining steps and phases without a stop between checkpoints; records, commits and this ledger are still produced per step. Then Phase 7 admin operations → Phase 9 launch hardening → Phase 8 growth. G1 real-provider acceptance runs as soon as D5 sandbox keys exist and remains a launch gate; D1/D2/D4/D5/D6 and G2–G4 are launch dependencies; D3 ESP selection is deferred growth planning and does not block Phase 6.*

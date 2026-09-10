@@ -1,17 +1,19 @@
 # Phase 6 — Support and content
 
-**Date:** 2026-09-10. **Status:** steps 1–4 complete and locally verified (step 3 public tracking and step 4 returns/withdrawal/complaints/adverse events delivered in the build-and-verify run). Steps 5–6 have not started. Source: GENERAL_PLAN.md Phase 6 and NASMEH_FEATURES.md §3/§12/§13.1–13.2. The step 5–6 designs below were added with general plan v1.1 (2026-09-09); they describe intended work, not delivered work.
+**Date:** 2026-09-10. **Status:** steps 1–5 complete and locally verified (step 5 back-in-stock alerts delivered 2026-09-10). Step 6 is in progress. Source: GENERAL_PLAN.md Phase 6 and NASMEH_FEATURES.md §3/§12/§13.1–13.2. The step 6 scope below describes intended work until its acceptance record exists.
 
 ## User checkpoints
 
 The user explicitly requested a stop and report after each numbered main step. Complete and verify one step, then end the turn before continuing. Do not treat a progress message as satisfying this stop.
 
+**Update 2026-09-10:** the user directed the run to complete all Phase 6 checks and then continue through the later phases in order without stopping between checkpoints. Per-step acceptance records, ledger updates and commits continue unchanged; only the stop is lifted.
+
 1. **Contact forms and tickets** — complete: guided topics, durable requests, order context, private photos and routed transactional emails. [Acceptance record](../testing/phase-6-step-1-2026-09-09.md): 587 unit tests, 21 targeted browser checks, lint, migration/seed, Docker runtime and desktop/mobile checks pass.
 2. **Navigation and page simplification** — complete and locally verified (user screenshot direction, 2026-09-09). This replaces the Help Centre build: no Help Centre, About Us, Explore or standalone Delivery page. Contact, tracking, legal, account and product/PDP content remain. [Acceptance record](../testing/phase-6-step-2-2026-09-09.md): 587 unit tests across 52 files, all 103 browser tests, lint, migration/schema, Docker and responsive visual checks pass.
 3. Public order tracking — **complete and locally verified** (2026-09-09, commit after `4aed04c`): [acceptance record](../testing/phase-6-step-3-2026-09-09.md). Delivered as designed below, with one deviation: browser tests call `markOrderShipped` directly (the cart-persistence pattern) instead of a test-only Server Action.
 4. Returns, complaints and adverse-event reporting — **complete and locally verified** (2026-09-10): [acceptance record](../testing/phase-6-step-4-2026-09-10.md). Delivered as designed below; the IRPS provider name stays a D4 legal input.
-5. Back-in-stock emails — not started; design in "Step 5 design" below. **Next checkpoint.**
-6. Full Phase 6 regression, Docker, desktop/mobile review and backlog cleanup — not started; scope in "Step 6 scope" below. Each earlier step still receives checks appropriate to its own changes.
+5. Back-in-stock alerts — **complete and locally verified** (2026-09-10): [acceptance record](../testing/phase-6-step-5-2026-09-10.md). Delivered as designed below with three deviations recorded there: browser tests call the stock helper directly instead of a test-mode action (the step 3 pattern); a tampered unsubscribe link renders the invalid-link page like the confirm routes rather than a bare 400; the helper takes positional arguments without a `reason` field.
+6. Full Phase 6 regression, Docker, desktop/mobile review and backlog cleanup — **in progress** (2026-09-10); scope in "Step 6 scope" below. **Next checkpoint.** Each earlier step still receives checks appropriate to its own changes.
 
 ## Step 1 design
 

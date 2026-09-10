@@ -4,6 +4,7 @@ import { getEnv } from "@/lib/env";
 import { retryPendingOrderConfirmations } from "@/lib/orders/confirmation-delivery";
 import { retryPendingShippedEmails } from "@/lib/orders/shipped-delivery";
 import { sendDueReviewRequests } from "@/lib/jobs/review-requests";
+import { sendPendingRestockAlerts } from "@/lib/jobs/restock-alerts";
 import { retryPendingTicketEmails } from "@/lib/support/delivery";
 
 export const dynamic = "force-dynamic";
@@ -21,9 +22,10 @@ export async function POST(request: Request) {
     const confirmationRetries = await retryPendingOrderConfirmations();
     const shippedRetries = await retryPendingShippedEmails();
     const reviews = await sendDueReviewRequests();
+    const restockAlerts = await sendPendingRestockAlerts();
     const ticketRetries = await retryPendingTicketEmails();
-    return NextResponse.json({ ...reviews, confirmationRetries, shippedRetries, ticketRetries }, {
-      status: reviews.failed || confirmationRetries.failed || shippedRetries.failed || ticketRetries.failed ? 503 : 200,
+    return NextResponse.json({ ...reviews, confirmationRetries, shippedRetries, restockAlerts, ticketRetries }, {
+      status: reviews.failed || confirmationRetries.failed || shippedRetries.failed || restockAlerts.failed || ticketRetries.failed ? 503 : 200,
     });
   } catch {
     console.error("Daily delivery job requires retry");

@@ -15,7 +15,9 @@ export interface BackInStockResult {
 /**
  * Sold-out capture (spec §5/§6): Turnstile-verified submit stores a PENDING
  * BackInStockSubscription and sends the double opt-in verification email.
- * Alert SENDING on restock completes in Phase 6 — storage only here.
+ * A confirmed address is not asked to confirm again: an un-notified one is a
+ * no-op, an already-notified one is re-armed for the next restock (§13.1).
+ * Alerts themselves are sent by lib/jobs/restock-alerts once stock returns.
  */
 export async function subscribeBackInStockAction(input: {
   email: string;
@@ -42,6 +44,23 @@ export async function subscribeBackInStockAction(input: {
     }
 
     const email = emailParsed.data;
+    const variantId = product.variants[0]?.id ?? null;
+    const existing = await db.backInStockSubscription.findUnique({
+      where: { email_productId: { email, productId: product.id } },
+    });
+    if (existing?.status === "CONFIRMED") {
+      if (existing.notifiedAt) {
+        await db.backInStockSubscription.update({
+          where: { id: existing.id },
+          data: {
+            notifiedAt: null, alertPendingSince: null, alertLeaseUntil: null,
+            alertLeaseToken: null, alertLastError: null, variantId,
+          },
+        });
+      }
+      return { ok: true, message: copy.alreadyActive };
+    }
+
     const token = crypto.randomBytes(24).toString("hex");
     await db.backInStockSubscription.upsert({
       where: { email_productId: { email, productId: product.id } },
@@ -49,12 +68,16 @@ export async function subscribeBackInStockAction(input: {
         status: "PENDING",
         confirmToken: token,
         confirmedAt: null,
-        variantId: product.variants[0]?.id ?? null,
+        notifiedAt: null,
+        alertPendingSince: null,
+        alertLeaseUntil: null,
+        alertLeaseToken: null,
+        variantId,
       },
       create: {
         email,
         productId: product.id,
-        variantId: product.variants[0]?.id ?? null,
+        variantId,
         confirmToken: token,
       },
     });

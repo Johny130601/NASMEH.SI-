@@ -611,12 +611,20 @@ model BackInStockSubscription {
   confirmToken String           @unique
   confirmedAt  DateTime?
   source       String           @default("back-in-stock")
+  // Phase 6 step 5: one alert per restock, queued durably on the row itself.
+  notifiedAt        DateTime?
+  alertPendingSince DateTime?
+  alertLeaseUntil   DateTime?
+  alertLeaseToken   String?
+  alertAttempts     Int       @default(0)
+  alertLastError    String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
   @@unique([email, productId])
   @@index([productId])
   @@index([variantId])
+  @@index([alertPendingSince, alertLeaseUntil])
 }
 
 model Menu {

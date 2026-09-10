@@ -11,6 +11,7 @@ import { renderVerifyAccountEmail } from "./templates/verify-account";
 import { renderResetPasswordEmail } from "./templates/reset-password";
 import { renderReviewRequestEmail, type ReviewRequestItem } from "./templates/review-request";
 import { renderOrderShippedEmail } from "./templates/order-shipped";
+import { renderBackInStockAlertEmail, type BackInStockAlertDetails } from "./templates/back-in-stock-alert";
 
 let transporter: Transporter | null = null;
 
@@ -85,6 +86,18 @@ export async function sendBackInStockVerification(
     to,
     subject: copy.backInStock.subject,
     html: renderBackInStockEmail(confirmUrl, productTitle),
+  });
+}
+
+/** Restock alert (§13.1–13.2); stable Message-ID per subscription. */
+export async function sendBackInStockAlertEmail(
+  input: BackInStockAlertDetails & { to: string; subscriptionId: string },
+) {
+  return sendMail({
+    to: input.to,
+    subject: `${copy.backInStockAlert.subjectPrefix}: ${input.productTitle} — Nasmeh.si`,
+    messageId: `<back-in-stock.${input.subscriptionId}@nasmeh.si>`,
+    html: renderBackInStockAlertEmail(input),
   });
 }
 
