@@ -11,7 +11,10 @@ datasource db {
 
 enum Role {
   CUSTOMER
-  ADMIN
+  OWNER
+  MANAGER
+  SUPPORT
+  FULFILLMENT
 }
 
 model User {
@@ -35,6 +38,12 @@ model User {
   updatedAt       DateTime     @updatedAt
   authTokens      AuthToken[]
   supportTickets  Ticket[]
+  // Phase 7 step 1: mandatory TOTP second factor for staff roles.
+  totpSecret        String?   // AES-256-GCM, key derived from AUTH_SECRET
+  totpEnabledAt     DateTime?
+  totpLastStep      Int?      // replay guard for the accepted 30 s window
+  totpRecoveryCodes Json?     // SHA-256 hashes of unused one-time codes
+  staffInvitedAt    DateTime?
 }
 
 // Auth.js adapter models (OAuth slots in phase 2; credentials uses JWT sessions)

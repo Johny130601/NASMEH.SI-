@@ -7,10 +7,10 @@ vi.mock("@/lib/db", () => {
   const tx = { setting: { upsert: mocks.upsert }, $queryRaw: mocks.lock, review: { findUnique: mocks.find, update: mocks.update } };
   return { db: { ...tx, $transaction: (fn: (tx: unknown) => unknown) => fn(tx) } };
 });
-import { moderateReviewAction, deleteReviewPhotoAction, saveReviewSettingsAction } from "@/app/admin/ocene/actions";
+import { moderateReviewAction, deleteReviewPhotoAction, saveReviewSettingsAction } from "@/app/admin/(shell)/ocene/actions";
 const url = `/uploads/reviews/${"a".repeat(24)}.webp`;
 const other = `/uploads/reviews/${"b".repeat(24)}.webp`;
-beforeEach(() => { vi.clearAllMocks(); mocks.auth.mockResolvedValue({ user: { role: "ADMIN", id: "admin" } }); mocks.find.mockResolvedValue({ product: { slug: "product" }, photos: [url, other] }); mocks.update.mockResolvedValue({}); mocks.remove.mockResolvedValue(undefined); });
+beforeEach(() => { vi.clearAllMocks(); mocks.auth.mockResolvedValue({ user: { role: "OWNER", id: "admin", mfaEnrolled: true } }); mocks.find.mockResolvedValue({ product: { slug: "product" }, photos: [url, other] }); mocks.update.mockResolvedValue({}); mocks.remove.mockResolvedValue(undefined); });
 describe("review moderation authority and persistence", () => {
   it.each([null, { user: { role: "CUSTOMER", id: "customer" } }])("denies moderation and file removal without admin authority", async (session) => {
     mocks.auth.mockResolvedValue(session);
@@ -49,7 +49,7 @@ describe("review collection settings", () => {
   it("requires admin role and validates both bounded configuration values", async () => {
     mocks.auth.mockResolvedValue(null);
     await expect(saveReviewSettingsAction({ autoPublishMinStars: 4, requestDelayDays: 7 })).rejects.toThrow("forbidden");
-    mocks.auth.mockResolvedValue({ user: { role: "ADMIN" } });
+    mocks.auth.mockResolvedValue({ user: { role: "OWNER", id: "admin", mfaEnrolled: true } });
     expect((await saveReviewSettingsAction({ autoPublishMinStars: 4, requestDelayDays: 6 })).ok).toBe(false);
     expect((await saveReviewSettingsAction({ autoPublishMinStars: 4, requestDelayDays: 11 })).ok).toBe(false);
     expect(mocks.upsert).not.toHaveBeenCalled();

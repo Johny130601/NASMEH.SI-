@@ -1,0 +1,121 @@
+# Phase 7 — Admin dashboard (WooCommerce parity)
+
+**Date:** 2026-09-10. **Status:** step 1 complete and locally verified ([record](../testing/phase-7-step-1-2026-09-10.md)); step 2 in progress. Source: GENERAL_PLAN.md Phase 7 and NASMEH_FEATURES.md §14. Runs under the user's 2026-09-10 direction: steps execute in order without a stop between checkpoints; every step still ends with an acceptance record (`docs/testing/phase-7-step-N-<date>.md`), a ledger update and a commit.
+
+## Checkpoints
+
+The general plan's seven steps, with two spec items it left unassigned placed explicitly: the dashboard home (§14.1) lands with the shell in step 1, customers (§14.8) and the ticket inbox promised in Phase 6 land with orders in step 2.
+
+1. Admin shell, dashboard home, roles and permission matrix, TOTP 2FA, session management — **complete and locally verified** (2026-09-10): [acceptance record](../testing/phase-7-step-1-2026-09-10.md). Findings fixed in the step: the Auth.js middleware no longer re-issues session cookies (logout race), 390 px overflow on two screens.
+2. Orders, fulfilment, refunds, packing slip, notes, resend mail; customers and GDPR; ticket inbox — **in progress**.
+3. Products, variants, media, inventory, bundles, collections, back-in-stock list and manual send — not started.
+4. Coupons with the `/koda` link and QR generator; full review moderation absorbing `/admin/ocene` — not started.
+5. CMS: homepage editor, pages with template picker, menus, marquee, popup, media library, email template editor with test-send — not started.
+6. Settings: shipping, tracking templates, tax/invoice/payments, marketing/SEO/consent/store, `support.contact` — not started.
+7. Full Phase 7 regression, Docker, responsive review, review-boss with the §14 checklist — not started.
+
+Migration numbering continues from 16: step 1 → 17 `phase7_admin_platform`, step 2 → 18 `phase7_orders`, step 3 → 19 `phase7_catalog`, step 5 → 20 `phase7_cms`, step 6 → 21 `phase7_settings` (data only). Step 4 needs no schema change.
+
+## Conventions for every step
+
+- Routes live under `app/admin/*`; Slovenian route segments (`narocila`, `stranke`, `izdelki`, `kuponi`, `ocene`, `vsebina`, `nastavitve`, `ekipa`). Copy in `lib/copy/admin.ts` (split per screen when it grows). Admin components in `components/admin/`.
+- Every page and Server Action calls `requirePermission(<permission>)` from `lib/admin/access.ts`, which reads the session, refuses non-staff, refuses staff without completed 2FA enrolment (except the enrolment actions) and checks the pure matrix in `lib/admin/permissions.ts`. Hiding a link is never the boundary (AGENTS §8.7).
+- Money and inventory keep their single write paths: prices through `lib/price-history`, stock increases through `lib/inventory/stock.ts`, payment states through `lib/orders/transitions.ts` (extended, never bypassed).
+- Forms are server-rendered with progressive enhancement: plain `<form action={serverAction}>` where possible, client components only for interactivity (reorder, previews, copy buttons). Every action validates its input with zod and returns `{ ok, error? }`; the page re-renders through `revalidatePath`.
+- Storefront reads stay the source of truth for every Setting shape: the zod schema the storefront parses is the schema the admin form validates (`lib/settings-schemas.ts` collects them in step 6; earlier steps add theirs there).
+- Direct action-call permission tests: each step ships a unit file that imports its actions, mocks `@/lib/auth` with a session per role and asserts `forbidden` for every disallowed role. Browser tests cover the allowed paths and the UI.
+
+## Step 1 design — shell, dashboard, roles, 2FA, sessions (§14.1, §14.15)
+
+Roles and data (migration 17):
+- `enum Role { CUSTOMER, OWNER, MANAGER, SUPPORT, FULFILLMENT }`. The hand-written migration creates the new type, converts `User.role` with `ADMIN → OWNER`, swaps the types and restores the `CUSTOMER` default, all in one transaction, so existing admins become owners in the same deploy. Every `role === "ADMIN"` check in the code base (auth config, admin layout, moderation page and actions, invoice route, private media routes, order access helpers, seed, tests) becomes `isStaff(role)` or a permission check.
+- `User` gains `totpSecret String?` (AES-256-GCM, key derived from `AUTH_SECRET` with HKDF, stored as `iv.ciphertext.tag` base64url), `totpEnabledAt DateTime?`, `totpLastStep Int?` (replay guard for the accepted 30 s window), `totpRecoveryCodes Json?` (SHA-256 hashes of eight one-time codes), `staffInvitedAt DateTime?`.
+- Permissions (`lib/admin/permissions.ts`, pure, unit-tested): `dashboard:view`, `orders:view`, `orders:fulfil`, `orders:refund`, `orders:notes`, `customers:view`, `customers:gdpr`, `tickets:view`, `reviews:moderate`, `catalog:manage`, `promos:manage`, `content:manage`, `settings:manage`, `staff:manage`. OWNER: all. MANAGER: dashboard, orders:view, reviews:moderate, catalog, promos, content. SUPPORT: dashboard, orders:view, orders:notes, orders:refund, customers:view, customers:gdpr, tickets:view, reviews:moderate. FULFILLMENT: dashboard, orders:view, orders:fulfil, orders:notes. `isStaff(role)` is `role !== "CUSTOMER"`.
+
+Sessions and login:
+- Staff sessions expire 12 hours after issue: `validateSessionToken` rejects a staff token whose `iat` is older than `STAFF_SESSION_MAX_AGE_S`; customers keep the 30-day default. `sessionVersion` stays the global revocation switch ("Odjavi povsod" on the own-account page and per member on the team page).
+- 2FA is mandatory for staff. A staff user without `totpEnabledAt` can sign in with the password alone but the admin layout redirects every admin URL to `/admin/2fa` until enrolment completes, and `requirePermission` refuses every action except the enrolment ones. Enrolment shows the secret (base32), the `otpauth://` URI and a QR code (SVG through the `qrcode` package), asks for one valid code, then reveals eight recovery codes once.
+- A staff user with 2FA enabled cannot obtain a session from the password alone: `authorizeCredentials` throws `mfa_required` after the password and Turnstile checks pass; `loginAction` then stores a signed pre-auth cookie (HMAC over user id, nonce and a five-minute expiry with `AUTH_SECRET`, `httpOnly`, `sameSite=lax`) and redirects to `/prijava/2fa`. That page posts the six-digit code or a recovery code; `verifyTotpLoginAction` calls `signIn("credentials", { email, preAuthToken, totpCode })`, and `authorizeCredentials` accepts the pre-auth token in place of the password only when the TOTP code (±1 step, replay-guarded through `totpLastStep`) or an unused recovery code (consumed) is valid. Wrong codes are rate-limited per user and per IP through `lib/rate-limit.ts` (5 per 5 minutes). Customers are never routed through this step.
+- TOTP itself is RFC 6238 over HMAC-SHA1, 30 s step, six digits, implemented in `lib/admin/totp.ts` with the RFC test vectors as unit tests; no external dependency.
+
+Screens:
+- `app/admin/layout.tsx`: staff-only shell with a sidebar whose entries are filtered by permission (Nadzorna plošča, Naročila, Stranke, Podpora, Izdelki, Kolekcije, Paketi, Kuponi, Ocene, Vsebina, Nastavitve, Ekipa, Moj račun), a header with name, role pill and logout, and the 2FA enrolment gate above. Links to screens of later steps appear only when those steps ship.
+- `/admin` dashboard (§14.1): date-range selector (7/30/90 days, custom from/to), KPI cards computed server-side from paid orders (revenue = paid totals minus refunds, orders, AOV, items per order) plus sessions and conversion shown as "n/a until analytics" placeholders (rule 12; no analytics source exists at P1); server-rendered SVG bar charts for revenue and orders over time (day or week buckets), revenue by product, orders by status; lists: recent orders, low-stock variants (below `inventory.lowStockThreshold`, default 5, seeded in step 3; until then a constant), pending reviews, coupons expiring within 14 days.
+- `/admin/ekipa` (staff:manage): list staff with role, 2FA state, last session version; create a staff member (name, e-mail, role, temporary password shown once; `emailVerified` set so credentials work; forced 2FA enrolment on first login), change role, revoke sessions, reset 2FA (clears the secret, forces re-enrolment), demote to customer. An owner cannot demote or revoke themselves.
+- `/admin/racun` (any staff): own 2FA status, regenerate recovery codes (needs a current code), sign out everywhere.
+- `/prijava/2fa`: the second login step described above.
+
+Acceptance list (step 1): unit — matrix for every role × permission, RFC 6238 vectors and window/replay rules, secret encryption round trip and tamper rejection, pre-auth token signing/expiry/nonce, recovery-code hashing and single use, `validateSessionToken` staff expiry, direct action-call refusals for `ekipa` and `racun` actions. Browser — owner enrols 2FA (secret from the page → codes computed in the test), logs out, logs in → code required → wrong code refused → correct code admits → recovery code admits once and not twice; a Support member sees no settings link and gets redirected from `/admin/nastavitve` and `/admin/izdelki` (routes exist as 403 stubs until their steps land); a customer is redirected from `/admin`; the seeded admin account is an owner after the migration; dashboard renders KPIs from a fixture order and lists the seeded sold-out variant as low stock. Record: `docs/testing/phase-7-step-1-<date>.md`.
+
+## Step 2 design — orders, customers, tickets (§14.7, §14.8, ticket inbox)
+
+Data (migration 18): `OrderNote { id, orderId, authorId, authorName, body, visibleToCustomer, createdAt }`; `Refund { id, orderId, provider, providerRefundId?, amountCents, vatCents, reason, restocked Boolean, lines Json, actorId, createdAt }`; `User.adminNotes String?`, `User.tags String[]`, `User.anonymizedAt DateTime?`; `Order.anonymizedAt DateTime?`; `Ticket.assigneeId String?`, `Ticket.internalNote String?`.
+
+Orders:
+- `/admin/narocila`: search (number, e-mail, name in the address snapshot, tracking number), filters (status, date range, provider, country), 50 per page, CSV export at `/admin/narocila/export.csv` with the same filters (permission `orders:view`).
+- `/admin/narocila/[number]`: lines with bundle components from `properties.bundleComponents` and gift/discount labels, totals with the VAT breakdown from `lib/pricing`, customer and addresses, provider references, timeline, notes (internal and customer-visible; customer-visible notes render on `/racun/narocilo/[number]`), invoice PDF (existing route, staff allowed), packing slip PDF `/admin/narocila/[number]/dobavnica.pdf` (pdfkit, lines and components with SKUs, no prices), resend confirmation or shipped mail (re-queues the durable delivery), and the transitions below.
+- Transitions added to `lib/orders/transitions.ts`: `markOrderProcessing` (PAID → PROCESSING), `cancelOrder` (PENDING → CANCELLED; PAID/PROCESSING → CANCELLED only after a successful full refund, restocking every deducted unit through `adjustVariantStockInTx`), and `refundOrder` in `lib/orders/refunds.ts` (lock, validate amount ≤ total − refunded, provider refund through the provider abstraction: Stripe `refunds.create`, PayPal capture refund resolved from the order's capture id, test provider no-op; then the local update through the same code path as `markRefunded`, a `Refund` row, optional restock of the selected line quantities, timeline entry, best-effort e-mail). Proportional VAT for a refund: `vat = round(amount × rate / (100 + rate))`, pure and unit-tested.
+- Webhook reconciliation: Stripe `charge.refunded` already carries the cumulative amount (`Math.max` merge); the PayPal handler skips `PAYMENT.CAPTURE.REFUNDED` events whose refund id matches an existing `Refund.providerRefundId`, so an admin refund is never counted twice.
+- Transition e-mails: processing, delivered, cancelled and refunded templates (`lib/email/templates/order-status.ts`, copy in `lib/copy/email.ts`), sent best-effort after commit with the outcome written to the timeline; the durable queues stay reserved for confirmation and shipped mail.
+
+Customers:
+- `/admin/stranke`: registered customers (search e-mail/name, filters: has orders, marketing consent) plus guest purchasers grouped by order e-mail; `/admin/stranke/[id]` (or `?email=` for guests): profile, addresses, orders with LTV and count, consent status and history (`ConsentLog`), tags and admin notes.
+- GDPR (permission `customers:gdpr`): export as JSON download (user, addresses, orders and items, reviews, consent rows, tickets); anonymise = e-mail → `anonymised-<id>@invalid`, name/phone/password cleared, addresses deleted, order and ticket PII scrubbed (e-mail, phone, address snapshots replaced by country only), reviews unlinked, sessions revoked, `anonymizedAt` stamped, financial fields untouched. Guest purchasers are anonymised by e-mail.
+
+Tickets: `/admin/podpora` list (status, topic filters) and detail (message, structured `details` rendered by the support label map, attachments through the authorized route, status OPEN/IN_PROGRESS/CLOSED, assignee, internal note, links to order and customer). Permission `tickets:view`.
+
+Acceptance list (step 2): unit — refund VAT math and amount validation, `markOrderProcessing`/`cancelOrder` rules, PayPal duplicate-refund skip, anonymisation field map, direct action-call refusals (Fulfillment cannot refund, Support cannot ship, Manager cannot anonymise). Browser — owner marks a paid fixture order processing, ships it with a configured carrier and tracking number, the customer's shipped mail in Mailpit carries the same link as `/sledi`; partial refund of one line in test mode → `Refund` row, `refundedCents`, restocked stock, timeline and refund mail; cancelling a paid order refunds in full and restocks; a customer-visible note appears on the account order page, an internal one does not; CSV export and packing slip respond with the right content types; anonymising a customer removes PII from the admin and account pages while order totals stay; ticket status change persists. Record: `docs/testing/phase-7-step-2-<date>.md`.
+
+## Step 3 design — catalog (§14.2, §14.3, §14.6)
+
+Data (migration 19): `Collection.bannerImageMobile String?`, `Collection.hideBannerText Boolean @default(false)`; `Product.soldOutBehavior enum SoldOutBehavior { NOTIFY, HIDE } @default(NOTIFY)`; `Variant.allowBackorder Boolean @default(false)`, `Variant.backorderNote String?`; Setting `inventory.lowStockThreshold` (default 5, inserted only if missing).
+
+- `/admin/izdelki` list (status, search) and `/admin/izdelki/[id]` editor: title, slug, status, description (HTML textarea with the highlight-bullet convention), badges, USP chips and unit-price text (structured `customFields` editors with zod schemas that match `lib/catalog.ts` parsers), visibility flags including the hidden-deal flag (flag only, P2), Klarna eligibility flag, SEO fields, accordions / FAQ / education as validated structured lists with a raw JSON fallback, curated related/upsell slugs, variants table (title, SKU, price and compare-at through `changeVariantPriceInTx`, cost, barcode, weight, stock through `setVariantStockInTx`, `maxCartQuantity`, backorder flag and note), media (upload JPEG/PNG/WebP ≤ 4 MB, re-encoded by sharp to WebP under `public/uploads/products/<productId>/`, alt text, kind, order, delete), price history table per variant, back-in-stock subscribers per product with counts by status and a "Pošlji obvestilo" button that re-arms confirmed, un-notified rows when stock > 0 and flushes the queue.
+- Sold-out behaviour: `HIDE` removes a product whose variants are all at zero stock from catalog, search and sitemap while the PDP still answers (noindex); `NOTIFY` keeps the current sold-out card and capture. Backorder: a variant flagged `allowBackorder` stays purchasable at zero stock; `deductOrderInventory` permits a negative balance for such variants only; the PDP and cart show the backorder note instead of the sold-out state.
+- `/admin/kolekcije`: CRUD, banner uploads (desktop and mobile), hide-banner-text, SEO, noindex, product list with move up/down (positions rewritten in one transaction). `/admin/paketi`: builder over a bundle product: components with quantities, bundle price (through the price-history helper on the bundle variant), active flag, computed "vrednost / prihranite" line checked against Omnibus.
+- Product creation: new products start as DRAFT with one variant; slug uniqueness and SKU uniqueness validated; deletion is archiving (orders reference variants).
+
+Acceptance list (step 3): unit — product/variant/collection schemas, media path and MIME guards, sold-out visibility rules, backorder deduction rule, direct action-call refusals (Support blocked, Manager allowed). Browser — create a product with a variant and an image → visible on `/trgovina` and its PDP with the image; price change → `PriceHistory` row and the Omnibus line on the discounted PDP; stock 0 → 3 from the editor → restock alert in Mailpit; collection reorder → tab order; bundle price change → savings line; `HIDE` behaviour and backorder purchase path. Record: `docs/testing/phase-7-step-3-<date>.md`.
+
+## Step 4 design — coupons and reviews (§14.4, §14.9)
+
+- `/admin/kuponi` list and form: code (normalised by `kodaCodeSchema`), type (PERCENT, FIXED, FIXED_PRODUCT, FREE_SHIPPING; BXGY listed as disabled P2), percent 1–100 or amount, usage limits, dates, minimum spend, eligibility (products, collections, e-mails), exclusions, active; stacking stays off and the form shows the usage-at-creation note from `lib/copy/promo`. Link generator: absolute `/koda/{CODE}` URL with a copy button and a QR SVG at `/admin/kuponi/[id]/qr.svg` (the `qrcode` package). Redemptions list per coupon.
+- Reviews: `/admin/ocene` joins the shell with filters (status, product, rating, with photo), verified-purchase linkage shown, request-timing settings kept; permission `reviews:moderate`. The Phase 5 data attributes stay so `reviews.spec.ts` keeps passing.
+
+Acceptance list (step 4): unit — coupon form schema (percent range, date order, amount by type), QR route guard; browser — create a coupon in the admin → `/koda/{CODE}` applies it in the cart and the order snapshot carries it; QR endpoint returns `image/svg+xml`; Support blocked from `/admin/kuponi`; `reviews.spec.ts` unchanged and green. Record: `docs/testing/phase-7-step-4-<date>.md`.
+
+## Step 5 design — CMS (§14.10, §14.11)
+
+Data (migration 20): `ContentTemplate` loses `HELP` (rows converted to `DEFAULT` first; backlog B3); `EmailTemplate { key @id, subject, bodyHtml, updatedAt }`; Settings `home.sections` (ordered list of `{ id, visible }` for hero, rail, bundleBanner, routineBanner), `home.bundleBanner`, `home.routineBanner` (copy moved from `lib/copy/home.ts` defaults into data with the copy as fallback), `marquee.active`.
+
+- `/admin/vsebina/domov`: section order (move up/down) and visibility; hero form (kicker, title, subtitle, CTA, video desktop/mobile, poster from the media library, overlay text and link); bundle banner and routine banner fields.
+- `/admin/strani`: pages CRUD with template picker (DEFAULT, LEGAL, CONTACT, LANDING), HTML body with a server-rendered preview, SEO fields, published and reviewed flags; slugs that belong to static routes are refused.
+- `/admin/navigacija`: per handle a structured editor (label, href, colour, children, featured product slugs for the mega-menu) validated by a `MenuItem` zod schema; the footer columns and the mobile drawer reuse it.
+- `/admin/vsebina/oglasna-vrstica` (marquee text, link, active) and `/admin/vsebina/popup` (the `welcomePopup` schema).
+- `/admin/mediji`: global media library under `public/uploads/media/` (upload, alt text, delete when unreferenced), used by hero poster and collection banners.
+- `/admin/e-posta`: template list for the P1 keys (order confirmation, payment failed, processing, shipped, delivered, cancelled, refunded, withdrawal received, review request, back-in-stock alert, password reset, e-mail verification, welcome with code); each editable as subject and body with `{{placeholders}}`; preview with sample data; test-send to an address. The mailer renders an override through `lib/email/templates/render.ts` (escaped placeholder substitution inside the shared layout) when one exists and the code template otherwise.
+
+Acceptance list (step 5): unit — placeholder rendering and escaping, unknown placeholder rejection, menu and section schemas, static-slug refusal; browser — hero swap live on `/` without a deploy, marquee text change live, menu edit changes the header link, page create → renders at its slug with the chosen template, e-mail template edit → test-send arrives in Mailpit and a subsequent order confirmation uses the override. Record: `docs/testing/phase-7-step-5-<date>.md`.
+
+## Step 6 design — settings (§14.12, §14.13, §14.14, support)
+
+Data (migration 21, data only): new Setting rows inserted only if missing: `shipping.zones`, `invoice.footer`, `analytics.ga4Id`, `analytics.metaPixelId`, `analytics.tiktokPixelId`, `seo.defaults`, `consent.cookies`, `consent.version`, `store.profile`, `legal.links`.
+
+- `/admin/nastavitve/dostava`: zones (SI default; EU countries with enabled flags), methods (id, carrier, label, price, estimate, countries) validated by `shippingMethodSchema`, free-shipping threshold, tracking URL templates per carrier (https and `{number}` required, the `lib/tracking.ts` rules).
+- `/admin/nastavitve/davki-racuni`: VAT rate, company block (`CompanySetting`), invoice footer text, the numbering sequence shown read-only, payment providers shown as configured/not configured from the environment with the wallet and Klarna toggles as non-secret Settings. Provider secrets are never stored in the database (AGENTS §6): the screen documents the env variables instead. This is a deliberate narrowing of §14.13 "keys" and is recorded as a deviation.
+- `/admin/nastavitve/trzenje`: GTM, GA4, Meta and TikTok IDs (each mapped to its consent category; only GTM fires at P1, the others are stored for Phase 8), SEO defaults (title template, description, OG image, robots), consent configuration (cookie table entries with category, banner copy overrides, version bump), store profile (name, logo, contact e-mails, social links, language toggle placeholder, maintenance mode and password), legal-page link mapping consumed by footer, checkout and CMP.
+- `/admin/nastavitve/podpora`: `contactSettingsSchema` form.
+- `lib/settings-schemas.ts` collects every schema; the storefront readers switch to it where they still parse ad hoc.
+
+Acceptance list (step 6): unit — every schema (valid, invalid, boundary), direct action-call refusals for non-owners; browser — threshold change propagates to the cart bar, tracking template change changes the account and `/sledi` links, company change appears on a fresh invoice PDF, maintenance toggle gates the storefront, support e-mail change routes the next ticket. Record: `docs/testing/phase-7-step-6-<date>.md`.
+
+## Step 7 scope — regression, review-boss, §14 checklist
+
+Full `lint`, `test`, `test:e2e`; fresh-database `migrate deploy` (21 migrations) and seed ×2; `docker compose build` and run smoke; desktop 1440 / tablet 768 and 991 / mobile 390 review of every admin screen; keyboard walk of the main forms; review-boss pass per GENERAL_PLAN §2 rule 3 with a §14 built-features checklist (each §14 bullet marked built / P2 deferred / deviation); AGENTS.md §3 (admin routes, `lib/admin`), §4 (new models), §8 (permission convention); status ledger; `phase-7-step-7-<date>.md`.
+
+## Placeholders and external inputs
+
+- Analytics-derived KPIs (sessions, conversion) have no source at P1 and render as placeholders until Phase 8 measurement.
+- PSP secrets stay in the host environment; the admin shows configuration status only (step 6 deviation).
+- Real mailboxes, company data, carrier accounts and legal texts remain gates G2, G4, D6 and D4.
+- The `qrcode` package (SVG rendering for TOTP enrolment and coupon QR links) is the only new dependency.

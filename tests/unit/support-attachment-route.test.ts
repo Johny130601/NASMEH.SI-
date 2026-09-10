@@ -12,7 +12,7 @@ const get = (id = "attachment-1") => GET(new Request("https://example.test/api/s
 beforeEach(() => { vi.clearAllMocks(); mocks.auth.mockResolvedValue({ user: { id: "reporter", role: "CUSTOMER" } }); mocks.find.mockResolvedValue(attachment()); mocks.read.mockResolvedValue(Buffer.from("webp")); });
 
 describe("private support attachment access", () => {
-  it.each([{ id: "reporter", role: "CUSTOMER" }, { id: "staff", role: "ADMIN" }])("allows the reporting account or admin and serves generated WebP inline", async user => {
+  it.each([{ id: "reporter", role: "CUSTOMER" }, { id: "staff", role: "OWNER" }])("allows the reporting account or admin and serves generated WebP inline", async user => {
     mocks.auth.mockResolvedValue({ user });
     const response = await get(); expect(response.status).toBe(200); expect(await response.text()).toBe("webp");
     expect(response.headers.get("content-type")).toBe("image/webp"); expect(response.headers.get("content-disposition")).toBe(`inline; filename="${filename}"`);
@@ -33,7 +33,7 @@ describe("private support attachment access", () => {
   it("makes guest-reported attachments staff-only, without inferring ownership from account email", async () => {
     mocks.find.mockResolvedValue({ ...attachment(), ticket: { userId: null, reference: "SUP-guest" } });
     expect((await get()).status).toBe(404); expect(mocks.read).not.toHaveBeenCalled();
-    mocks.auth.mockResolvedValue({ user: { id: "staff", role: "ADMIN" } }); expect((await get()).status).toBe(200);
+    mocks.auth.mockResolvedValue({ user: { id: "staff", role: "OWNER" } }); expect((await get()).status).toBe(200);
   });
   it.each(["../.env", "id/other", "bad_name", "x".repeat(129), ""])("rejects malformed IDs before authentication or lookup", async id => {
     expect((await get(id)).status).toBe(404); expect(mocks.auth).not.toHaveBeenCalled(); expect(mocks.find).not.toHaveBeenCalled(); expect(mocks.read).not.toHaveBeenCalled();

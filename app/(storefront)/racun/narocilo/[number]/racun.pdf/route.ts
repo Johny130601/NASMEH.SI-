@@ -1,3 +1,4 @@
+import { isStaffRole } from "@/lib/admin/permissions";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -21,7 +22,7 @@ export async function GET(
     include: { items: true },
   });
   if (!order) notFound();
-  if (order.userId !== session.user.id && session.user.role !== "ADMIN") {
+  if (order.userId !== session.user.id && !isStaffRole(session.user.role)) {
     notFound();
   }
   if (!hasIssuedInvoice(order)) notFound();

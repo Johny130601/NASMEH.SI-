@@ -1,3 +1,4 @@
+import { isStaffRole } from "@/lib/admin/permissions";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -24,7 +25,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ fil
   if (!review) return new Response(null, { status: 404, headers: noCache });
   if (review.status !== "PUBLISHED") {
     const user = (await auth())?.user;
-    if (!user || (user.role !== "ADMIN" && user.id !== (review.orderItem?.order.userId ?? review.userId))) {
+    if (!user || (!isStaffRole(user.role) && user.id !== (review.orderItem?.order.userId ?? review.userId))) {
       return new Response(null, { status: 404, headers: noCache });
     }
   }

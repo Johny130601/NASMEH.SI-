@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { expect, test, type Page } from "@playwright/test";
-import { MAILPIT_URL, prisma } from "./helpers";
+import { enrolledTotpFields, loginStaff, MAILPIT_URL, prisma } from "./helpers";
 
 test.use({ trace: "retain-on-failure" });
 
@@ -121,12 +121,13 @@ test("confirmation permits its signed-in owner and admin, but denies another cus
   const order = await guestOrder();
   const password = "Acceptance123!";
   const key = randomUUID();
+  const staffTotp = enrolledTotpFields();
   const users = await Promise.all(([
     { tag: "owner", role: "CUSTOMER" },
     { tag: "other", role: "CUSTOMER" },
-    { tag: "admin", role: "ADMIN" },
+    { tag: "admin", role: "OWNER" },
   ] as const).map(async ({ tag, role }) => prisma.user.create({
-    data: { email: `p3-${tag}-${key}@test.si`, role, passwordHash: await bcrypt.hash(password, 10), emailVerified: new Date() },
+    data: { email: `p3-${tag}-${key}@test.si`, role, passwordHash: await bcrypt.hash(password, 10), emailVerified: new Date(), ...(role === "OWNER" ? staffTotp.data : {}) },
   })));
   await prisma.order.update({ where: { id: order.id }, data: { userId: users[0].id } });
   try {
@@ -134,13 +135,18 @@ test("confirmation permits its signed-in owner and admin, but denies another cus
       const context = await browser.newContext({ baseURL: "http://127.0.0.1:4317" });
       try {
         const page = await context.newPage();
-        await page.goto("/prijava");
-        await dismissCmp(page);
-        const form = page.locator("[data-login-form]");
-        await form.getByLabel("E-pošta").fill(user.email);
-        await form.getByLabel("Geslo", { exact: true }).fill(password);
-        await form.getByRole("button", { name: "Prijava", exact: true }).click();
-        await page.waitForURL(/\/racun/);
+        if (user.role === "OWNER") {
+          // Staff sign in through the mandatory second factor and land in the admin.
+          await loginStaff(page, user.email, password, staffTotp.secret);
+        } else {
+          await page.goto("/prijava");
+          await dismissCmp(page);
+          const form = page.locator("[data-login-form]");
+          await form.getByLabel("E-pošta").fill(user.email);
+          await form.getByLabel("Geslo", { exact: true }).fill(password);
+          await form.getByRole("button", { name: "Prijava", exact: true }).click();
+          await page.waitForURL(/\/racun/);
+        }
         const response = await context.request.get(`/potrditev/${order.number}`);
         expect((await response.text()).includes(order.items[0].title)).toBe(index !== 1);
       } finally {

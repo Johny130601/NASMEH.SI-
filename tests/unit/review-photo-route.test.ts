@@ -24,7 +24,7 @@ describe("moderation-aware runtime photo serving", () => {
     mocks.auth.mockResolvedValue({ user: { id: "other", role: "CUSTOMER" } });
     expect((await get()).status).toBe(404); expect(mocks.read).not.toHaveBeenCalled();
   });
-  it.each([{ id: "admin", role: "ADMIN" }, { id: "owner", role: "CUSTOMER" }])("allows owner or moderator to inspect pending images", async (user) => {
+  it.each([{ id: "admin", role: "OWNER" }, { id: "owner", role: "CUSTOMER" }])("allows owner or moderator to inspect pending images", async (user) => {
     mocks.find.mockResolvedValue({ status: "PENDING", userId: null, orderItem: { order: { userId: "owner" } } }); mocks.auth.mockResolvedValue({ user });
     expect((await get()).status).toBe(200);
   });

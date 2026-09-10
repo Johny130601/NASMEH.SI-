@@ -49,7 +49,7 @@ describe("verified review submission", () => {
     const token = signRatingToken({ orderItemId: "item-1", rating: 5 }, "review-unit-secret");
     expect((await submitReviewAction(form({ token }))).ok).toBe(true);
   });
-  it.each(["CUSTOMER", "ADMIN"])("denies a non-owning %s even with a token for a different item", async (role) => {
+  it.each(["CUSTOMER", "OWNER"])("denies a non-owning %s even with a token for a different item", async (role) => {
     mocks.auth.mockResolvedValue({ user: { id: "other", role } });
     const token = signRatingToken({ orderItemId: "other-item", rating: 5 }, "review-unit-secret");
     expect((await submitReviewAction(form({ token, photo: true }))).ok).toBe(false);

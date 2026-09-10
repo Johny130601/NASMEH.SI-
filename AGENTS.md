@@ -23,7 +23,7 @@ Hard rules (from the master spec, §15):
 | Language | TypeScript (strict) | Single language across storefront, admin, API, tests. |
 | Database | **PostgreSQL 16** | Relational order/pricing data, JSONB for HiSmile-style custom fields (metafields are their #1 content pattern, 07 §9.4). |
 | ORM | **Prisma** (schema-first) | Migrations via `prisma migrate deploy` at container start; type-safe queries in Server Components/Actions. |
-| Auth | **Auth.js v5** | Credentials provider (email + password, bcrypt) for **both** customers and admins, one `User` model with `role: CUSTOMER \| ADMIN`. OAuth (Google/Facebook) is phase 2 — the login UI is laid out social-first per the HiSmile pattern (05 §3.1), so OAuth slots in without redesign. |
+| Auth | **Auth.js v5** | Credentials provider (email + password, bcrypt) for **both** customers and staff, one `User` model with `role: CUSTOMER \| OWNER \| MANAGER \| SUPPORT \| FULFILLMENT`. Staff sign in with a mandatory TOTP second factor (`/prijava/2fa`) and hold 12-hour sessions. OAuth (Google/Facebook) is phase 2 — the login UI is laid out social-first per the HiSmile pattern (05 §3.1), so OAuth slots in without redesign. |
 | Styling | **Tailwind CSS v4** + CSS custom properties | Tokens lifted from research 06 §19: RGB-triplet custom properties consumed as `rgb(var(--token))`, iOS-gray neutral ramp, ONE hero brand color, pill buttons (`3rem` radius), 20px gutter (`--padding: 1.25rem`), mobile-first breakpoints **768 / 991**. |
 | Payments | **Stripe** (cards w/ SCA+3DS2, Apple Pay, Google Pay, Klarna) + **PayPal** | Covers the spec's SI/EU payment matrix (§8.3). Webhooks — not client redirects — drive order status transitions. |
 | Email | **Nodemailer over SMTP**, MJML/React-email templates | Transactional mail (order confirmation, shipped, password reset, …) at P1. ESP integration (Klaviyo/Brevo-class) deliberately deferred. |
@@ -38,7 +38,7 @@ Hard rules (from the master spec, §15):
 /
 ├── app/                    # Next.js App Router — ALL routes for all three surfaces
 │   ├── (storefront)/       # public storefront: /, /trgovina, /izdelek/[slug], /cart, /checkout, /racun, /kontakt, /sledi, /odstop-od-pogodbe, /reklamacije, /prijava-nezelenega-ucinka, token routes (/potrdi*, /odjava-zaloga) …
-│   ├── admin/              # admin dashboard (/admin/...) — role-gated (ADMIN)
+│   ├── admin/              # admin dashboard (/admin/...) — staff roles; (shell) group = 2FA gate + sidebar, 2fa/ = enrolment
 │   └── api/                # Route Handlers: /api/webhooks/stripe, /api/webhooks/paypal, public JSON endpoints
 ├── components/
 │   ├── storefront/         # Ui* primitives (button, pill, card, marquee, modal…), sections, product card
@@ -56,6 +56,7 @@ Hard rules (from the master spec, §15):
 │   ├── support/            # tickets, topic routing, private attachments, ticket-mail delivery
 │   ├── back-in-stock/      # signed one-click unsubscribe tokens
 │   ├── auth.ts             # Auth.js config
+│   ├── admin/              # permission matrix, access gate (requirePermission), TOTP, pre-auth, dashboard queries
 │   └── copy/               # Slovenian UI copy files (see §7)
 ├── prisma/
 │   ├── schema.prisma
@@ -73,7 +74,7 @@ Hard rules (from the master spec, §15):
 └── AGENTS.md               # this file
 ```
 
-Route ownership: storefront lives at the root, the entire admin is under `/admin/*` and gated by Auth.js session + `role = ADMIN` middleware, machine-to-machine traffic under `/api/*`.
+Route ownership: storefront lives at the root, the entire admin is under `/admin/*` and gated by the Auth.js middleware (staff roles) plus `requirePermission` on every page and action, machine-to-machine traffic under `/api/*`.
 
 ## 4. Data model overview (core Prisma models)
 
@@ -81,7 +82,7 @@ Schema-first in `prisma/schema.prisma`; evolve only via migrations.
 
 | Model | Purpose |
 |---|---|
-| **User** | Customers and admins in one table, distinguished by `role (CUSTOMER \| ADMIN)`; credentials auth (bcrypt hash) at P1, OAuth accounts linked later. Holds marketing-consent status/history (GDPR). |
+| **User** | Customers and staff in one table, distinguished by `role (CUSTOMER \| OWNER \| MANAGER \| SUPPORT \| FULFILLMENT)`; credentials auth (bcrypt hash) at P1, OAuth accounts linked later; staff carry the encrypted TOTP secret, recovery-code hashes and the replay guard. Holds marketing-consent status/history (GDPR). |
 | **Product** | A sellable/catalog entity: title, slug, status (draft/active/archived), rich description, PDP content fields (accordions, FAQ, education sections), badges/USP chips, SEO fields, JSON `customFields` (the HiSmile metafield pattern), visibility flags (catalog/search/**hidden deal-SKU**). |
 | **Variant** | A purchasable SKU of a product: SKU code, price, compareAtPrice, cost, barcode, weight, stock, `maxCartQuantity` (default 5; bundles/gifts 1). Every price change appends a **PriceHistory** row (see §5). |
 | **Collection** | Manual (drag-sorted) or rules-based product groupings with banner images, SEO fields, noindex toggle. Powers `/trgovina` tabs and merchandising. |
@@ -113,6 +114,7 @@ Supporting tables not listed: `PriceHistory`, `ConsentLog`, email/template table
 9. **Transactional email only at P1.** SMTP + MJML/React-email covers order/shipping/auth emails. ESP marketing flows (welcome series, abandoned cart) are deliberately deferred; the data model (consent, customer) is built so the ESP plugs in later.
 10. **Delivery information in checkout.** Per the user's 2026-09-09 scope correction, delivery methods, prices, estimates and destination eligibility are handled in checkout using shipping settings. Do not build a separate `/dostava` page. Existing cart/PDP shipping summaries and the separately planned public order-tracking page remain in scope.
 11. **Shopping-focused navigation and page scope.** Per the user's 2026-09-09 screenshot direction, use promotion/account rows, a shop mega-menu with product links and two Nasmeh featured cards, and a highlighted bundles link. Remove Help Centre, About Us and Explore pages/links; keep contact, tracking and legal links in the footer, plus the account and existing support/ticket flows. Preserve product copy, PDP FAQs and Nasmeh's own teal tokens; the screenshot is a layout reference, not permission to copy branding or assets. Legacy URLs redirect: `/pomoc` → `/kontakt`, `/o-nas` and `/razisli` → `/`, `/dostava` → `/checkout`, `/paketi` → `/trgovina?kolekcija=paketi`. Phase 6 step 2 delivered this simplification (2026-09-09).
+12. **Sessions are issued at sign-in only.** The Auth.js middleware response never carries `Set-Cookie` (`middleware.ts` strips it): its sliding refresh raced sign-out, because link prefetches still in flight answered with a fresh session cookie after the sign-out had cleared it (Phase 7 step 1 finding). JWTs are validated against the database on every request (`sessionVersion`, role, 2FA state) and expire at their `maxAge`: 30 days for customers, 12 hours for staff.
 
 ### Design-token decision (TBD — with recommendation)
 
@@ -196,7 +198,7 @@ Workflow rules:
 4. **Promo engine purity.** `lib/promo` takes plain typed inputs and returns a priced cart; no DB, no fetch, no clock (pass `now` in). Deterministic and fully unit-tested.
 5. **Slovenian copy lives in copy files.** No hardcoded Slovenian strings inside components. UI text is imported from `lib/copy/` (keyed modules per surface) so the English `[P2]` version is an added file, not a refactor.
 6. **Design tokens, not hex codes.** Components consume `rgb(var(--token))` / Tailwind token utilities. Never introduce ad-hoc colors outside a namespaced palette (research 06 §2.4 rule); radii are `--radius-btn: 3rem` / `--radius-card: .5rem` / `--radius-input: .25rem`.
-7. **Auth checks server-side, always.** Hiding an admin link in UI is not security. Every `/admin` layout, Server Action, and Route Handler re-checks the session role.
+7. **Auth checks server-side, always.** Hiding an admin link in UI is not security. Every `/admin` page and Server Action calls `requirePermission(<permission>)` from `lib/admin/access.ts` (staff role, completed 2FA, matrix in `lib/admin/permissions.ts`); Route Handlers that serve private data re-check the session the same way. Each admin step ships a direct action-call unit test that proves every disallowed role is refused.
 8. **Webhooks: verify, then be idempotent.** Verify signatures before parsing; store processed event ids; handlers must be safe to receive twice.
 9. **Price changes go through the price-history path.** Any code that updates `Variant.price` must append `PriceHistory` in the same transaction (use a shared helper, don't hand-roll per call site).
 10. **VAT-inclusive display, always.** Money is stored as integer cents; formatting/VAT breakdown ("vključen DDV 22 %: €X") goes through `lib/pricing` helpers — never format currency inline.

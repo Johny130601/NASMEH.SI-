@@ -107,7 +107,7 @@ describe("paid-order cart cleanup", () => {
     mocks.receipt.mockResolvedValue(null);
     expect(await clearPurchasedCart({ orderNumber: order.number })).toEqual({ ok: false });
     mocks.receipt.mockResolvedValue(receipt);
-    mocks.auth.mockResolvedValue({ user: { id: "different-customer", role: "ADMIN" } });
+    mocks.auth.mockResolvedValue({ user: { id: "different-customer", role: "OWNER" } });
     expect(await clearPurchasedCart({ orderNumber: order.number })).toEqual({ ok: false });
     mocks.auth.mockResolvedValue(null);
     mocks.findOrder.mockResolvedValue({ ...order, status: "PENDING" });

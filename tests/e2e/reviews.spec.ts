@@ -4,7 +4,7 @@ import { unlink } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import bcrypt from "bcryptjs";
-import { prisma, waitForMailMessage } from "./helpers";
+import { enrolledTotpFields, loginStaff, prisma, waitForMailMessage } from "./helpers";
 
 const JOB_HEADERS = { authorization: "Bearer jobs_e2e_secret" };
 const PASSWORD = "ReviewTest123!";
@@ -12,19 +12,14 @@ async function dismissCmp(page: Page) {
   const banner = page.getByRole("dialog", { name: /piškotki/i });
   if (await banner.isVisible().catch(() => false)) await banner.getByRole("button", { name: "Zavrni" }).click();
 }
-async function login(page: Page, email: string) {
-  await page.goto("/prijava"); await dismissCmp(page);
-  await page.getByLabel("E-pošta").fill(email); await page.getByLabel("Geslo", { exact: true }).fill(PASSWORD);
-  await page.getByRole("button", { name: "Prijava", exact: true }).click();
-  await page.waitForURL(/\/(racun|admin)/);
-}
 async function fixture() {
   const id = `review-${randomUUID()}`;
   const product = await prisma.product.create({ data: {
     slug: id, title: `Review acceptance ${id}`, status: "ACTIVE", description: "Isolated review acceptance product",
     variants: { create: { title: "Test variant", sku: id, priceCents: 1999, stock: 10 } },
   }, include: { variants: true } });
-  const admin = await prisma.user.create({ data: { email: `${id}-admin@test.si`, passwordHash: await bcrypt.hash(PASSWORD, 4), name: "Review admin", role: "ADMIN", emailVerified: new Date() } });
+  const totp = enrolledTotpFields();
+  const admin = { ...(await prisma.user.create({ data: { email: `${id}-admin@test.si`, passwordHash: await bcrypt.hash(PASSWORD, 4), name: "Review admin", role: "OWNER", emailVerified: new Date(), ...totp.data } })), secret: totp.secret };
   const order = await prisma.order.create({ data: {
     number: `NS-${id}`, email: `${id}@test.si`, status: "DELIVERED", deliveredAt: new Date(Date.now() - 8 * 86400000), paidAt: new Date(),
     subtotalCents: 1999, totalCents: 1999, vatCents: 360, stockDeducted: true,
@@ -93,7 +88,7 @@ test("request email → signed five-star link → two photos → moderation → 
     expect(await (await request.get(`/izdelek/${f.product.slug}`)).text()).not.toContain(`Photo review ${f.id}`);
     await page.reload(); await expect(page.getByText("Za ta izdelek ste mnenje že oddali.")).toBeVisible();
 
-    await login(adminPage, f.admin.email);
+    await loginStaff(adminPage, f.admin.email, PASSWORD, f.admin.secret);
     await adminPage.goto("/admin/ocene");
     const controls = adminPage.locator("[data-review-settings]");
     await controls.locator('[name="autoPublishMinStars"]').selectOption("4");

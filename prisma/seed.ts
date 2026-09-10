@@ -369,8 +369,8 @@ async function seedAdmin() {
 
   await prisma.user.upsert({
     where: { email },
-    update: { role: "ADMIN", emailVerified: verifiedAt },
-    create: { email, name: "Admin", role: "ADMIN", passwordHash, emailVerified: verifiedAt },
+    update: { role: "OWNER", emailVerified: verifiedAt },
+    create: { email, name: "Admin", role: "OWNER", passwordHash, emailVerified: verifiedAt },
   });
 
   // Demo CUSTOMER (merge-on-login e2e + account flows)

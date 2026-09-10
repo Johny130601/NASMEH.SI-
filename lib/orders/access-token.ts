@@ -1,3 +1,4 @@
+import { isStaffRole } from "@/lib/admin/permissions";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
@@ -67,6 +68,6 @@ export function sessionOwnsOrder(
   order: { userId: string | null },
   session: { user?: { id?: string; role?: string } } | null,
 ): boolean {
-  return session?.user?.role === "ADMIN" ||
+  return isStaffRole(session?.user?.role) ||
     (order.userId !== null && order.userId === session?.user?.id);
 }

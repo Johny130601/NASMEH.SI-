@@ -5,13 +5,13 @@ import { expect, test as base, type Page } from "@playwright/test";
 import { saveAddressForUser, setDefaultAddressForUser, deleteAddressForUser } from "@/lib/account/addresses";
 import { db } from "@/lib/db";
 import { recordInitialPriceInTx } from "@/lib/price-history";
-import { prisma } from "./helpers";
+import { enrolledTotpFields, loginStaff, prisma } from "./helpers";
 
 const password = "AccountAcceptance123!";
 interface AccountFixture {
   owner: { id: string; email: string };
   other: { id: string; email: string };
-  admin: { id: string; email: string };
+  admin: { id: string; email: string; secret: string };
   number: string;
   pendingNumber: string;
   otherNumber: string;
@@ -26,7 +26,8 @@ const test = base.extend<{ accountFixture: AccountFixture }>({
     const fixture = await prisma.$transaction(async tx => {
       const owner = await tx.user.create({ data: { email: `account-${id}@test.si`, name: "Živa Ščuk", passwordHash: hash, emailVerified: new Date() } });
       const other = await tx.user.create({ data: { email: `account-other-${id}@test.si`, name: "Drugi Kupec", passwordHash: hash, emailVerified: new Date() } });
-      const admin = await tx.user.create({ data: { email: `account-admin-${id}@test.si`, name: "Upravitelj", role: "ADMIN", passwordHash: hash, emailVerified: new Date() } });
+      const totp = enrolledTotpFields();
+      const admin = { ...(await tx.user.create({ data: { email: `account-admin-${id}@test.si`, name: "Upravitelj", role: "OWNER", passwordHash: hash, emailVerified: new Date(), ...totp.data } })), secret: totp.secret };
       const product = await tx.product.create({ data: {
         title: "Account fixture", slug: `account-${id}`, status: "ACTIVE", visibleInCatalog: false, visibleInSearch: false,
         variants: { create: [1, 2, 3, 4].map(n => ({ sku: `ACCOUNT-${id}-${n}`, priceCents: n * 1000, stock: 10 })) },
@@ -136,7 +137,7 @@ test("order detail and invoice require the owner or an administrator", async ({ 
   const context = await browser.newContext({ baseURL });
   try {
     const adminPage = await context.newPage();
-    await login(adminPage, fixture.admin.email);
+    await loginStaff(adminPage, fixture.admin.email, password, fixture.admin.secret);
     await adminPage.goto(path);
     await expect(adminPage.locator("[data-order-total]")).toHaveText("93,90 €");
     await expect(adminPage.locator("[data-review-cta]")).toHaveCount(0);

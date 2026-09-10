@@ -1,3 +1,4 @@
+import { isStaffRole } from "@/lib/admin/permissions";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -24,7 +25,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   });
   if (!attachment || !SUPPORT_PHOTO_FILENAME.test(attachment.filename)) return missing();
   const isReporter = Boolean(user.id) && attachment.ticket.userId === user.id;
-  if (user.role !== "ADMIN" && !isReporter) return missing();
+  if (!isStaffRole(user.role) && !isReporter) return missing();
   try {
     const bytes = await readFile(path.join(SUPPORT_UPLOAD_DIR, attachment.filename));
     return new Response(new Uint8Array(bytes), { headers: {

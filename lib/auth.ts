@@ -16,6 +16,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
         turnstileToken: { label: "Verification", type: "text" },
+        preAuthToken: { label: "Pre-auth", type: "text" },
+        totpCode: { label: "Code", type: "text" },
       },
       authorize: authorizeCredentials,
     }),

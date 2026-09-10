@@ -1,3 +1,4 @@
+import { isStaffRole } from "@/lib/admin/permissions";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -34,7 +35,7 @@ export default async function OrderDetailPage({
   });
   if (!order) notFound();
   const isOwner = order.userId === session.user.id;
-  const isAdmin = session.user.role === "ADMIN";
+  const isAdmin = isStaffRole(session.user.role);
   if (!isOwner && !isAdmin) notFound();
 
   const shipping = snapshotAddressLines(order.shippingAddress);

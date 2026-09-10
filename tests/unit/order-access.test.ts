@@ -47,7 +47,7 @@ describe("order purchaser receipt", () => {
   });
   it("allows only the owner or admin session, never another customer or anonymous guest", () => {
     expect(sessionOwnsOrder(order, { user: { id: "owner", role: "CUSTOMER" } })).toBe(true);
-    expect(sessionOwnsOrder(order, { user: { id: "admin", role: "ADMIN" } })).toBe(true);
+    expect(sessionOwnsOrder(order, { user: { id: "admin", role: "OWNER" } })).toBe(true);
     expect(sessionOwnsOrder(order, { user: { id: "other", role: "CUSTOMER" } })).toBe(false);
     expect(sessionOwnsOrder(order, null)).toBe(false);
     expect(sessionOwnsOrder({ userId: null }, { user: { id: "other", role: "CUSTOMER" } })).toBe(false);

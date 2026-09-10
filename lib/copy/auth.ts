@@ -21,6 +21,16 @@ export const auth = {
     verifiedOk: "E-pošta je potrjena — prijavite se.",
     resetOk: "Geslo je posodobljeno — prijavite se.",
     genericError: "Prijava ni uspela. Poskusite znova.",
+    mfaExpired: "Potrditev prijave je potekla. Prijavite se znova.",
+  },
+  mfa: {
+    title: "Potrditvena koda",
+    subtitle: "Vnesite 6-mestno kodo iz aplikacije za preverjanje pristnosti ali eno od rezervnih kod.",
+    codeLabel: "Koda",
+    submit: "Potrdi prijavo",
+    invalid: "Koda ni veljavna ali je bila že uporabljena. Poskusite znova.",
+    recoveryHint: "Nimate dostopa do aplikacije? Vnesite rezervno kodo (oblika abcde-fghjk); vsaka velja enkrat.",
+    backToLogin: "Nazaj na prijavo",
   },
   register: {
     title: "Registracija",

@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import {
   deleteReviewPhotoAction,
   moderateReviewAction,
-} from "@/app/admin/ocene/actions";
+} from "@/app/admin/(shell)/ocene/actions";
 import { reviews as copy } from "@/lib/copy";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { RatingStars } from "@/components/storefront/catalog/RatingStars";

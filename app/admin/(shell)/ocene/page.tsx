@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requirePagePermission } from "@/lib/admin/access";
 import { reviewPhotoPaths } from "@/lib/reviews/photos";
 import { db } from "@/lib/db";
 import { buildMetadata } from "@/lib/seo";
@@ -21,7 +20,7 @@ export const metadata: Metadata = buildMetadata({
 
 /** /admin/ocene — minimal operable moderation queue (§14.9). */
 export default async function AdminReviewsPage({ searchParams }: { searchParams: Promise<{ status?: string | string[] }> }) {
-  if ((await auth())?.user?.role !== "ADMIN") redirect("/prijava");
+  await requirePagePermission("reviews:moderate");
   const query = await searchParams;
   const status = query.status === "PUBLISHED" || query.status === "REJECTED" ? query.status : "PENDING";
   const pending = await db.review.findMany({

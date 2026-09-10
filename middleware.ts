@@ -30,7 +30,15 @@ export default async function middleware(request: NextRequest) {
     url.pathname = "/vzdrzevanje";
     return NextResponse.rewrite(url);
   }
-  return authMiddleware(request as never);
+  const response = (await authMiddleware(request as never)) as unknown as Response | undefined;
+  // Auth.js re-issues the session cookie on every request it inspects
+  // (sliding expiry). A refresh racing a sign-out resurrects the session:
+  // link prefetches still in flight while the user logs out answered with a
+  // fresh cookie after the sign-out had cleared it (Phase 7 step 1 finding).
+  // Sessions are issued at sign-in and validated per request, so the
+  // middleware never sets cookies; a JWT simply expires at its maxAge.
+  response?.headers.delete("set-cookie");
+  return response;
 }
 
 /**

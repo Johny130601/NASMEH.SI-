@@ -1,4 +1,5 @@
 import type { NextAuthConfig } from "next-auth";
+import { isStaffRole } from "@/lib/admin/permissions";
 
 /**
  * Edge-safe auth config (no Prisma/bcrypt imports — middleware bundles this).
@@ -15,7 +16,8 @@ export const authConfig = {
     authorized({ auth, request }) {
       const { pathname } = request.nextUrl;
       if (pathname.startsWith("/admin")) {
-        return auth?.user?.role === "ADMIN";
+        // Staff only; the admin layouts re-check the role and the 2FA state.
+        return isStaffRole(auth?.user?.role);
       }
       if (pathname.startsWith("/racun")) {
         return !!auth?.user;
@@ -36,6 +38,7 @@ export const authConfig = {
       if (token.sub) {
         session.user.id = token.sub;
       }
+      session.user.mfaEnrolled = token.mfaEnrolled === true;
       return session;
     },
   },

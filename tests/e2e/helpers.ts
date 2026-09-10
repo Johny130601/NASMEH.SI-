@@ -1,4 +1,7 @@
 import { createHmac } from "node:crypto";
+import type { Page } from "@playwright/test";
+import { encryptSecret } from "@/lib/admin/secrets";
+import { base32Decode, generateTotpSecret, hotp, TOTP_STEP_SECONDS } from "@/lib/admin/totp";
 import { PrismaClient } from "@prisma/client";
 
 /** Shared e2e helpers: direct DB access for state assertions/mutations. */
@@ -99,3 +102,60 @@ export const WEBHOOK_SECRETS = {
   stripe: "whsec_e2e_stripe",
   paypal: "whsec_e2e_paypal",
 } as const;
+
+// ---------- Phase 7: staff fixtures and the two-step staff login ----------
+
+/** Mirrors playwright.config.ts / e2e-env: the server signs with the same secret. */
+export const E2E_AUTH_SECRET =
+  process.env.AUTH_SECRET ?? "e2e-auth-secret-0123456789abcdef0123456789abcdef0123456789abcdef";
+
+/** User fields for a staff fixture that has already completed TOTP enrolment. */
+export function enrolledTotpFields(secret = generateTotpSecret()) {
+  return {
+    secret,
+    data: { totpSecret: encryptSecret(secret, E2E_AUTH_SECRET), totpEnabledAt: new Date(), totpLastStep: null },
+  };
+}
+
+const usedTotpSteps = new Map<string, number>();
+
+/**
+ * A code the server will accept now: the current step, or the next one when
+ * the current step was already used by this test run (replay guard), waiting
+ * for the clock when even that would fall outside the ±1 window.
+ */
+export async function freshTotpCode(secret: string): Promise<string> {
+  const stepMs = TOTP_STEP_SECONDS * 1000;
+  let step = Math.floor(Date.now() / stepMs);
+  const last = usedTotpSteps.get(secret) ?? -1;
+  if (last >= step) {
+    step = last + 1;
+    const earliest = (step - 1) * stepMs; // step-1 makes `step` the +1 window entry
+    if (Date.now() < earliest) await new Promise((resolve) => setTimeout(resolve, earliest - Date.now() + 50));
+  }
+  usedTotpSteps.set(secret, step);
+  return hotp(base32Decode(secret), step);
+}
+
+export async function dismissCookieBanner(page: Page) {
+  const banner = page.getByRole("dialog", { name: /piškotki/i });
+  if (await banner.isVisible().catch(() => false)) {
+    await banner.getByRole("button", { name: "Zavrni", exact: true }).click();
+    await banner.waitFor({ state: "hidden" });
+  }
+}
+
+/** Password step, then the mandatory TOTP step; resolves inside /admin. */
+export async function loginStaff(page: Page, email: string, password: string, secret: string) {
+  await page.goto("/prijava");
+  await dismissCookieBanner(page);
+  const form = page.locator("[data-login-form]");
+  await form.getByLabel("E-pošta").fill(email);
+  await form.getByLabel("Geslo", { exact: true }).fill(password);
+  await form.getByRole("button", { name: "Prijava", exact: true }).click();
+  await page.waitForURL(/\/prijava\/2fa/);
+  const mfa = page.locator("[data-mfa-form]");
+  await mfa.getByLabel("Koda").fill(await freshTotpCode(secret));
+  await mfa.getByRole("button", { name: "Potrdi prijavo" }).click();
+  await page.waitForURL(/\/admin/);
+}

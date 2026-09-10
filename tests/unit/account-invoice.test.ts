@@ -21,7 +21,7 @@ beforeEach(() => {
 
 describe("account invoice access", () => {
   it.each(["owner", "admin"])("allows the %s to download an issued invoice privately", async role => {
-    if (role === "admin") mocks.auth.mockResolvedValue({ user: { id: "operator", role: "ADMIN" } });
+    if (role === "admin") mocks.auth.mockResolvedValue({ user: { id: "operator", role: "OWNER" } });
     const response = await download();
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/pdf");

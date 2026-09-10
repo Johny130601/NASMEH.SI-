@@ -2,15 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
+import { requirePermission } from "@/lib/admin/access";
 import { db } from "@/lib/db";
 import { reviewPhotoPaths } from "@/lib/reviews/photos";
 import { removeReviewPhotos } from "@/lib/reviews/photo-storage";
 import { reviewSettingsSchema, type ReviewSettings } from "@/lib/reviews/settings";
 
+/** Every moderation mutation re-checks the session and the reviews permission. */
 async function requireAdmin() {
-  const session = await auth();
-  if (session?.user?.role !== "ADMIN") throw new Error("forbidden");
+  await requirePermission("reviews:moderate");
 }
 
 function refreshReviews(slug: string) {
