@@ -5,6 +5,7 @@ import { configuredCarriers, getShippingMethods, normalizeTrackingNumber } from 
 import { deliverOrderConfirmation } from "./confirmation-delivery";
 import { deductOrderInventory } from "./inventory";
 import { deliverOrderShipped } from "./shipped-delivery";
+import { notifyOrderStatus } from "./status-mail";
 
 interface TimelineEvent { at: string; event: string; detail?: string }
 
@@ -47,7 +48,7 @@ async function lockPaymentOrder(tx: Prisma.TransactionClient, provider: string, 
   return order;
 }
 
-function timelinePush(order: Order, event: string, detail?: string): Prisma.InputJsonValue {
+export function timelinePush(order: Order, event: string, detail?: string): Prisma.InputJsonValue {
   const timeline = Array.isArray(order.timeline) ? order.timeline as unknown as TimelineEvent[] : [];
   return [...timeline, { at: new Date().toISOString(), event, ...(detail ? { detail } : {}) }] as unknown as Prisma.InputJsonValue;
 }
@@ -273,7 +274,7 @@ export async function markOrderShipped(orderId: string, input: ShipmentInput): P
 
 /** SHIPPED → DELIVERED. The database trigger stamps `deliveredAt` once. */
 export async function markOrderDelivered(orderId: string, input: { actor: string }): Promise<FulfillmentResult> {
-  return db.$transaction(async (tx): Promise<FulfillmentResult> => {
+  const result = await db.$transaction(async (tx): Promise<FulfillmentResult> => {
     const order = await lockOrderById(tx, orderId);
     if (!order) return { ok: false, reason: "not_found" };
     if (order.status !== "SHIPPED") return { ok: false, reason: "invalid_transition" };
@@ -283,6 +284,28 @@ export async function markOrderDelivered(orderId: string, input: { actor: string
     });
     return { ok: true, orderNumber: order.number, status: "DELIVERED" };
   }, FULFILLMENT_TX);
+  if (result.ok) await notifyOrderStatus(orderId, "delivered");
+  return result;
+}
+
+export type ProcessingResult =
+  | { ok: true; orderNumber: string; status: "PROCESSING" }
+  | { ok: false; reason: "not_found" | "invalid_transition" };
+
+/** PAID → PROCESSING (§14.7): the operator has started fulfilment; best-effort mail. */
+export async function markOrderProcessing(orderId: string, input: { actor: string }): Promise<ProcessingResult> {
+  const result = await db.$transaction(async (tx): Promise<ProcessingResult> => {
+    const order = await lockOrderById(tx, orderId);
+    if (!order) return { ok: false, reason: "not_found" };
+    if (order.status !== "PAID" || order.refundRequired) return { ok: false, reason: "invalid_transition" };
+    await tx.order.update({
+      where: { id: order.id },
+      data: { status: "PROCESSING", timeline: timelinePush(order, "processing", input.actor) },
+    });
+    return { ok: true, orderNumber: order.number, status: "PROCESSING" };
+  }, FULFILLMENT_TX);
+  if (result.ok) await notifyOrderStatus(orderId, "processing");
+  return result;
 }
 
 /** Partial refunds preserve fulfillment; only a full refund becomes REFUNDED. */

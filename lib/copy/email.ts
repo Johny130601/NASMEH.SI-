@@ -53,6 +53,31 @@ export const email = {
     cta: "Sledi naročilu",
     footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
   },
+  orderStatus: {
+    processing: {
+      subjectPrefix: "Naročilo je v obdelavi",
+      heading: "Vaše naročilo pripravljamo",
+      body: "Začeli smo s pripravo vašega naročila. Ob odpremi prejmete sporočilo s številko sledenja. Številka naročila:",
+    },
+    delivered: {
+      subjectPrefix: "Naročilo je dostavljeno",
+      heading: "Vaše naročilo je dostavljeno",
+      body: "Prevoznik je označil pošiljko kot dostavljeno. Upamo, da boste z izdelki zadovoljni. Številka naročila:",
+    },
+    cancelled: {
+      subjectPrefix: "Naročilo je preklicano",
+      heading: "Vaše naročilo je preklicano",
+      body: "Naročilo smo preklicali. Če je bilo plačano, znesek vrnemo na isto plačilno sredstvo v nekaj delovnih dneh. Številka naročila:",
+    },
+    refunded: {
+      subjectPrefix: "Vračilo denarja",
+      heading: "Vračilo denarja je izvedeno",
+      body: "Vračilo smo predali ponudniku plačil; znesek bo vrnjen na isto plačilno sredstvo v nekaj delovnih dneh. Številka naročila:",
+    },
+    refundedAmountLabel: "Vrnjeni znesek",
+    cta: "Poglej naročilo",
+    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+  },
   verifyAccount: {
     subject: "Potrdite svoj račun — Nasmeh.si",
     heading: "Dobrodošli na Nasmeh.si!",

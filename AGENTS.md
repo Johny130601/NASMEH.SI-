@@ -99,7 +99,7 @@ Schema-first in `prisma/schema.prisma`; evolve only via migrations.
 | **Ticket** | Durable support request with a receipt reference, topic/reason, reporter, checked order context and privacy acknowledgment; private attachments and independent retryable staff/customer email-delivery rows. |
 | **Menu** | Navigation builder: header (incl. mega-menu featured cards + colored sale link), utility bar, footer columns, mobile drawer. |
 
-Supporting tables not listed: `PriceHistory`, `ConsentLog`, email/template tables, sessions — add them as the spec demands, with migrations.
+Supporting tables not listed: `PriceHistory`, `ConsentLog`, `OrderNote` (internal and customer-visible notes), `Refund` (one row per operator refund; the row id is the provider idempotency key), email/template tables, sessions — add them as the spec demands, with migrations.
 
 ## 5. Key architectural decisions — and WHY
 
@@ -204,6 +204,7 @@ Workflow rules:
 10. **VAT-inclusive display, always.** Money is stored as integer cents; formatting/VAT breakdown ("vključen DDV 22 %: €X") goes through `lib/pricing` helpers — never format currency inline.
 11. **Accessibility and SSR are features.** Semantic landmarks, descriptive alt text, keyboard-navigable menus/modals, content in initial HTML. We're beating HiSmile on exactly these axes — don't regress them.
 12. **Copy patterns, never assets.** Mechanics from the research dossiers are fair game; HiSmile names, copy lines, imagery, and the pink identity are not.
+14. **Refunds go through `lib/orders/refunds.ts`.** Operator refunds and paid-order cancellations create a `Refund` row first, move the money through the provider abstraction (`PaymentProvider.refund`, keyed by the row id so a retry cannot pay twice), then apply the local state and restock through the stock helper; webhook handlers only reconcile provider-originated refunds (Stripe amounts are cumulative, PayPal refund ids already recorded are skipped). No other code raises `Order.refundedCents`.
 13. **Stock increases go through the stock helper.** Any code that raises `Variant.stock` calls `setVariantStockInTx` / `adjustVariantStockInTx` from `lib/inventory/stock.ts` inside the caller's transaction: the helper locks the row and arms back-in-stock alerts on a 0 → N transition in the same transaction; sending happens post-commit (`lib/inventory/restock.ts`) with the daily job as the retry path. `deductOrderInventory` (paid orders) stays the only decrement path. Seeds and tests use the helper too; a hand-written `stock` update is a bug.
 
 ---

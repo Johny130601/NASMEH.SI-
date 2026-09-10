@@ -80,5 +80,26 @@ export function createPayPalProvider(): PaymentProvider | null {
     async retrieveIntent(intentId) {
       return handleOrder(await paypalRequest(`/v2/checkout/orders/${encodeURIComponent(intentId)}`));
     },
+    /** Refunds the order's capture; the request id makes retries idempotent. */
+    async refund(input) {
+      if (!/^[A-Za-z0-9-]{1,100}$/.test(input.intentId)) throw new Error("Invalid PayPal order ID");
+      const order = captureLookupSchema.parse(await paypalRequest(`/v2/checkout/orders/${encodeURIComponent(input.intentId)}`));
+      const capture = order.purchase_units.flatMap(unit => unit.payments?.captures ?? []).find(candidate => candidate.status === "COMPLETED" || candidate.status === "PARTIALLY_REFUNDED");
+      if (!capture) throw new Error("PayPal capture not found");
+      const refund = refundSchema.parse(await paypalRequest(`/v2/payments/captures/${encodeURIComponent(capture.id)}/refund`, {
+        method: "POST",
+        headers: { "PayPal-Request-Id": createHash("sha256").update(`refund:${input.idempotencyKey}`).digest("hex").slice(0, 32), Prefer: "return=representation" },
+        body: JSON.stringify({ amount: { value: (input.amountCents / 100).toFixed(2), currency_code: input.currency.toUpperCase() } }),
+      }));
+      if (refund.status !== "COMPLETED" && refund.status !== "PENDING") throw new Error(`PayPal refund ${refund.status}`);
+      return { refundId: refund.id };
+    },
   };
 }
+
+const captureLookupSchema = z.object({
+  purchase_units: z.array(z.object({
+    payments: z.object({ captures: z.array(z.object({ id: z.string().min(1), status: z.string() })).default([]) }).optional(),
+  })),
+});
+const refundSchema = z.object({ id: z.string().min(1), status: z.string() });

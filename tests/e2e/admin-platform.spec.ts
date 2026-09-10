@@ -119,7 +119,7 @@ test("roles gate screens server-side; the shell hides what a role cannot open", 
       await expect(page.locator("[data-forbidden-notice]")).toBeVisible();
     }
     await page.goto("/admin/narocila");
-    await expect(page.locator("[data-admin-stub='2']")).toBeVisible();
+    await expect(page.locator("[data-admin-orders]")).toBeVisible();
     await page.goto("/admin/ocene");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await expect(page).toHaveURL(/\/admin\/ocene/);

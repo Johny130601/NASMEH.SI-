@@ -64,6 +64,12 @@ export async function POST(request: Request) {
   if (!orderId || (amount && !Number.isSafeInteger(amountCents)) ||
       (!isTestMode() && needsAmount && !amount)) return NextResponse.json({ error: "invalid_resource" }, { status: 400 });
   const details = amount && amountCents !== undefined ? { amountCents, currency: amount.currency_code } : undefined;
+  if (event.event_type === "PAYMENT.CAPTURE.REFUNDED" && event.resource?.id) {
+    // An operator refund (Phase 7) already applied this money movement locally;
+    // PayPal reports refund amounts per event, not cumulatively, so skip it.
+    const known = await db.refund.findFirst({ where: { providerRefundId: event.resource.id }, select: { id: true } });
+    if (known) return NextResponse.json({ received: true, result: { outcome: "already_processed" } });
+  }
   try {
     const result = event.event_type === "PAYMENT.CAPTURE.COMPLETED"
       ? await markOrderPaid("paypal", event.id, orderId, details)

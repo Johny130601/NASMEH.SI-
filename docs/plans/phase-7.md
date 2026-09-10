@@ -1,14 +1,14 @@
 # Phase 7 — Admin dashboard (WooCommerce parity)
 
-**Date:** 2026-09-10. **Status:** step 1 complete and locally verified ([record](../testing/phase-7-step-1-2026-09-10.md)); step 2 in progress. Source: GENERAL_PLAN.md Phase 7 and NASMEH_FEATURES.md §14. Runs under the user's 2026-09-10 direction: steps execute in order without a stop between checkpoints; every step still ends with an acceptance record (`docs/testing/phase-7-step-N-<date>.md`), a ledger update and a commit.
+**Date:** 2026-09-10. **Status:** steps 1–2 complete and locally verified ([step 1](../testing/phase-7-step-1-2026-09-10.md), [step 2](../testing/phase-7-step-2-2026-09-10.md)); step 3 in progress. Source: GENERAL_PLAN.md Phase 7 and NASMEH_FEATURES.md §14. Runs under the user's 2026-09-10 direction: steps execute in order without a stop between checkpoints; every step still ends with an acceptance record (`docs/testing/phase-7-step-N-<date>.md`), a ledger update and a commit.
 
 ## Checkpoints
 
 The general plan's seven steps, with two spec items it left unassigned placed explicitly: the dashboard home (§14.1) lands with the shell in step 1, customers (§14.8) and the ticket inbox promised in Phase 6 land with orders in step 2.
 
 1. Admin shell, dashboard home, roles and permission matrix, TOTP 2FA, session management — **complete and locally verified** (2026-09-10): [acceptance record](../testing/phase-7-step-1-2026-09-10.md). Findings fixed in the step: the Auth.js middleware no longer re-issues session cookies (logout race), 390 px overflow on two screens.
-2. Orders, fulfilment, refunds, packing slip, notes, resend mail; customers and GDPR; ticket inbox — **in progress**.
-3. Products, variants, media, inventory, bundles, collections, back-in-stock list and manual send — not started.
+2. Orders, fulfilment, refunds, packing slip, notes, resend mail; customers and GDPR; ticket inbox — **complete and locally verified** (2026-09-10): [acceptance record](../testing/phase-7-step-2-2026-09-10.md). Deviations recorded there: refund lines carry a signed adjustment instead of automatic discount proration; provider secrets stay out of the database.
+3. Products, variants, media, inventory, bundles, collections, back-in-stock list and manual send — **in progress**.
 4. Coupons with the `/koda` link and QR generator; full review moderation absorbing `/admin/ocene` — not started.
 5. CMS: homepage editor, pages with template picker, menus, marquee, popup, media library, email template editor with test-send — not started.
 6. Settings: shipping, tracking templates, tax/invoice/payments, marketing/SEO/consent/store, `support.contact` — not started.

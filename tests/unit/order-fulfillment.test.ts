@@ -13,6 +13,7 @@ vi.mock("@/lib/tracking", async (importOriginal) => ({
 }));
 vi.mock("@/lib/orders/shipped-delivery", () => ({ deliverOrderShipped: mocks.deliver }));
 vi.mock("@/lib/orders/confirmation-delivery", () => ({ deliverOrderConfirmation: vi.fn() }));
+vi.mock("@/lib/orders/status-mail", () => ({ notifyOrderStatus: vi.fn().mockResolvedValue(true) }));
 
 import { markOrderDelivered, markOrderShipped } from "@/lib/orders/transitions";
 

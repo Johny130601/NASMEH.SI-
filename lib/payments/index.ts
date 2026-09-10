@@ -22,6 +22,11 @@ export function createTestProvider(): PaymentProvider | null {
     async retrieveIntent(intentId: string): Promise<PaymentIntentHandle> {
       return { provider: "test", intentId, clientSecret: `test_secret_${intentId}` };
     },
+    // Operator refunds and voids succeed locally; the state machine is exercised for real.
+    async refund(input) {
+      return { refundId: `test_refund_${input.idempotencyKey}` };
+    },
+    async voidIntent() {},
   };
 }
 

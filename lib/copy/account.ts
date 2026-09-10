@@ -43,6 +43,7 @@ export const account = {
     invoice: "Prenesi račun (PDF)",
     tracking: "Sledenje pošiljke",
     statusLabel: "Status",
+    notes: "Sporočila trgovine",
   },
   addresses: {
     title: "Moji podatki",

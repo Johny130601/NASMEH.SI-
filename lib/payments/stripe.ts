@@ -35,5 +35,16 @@ export function createStripeProvider(): PaymentProvider | null {
       const intent = await stripe.paymentIntents.retrieve(intentId);
       return { provider: "stripe", intentId: intent.id, clientSecret: intent.client_secret ?? undefined, status: intent.status, amountCents: intent.amount, currency: intent.currency };
     },
+    async refund(input) {
+      const refund = await stripe.refunds.create(
+        { payment_intent: input.intentId, amount: input.amountCents },
+        { idempotencyKey: `nasmeh-refund-${input.idempotencyKey}` },
+      );
+      if (refund.status === "failed" || refund.status === "canceled") throw new Error(`Stripe refund ${refund.status}`);
+      return { refundId: refund.id };
+    },
+    async voidIntent(intentId) {
+      await stripe.paymentIntents.cancel(intentId);
+    },
   };
 }

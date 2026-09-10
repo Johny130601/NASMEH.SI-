@@ -43,7 +43,7 @@ function formatDetail(key: string, value: unknown): string | null {
 }
 
 /** Label/value rows in the copy's order; unknown keys are never rendered. */
-function detailRows(details: unknown): Array<[string, string]> {
+export function ticketDetailRows(details: unknown): Array<[string, string]> {
   const kind = ticketDetailsKind(details);
   if (!kind) return [];
   const record = details as Record<string, unknown>;
@@ -66,7 +66,7 @@ export function renderSupportStaffEmail(ticket: StaffTicket) {
     [copy.staff.name, ticket.name], [copy.staff.email, ticket.email],
     ...(ticket.orderNumber ? [[copy.staff.order, ticket.orderNumber], [copy.staff.orderProof, proof]] : []),
   ];
-  const details = detailRows(ticket.details);
+  const details = ticketDetailRows(ticket.details);
   const photos = ticket.attachments.map((attachment, index) => ({
     label: `${copy.staff.photo} ${index + 1}`,
     url: `${siteUrl()}/api/support/attachments/${encodeURIComponent(attachment.id)}`,

@@ -31,7 +31,11 @@ export default async function OrderDetailPage({
   const { number } = await params;
   const order = await db.order.findUnique({
     where: { number },
-    include: { items: { include: { review: true } } },
+    include: {
+      items: { include: { review: true } },
+      // Only notes an operator marked for the customer (§14.7).
+      notes: { where: { visibleToCustomer: true }, orderBy: { createdAt: "asc" } },
+    },
   });
   if (!order) notFound();
   const isOwner = order.userId === session.user.id;
@@ -165,6 +169,20 @@ export default async function OrderDetailPage({
           </div> : null}
         </section>
       </div>
+
+      {order.notes.length > 0 ? (
+        <section className="mt-6 rounded-card border border-light-2 bg-white p-5" data-order-notes>
+          <h2 className="text-lg">{copy.detail.notes}</h2>
+          <ul className="mt-3 flex flex-col gap-3 text-sm">
+            {order.notes.map((note) => (
+              <li key={note.id} className="border-t border-light-3 pt-3 first:border-t-0 first:pt-0">
+                <p className="text-xs text-mid-2">{note.createdAt.toLocaleDateString("sl-SI")}</p>
+                <p className="mt-1 whitespace-pre-line text-mid-1">{note.body}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
   );
 }

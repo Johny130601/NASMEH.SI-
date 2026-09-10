@@ -11,6 +11,7 @@ import { renderVerifyAccountEmail } from "./templates/verify-account";
 import { renderResetPasswordEmail } from "./templates/reset-password";
 import { renderReviewRequestEmail, type ReviewRequestItem } from "./templates/review-request";
 import { renderOrderShippedEmail } from "./templates/order-shipped";
+import { renderOrderStatusEmail, type OrderStatusMailKind } from "./templates/order-status";
 import { renderBackInStockAlertEmail, type BackInStockAlertDetails } from "./templates/back-in-stock-alert";
 
 let transporter: Transporter | null = null;
@@ -128,6 +129,21 @@ export async function sendOrderShippedEmail(
     subject: `${copy.orderShipped.subjectPrefix} ${order.number} — Nasmeh.si`,
     messageId: `<order-shipped.${order.id}@nasmeh.si>`,
     html: renderOrderShippedEmail(order, { ...details, trackingPageUrl }),
+  });
+}
+
+/** Transition notifications (§14.7): processing, delivered, cancelled, refunded. */
+export async function sendOrderStatusEmail(
+  order: Order,
+  kind: OrderStatusMailKind,
+  details: { amountCents?: number } = {},
+) {
+  const accountUrl = order.userId ? `${siteUrl()}/racun/narocilo/${encodeURIComponent(order.number)}` : `${siteUrl()}/sledi`;
+  return sendMail({
+    to: order.email,
+    subject: `${copy.orderStatus[kind].subjectPrefix} ${order.number} — Nasmeh.si`,
+    messageId: `<order-${kind}.${order.id}.${Date.now()}@nasmeh.si>`,
+    html: renderOrderStatusEmail(kind, order, { ...details, accountUrl }),
   });
 }
 

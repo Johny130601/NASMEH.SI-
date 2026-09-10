@@ -35,7 +35,7 @@ function orderFixture(): Order & { items: OrderItem[] } {
     shippedEmailPending: false,
     shippedEmailSentAt: null,
     shippedEmailLeaseUntil: null,
-    shippedEmailLastError: null,
+    shippedEmailLastError: null, anonymizedAt: null,
     stockDeducted: true,
     cartClearedAt: null,
     refundRequired: false,

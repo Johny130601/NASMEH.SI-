@@ -1,0 +1,84 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({ orderFindMany: vi.fn(), orderCount: vi.fn(), userFindMany: vi.fn() }));
+vi.mock("@/lib/db", () => ({ db: { order: { findMany: mocks.orderFindMany, count: mocks.orderCount }, user: { findMany: mocks.userFindMany } } }));
+vi.mock("@/lib/orders/refunds", () => ({ refundedQuantities: () => new Map() }));
+vi.mock("@/lib/support/photos", () => ({ removeSupportPhotos: vi.fn() }));
+
+import { ordersCsv, orderWhere, parseOrderFilters } from "@/lib/admin/orders";
+import { listCustomers, parseCustomerFilters } from "@/lib/admin/customers";
+
+beforeEach(() => { vi.resetAllMocks(); });
+
+describe("order filters", () => {
+  it("parses and normalises the query", () => {
+    const filters = parseOrderFilters({ q: "  NS-2026 ", status: "paid", od: "2026-09-01", do: "2026-09-10", provider: "Stripe", country: "si", stran: "3" });
+    expect(filters).toMatchObject({ q: "NS-2026", status: "PAID", provider: "stripe", country: "SI", page: 3 });
+    expect(filters.from).toEqual(new Date(2026, 8, 1, 0, 0, 0, 0));
+    expect(filters.to).toEqual(new Date(2026, 8, 10, 23, 59, 59, 999));
+    expect(parseOrderFilters({ status: "nope", provider: "cash", country: "slo", stran: "-1", od: "yesterday" })).toMatchObject({ status: null, provider: null, country: null, page: 1, from: null });
+  });
+
+  it("builds the where clause across number, e-mail, tracking and recipient name", () => {
+    const where = orderWhere(parseOrderFilters({ q: "ana k", status: "SHIPPED", country: "SI" }));
+    expect(where.OR).toEqual([
+      { number: { contains: "ana k", mode: "insensitive" } },
+      { email: { contains: "ana k", mode: "insensitive" } },
+      { trackingNumber: { contains: "ANAK" } },
+      { shippingAddress: { path: ["fullName"], string_contains: "ana k" } },
+    ]);
+    expect(where).toMatchObject({ status: "SHIPPED", shippingAddress: { path: ["country"], equals: "SI" } });
+  });
+
+  it("exports a BOM-prefixed semicolon CSV with quoted cells", async () => {
+    mocks.orderFindMany.mockResolvedValue([{
+      number: "NS-2026-00001", createdAt: new Date("2026-09-10T10:00:00Z"), status: "PAID", email: "ana@test.si",
+      shippingAddress: { fullName: 'Ana "Ančka"; Kovač', country: "SI" }, totalCents: 3989, refundedCents: 0,
+      paymentProvider: "stripe", trackingNumber: null, carrier: null, items: [{ quantity: 2 }, { quantity: 1 }],
+    }]);
+    const csv = await ordersCsv(parseOrderFilters({}));
+    expect(csv.startsWith("﻿number;createdAt;status;email;name;country;items;totalEur;refundedEur;provider;trackingNumber;carrier\r\n")).toBe(true);
+    expect(csv).toContain('NS-2026-00001;2026-09-10T10:00:00.000Z;PAID;ana@test.si;"Ana ""Ančka""; Kovač";SI;3;');
+    expect(csv.endsWith("\r\n")).toBe(true);
+  });
+});
+
+describe("customer list", () => {
+  it("merges accounts and guest purchasers, counts LTV from paid orders and filters", async () => {
+    mocks.userFindMany.mockResolvedValue([
+      { id: "u1", email: "ana@test.si", name: "Ana", marketingOptIn: true, createdAt: new Date("2026-09-01"), anonymizedAt: null,
+        orders: [{ status: "PAID", totalCents: 3000, refundedCents: 500 }, { status: "PENDING", totalCents: 9999, refundedCents: 0 }] },
+      { id: "u2", email: "bor@test.si", name: null, marketingOptIn: false, createdAt: new Date("2026-08-01"), anonymizedAt: null, orders: [] },
+    ]);
+    mocks.orderFindMany.mockResolvedValue([
+      { email: "gost@test.si", status: "DELIVERED", totalCents: 2000, refundedCents: 0, createdAt: new Date("2026-09-05"), shippingAddress: { fullName: "Gost Ena" }, marketingOptIn: false, anonymizedAt: null },
+      { email: "gost@test.si", status: "CANCELLED", totalCents: 500, refundedCents: 0, createdAt: new Date("2026-09-06"), shippingAddress: {}, marketingOptIn: false, anonymizedAt: null },
+    ]);
+    const all = await listCustomers(parseCustomerFilters({}));
+    expect(all.total).toBe(3);
+    expect(all.rows.map((row) => [row.type, row.email, row.orders, row.ltvCents])).toEqual([
+      ["guest", "gost@test.si", 2, 2000],
+      ["account", "ana@test.si", 2, 2500],
+      ["account", "bor@test.si", 0, 0],
+    ]);
+    expect(all.rows[0]).toMatchObject({ name: "Gost Ena", href: "/admin/stranke/gost?email=gost%40test.si" });
+
+    const withOrders = await listCustomers(parseCustomerFilters({ narocila: "da" }));
+    expect(withOrders.rows.map((row) => row.email)).toEqual(["gost@test.si", "ana@test.si"]);
+    const marketing = await listCustomers(parseCustomerFilters({ enovice: "da" }));
+    expect(marketing.rows.map((row) => row.email)).toEqual(["ana@test.si"]);
+  });
+
+  it("paginates the merged list in pages of fifty", async () => {
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.orderFindMany.mockResolvedValue(Array.from({ length: 55 }, (_, index) => ({
+      email: `g${index}@test.si`, status: "PAID", totalCents: 100, refundedCents: 0, createdAt: new Date(2026, 0, 1 + index), shippingAddress: {}, marketingOptIn: false, anonymizedAt: null,
+    })));
+    const first = await listCustomers(parseCustomerFilters({}));
+    expect(first).toMatchObject({ total: 55, page: 1, pages: 2 });
+    expect(first.rows).toHaveLength(50);
+    const second = await listCustomers(parseCustomerFilters({ stran: "9" }));
+    expect(second).toMatchObject({ page: 2 });
+    expect(second.rows).toHaveLength(5);
+  });
+});

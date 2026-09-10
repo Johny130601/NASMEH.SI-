@@ -37,7 +37,12 @@ model User {
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
   authTokens      AuthToken[]
-  supportTickets  Ticket[]
+  supportTickets  Ticket[]     @relation("TicketReporter")
+  assignedTickets Ticket[]     @relation("TicketAssignee")
+  // Phase 7 step 2: customer administration (§14.8).
+  adminNotes      String?
+  tags            String[]     @default([])
+  anonymizedAt    DateTime?
   // Phase 7 step 1: mandatory TOTP second factor for staff roles.
   totpSecret        String?   // AES-256-GCM, key derived from AUTH_SECRET
   totpEnabledAt     DateTime?
@@ -309,6 +314,9 @@ model Order {
   redemptions           CouponRedemption[]
   reviewRequest         ReviewRequest?
   supportTickets        Ticket[]
+  notes                 OrderNote[]
+  refunds               Refund[]
+  anonymizedAt          DateTime? // Phase 7 step 2: PII scrubbed, financials kept
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
 
@@ -675,7 +683,10 @@ model Ticket {
   submissionKey     String        @unique
   payloadHash       String
   userId            String?
-  user              User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user              User?         @relation("TicketReporter", fields: [userId], references: [id], onDelete: SetNull)
+  assigneeId        String?
+  assignee          User?         @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  internalNote      String?
   orderId           String?
   order             Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
   orderNumber       String?
@@ -696,6 +707,7 @@ model Ticket {
 
   @@index([userId])
   @@index([orderId])
+  @@index([assigneeId])
   @@index([status, createdAt])
 }
 
@@ -725,4 +737,50 @@ model TicketEmailDelivery {
 
   @@unique([ticketId, kind])
   @@index([sentAt, leaseUntil])
+}
+
+// ---------- Phase 7 step 2: order operations (§14.7) ----------
+
+model OrderNote {
+  id                String   @id @default(cuid())
+  orderId           String
+  order             Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  authorId          String?
+  authorName        String
+  body              String
+  visibleToCustomer Boolean  @default(false)
+  createdAt         DateTime @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+enum RefundStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+// One row per operator refund: created PENDING before the provider call (the
+// row id is the provider idempotency key), COMPLETED with the provider's
+// refund id once the money moved, FAILED with a bounded error otherwise.
+model Refund {
+  id               String       @id @default(cuid())
+  orderId          String
+  order            Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider         String
+  providerRefundId String?      @unique
+  status           RefundStatus @default(PENDING)
+  amountCents      Int
+  vatCents         Int
+  reason           String
+  restock          Boolean      @default(false)
+  shippingRefunded Boolean      @default(false)
+  lines            Json // [{ orderItemId, quantity }]
+  actorId          String?
+  actorName        String
+  lastError        String?
+  completedAt      DateTime?
+  createdAt        DateTime     @default(now())
+
+  @@index([orderId, createdAt])
 }
