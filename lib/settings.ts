@@ -1,4 +1,11 @@
+import { z } from "zod";
 import { db } from "@/lib/db";
+import { COOKIES } from "@/lib/copy/cmp";
+import {
+  companySchema, consentBannerSchema, consentCookiesSchema, consentVersionSchema, contactSettingsSchema, DEFAULT_CONSENT_VERSION, DEFAULT_FREE_THRESHOLD_CENTS,
+  DEFAULT_LEGAL_LINKS, DEFAULT_SEO_DEFAULTS, DEFAULT_STANDARD_COST_CENTS, DEFAULT_VAT_RATE_PERCENT, legalLinksSchema, seoDefaultsSchema, shippingMethodSchema,
+} from "@/lib/settings-schemas";
+import { DEFAULT_CONTACT_SETTINGS } from "@/lib/support/settings-schema";
 
 /** Config-driven merchandising: storefront config is Setting data, not code. */
 export async function getSetting<T>(key: string): Promise<T | null> {
@@ -18,8 +25,21 @@ export const SETTING_KEYS = {
   company: "company",
   homeHero: "home.hero",
   gtmId: "analytics.gtmId",
+  ga4Id: "analytics.ga4Id",
+  metaPixelId: "analytics.metaPixelId",
+  tiktokPixelId: "analytics.tiktokPixelId",
   googleVerification: "seo.googleVerification",
+  seoDefaults: "seo.defaults",
   maintenance: "maintenance",
+  shippingMethods: "shipping.methods",
+  shippingStandardCostCents: "shipping.standardCostCents",
+  trackingTemplates: "tracking.templates",
+  supportContact: "support.contact",
+  invoiceFooter: "invoice.footer",
+  consentVersion: "consent.version",
+  consentCookies: "consent.cookies",
+  consentBanner: "consent.banner",
+  legalLinks: "legal.links",
 } as const;
 
 export interface CompanySetting {
@@ -84,4 +104,86 @@ export interface MenuItem {
 export async function getMenu(handle: string): Promise<MenuItem[]> {
   const row = await db.menu.findUnique({ where: { handle } });
   return (row?.items as MenuItem[] | undefined) ?? [];
+}
+
+// ---------- validated readers (Phase 7 step 6) ----------
+// The storefront never throws on a malformed row: the schema the admin form
+// validates is applied on read and a missing or invalid value falls back.
+
+export async function readSetting<S extends z.ZodTypeAny>(key: string, schema: S, fallback: z.output<S>): Promise<z.output<S>> {
+  const value = await getSetting<unknown>(key);
+  if (value === null) return fallback;
+  const parsed = schema.safeParse(value);
+  return parsed.success ? parsed.data : fallback;
+}
+
+const stringSetting = (key: string) => readSetting(key, z.string().trim(), "");
+
+export async function getVatRatePercent(): Promise<number> {
+  return readSetting(SETTING_KEYS.vatRatePercent, z.number().int().min(0).max(100), DEFAULT_VAT_RATE_PERCENT);
+}
+
+export async function getShippingSettings() {
+  const [methods, freeThresholdCents, standardCostCents] = await Promise.all([
+    readSetting(SETTING_KEYS.shippingMethods, z.array(shippingMethodSchema), []),
+    readSetting(SETTING_KEYS.freeShippingThresholdCents, z.number().int().min(0), DEFAULT_FREE_THRESHOLD_CENTS),
+    readSetting(SETTING_KEYS.shippingStandardCostCents, z.number().int().min(0), DEFAULT_STANDARD_COST_CENTS),
+  ]);
+  return { methods, freeThresholdCents, standardCostCents };
+}
+
+export async function getFreeThresholdCents(): Promise<number> {
+  return readSetting(SETTING_KEYS.freeShippingThresholdCents, z.number().int().min(0), DEFAULT_FREE_THRESHOLD_CENTS);
+}
+
+export async function getTrackingTemplates(): Promise<Partial<Record<"ps" | "gls", string>>> {
+  return readSetting(SETTING_KEYS.trackingTemplates, z.object({ ps: z.string().optional(), gls: z.string().optional() }), {});
+}
+
+export async function getCompany(): Promise<CompanySetting | null> {
+  return readSetting(SETTING_KEYS.company, companySchema.nullable(), null);
+}
+
+export async function getInvoiceFooter(): Promise<string> {
+  return readSetting(SETTING_KEYS.invoiceFooter, z.string().trim().max(600), "");
+}
+
+/** Ids are read as plain strings: only GTM fires at P1, the others are stored for Phase 8. */
+export async function getAnalyticsIds() {
+  const [gtmId, ga4Id, metaPixelId, tiktokPixelId] = await Promise.all([
+    stringSetting(SETTING_KEYS.gtmId), stringSetting(SETTING_KEYS.ga4Id), stringSetting(SETTING_KEYS.metaPixelId), stringSetting(SETTING_KEYS.tiktokPixelId),
+  ]);
+  return { gtmId, ga4Id, metaPixelId, tiktokPixelId };
+}
+
+export async function getGoogleVerification(): Promise<string> {
+  return stringSetting(SETTING_KEYS.googleVerification);
+}
+
+export async function getSeoDefaults() {
+  return readSetting(SETTING_KEYS.seoDefaults, seoDefaultsSchema, DEFAULT_SEO_DEFAULTS);
+}
+
+export async function getConsentConfig() {
+  const [version, cookies, banner] = await Promise.all([
+    readSetting(SETTING_KEYS.consentVersion, consentVersionSchema, DEFAULT_CONSENT_VERSION),
+    readSetting(SETTING_KEYS.consentCookies, consentCookiesSchema, COOKIES),
+    readSetting(SETTING_KEYS.consentBanner, consentBannerSchema, { title: "", body: "" }),
+  ]);
+  return { version, cookies, banner };
+}
+
+export async function getLegalLinks() {
+  return readSetting(SETTING_KEYS.legalLinks, legalLinksSchema, DEFAULT_LEGAL_LINKS);
+}
+
+const storedMaintenanceSchema = z.object({ enabled: z.boolean(), password: z.string().optional(), message: z.string().optional() });
+
+export async function getMaintenance(): Promise<MaintenanceSetting> {
+  return readSetting(SETTING_KEYS.maintenance, storedMaintenanceSchema, { enabled: false });
+}
+
+/** For the admin form: the ticket path keeps its strict parse, the screen shows defaults for a missing row. */
+export async function getContactSettingsLenient() {
+  return readSetting(SETTING_KEYS.supportContact, contactSettingsSchema, DEFAULT_CONTACT_SETTINGS);
 }

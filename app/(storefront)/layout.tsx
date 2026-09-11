@@ -2,6 +2,8 @@ import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 import { CONSENT_COOKIE, decodeConsentCookie, parseConsent } from "@/lib/consent";
 import {
+  getConsentConfig,
+  getLegalLinks,
   getSetting,
   SETTING_KEYS,
   type CompanySetting,
@@ -46,14 +48,16 @@ export default async function StorefrontLayout({
   // Maintenance mode is gated in middleware (rewrite to /vzdrzevanje) so
   // gated pages never execute and nothing leaks into the RSC payload.
   const jar = await cookies();
-  const [gtmId, company, welcomePopup] = await Promise.all([
+  const [gtmId, company, welcomePopup, consentConfig, legalLinks] = await Promise.all([
     getSetting<string>(SETTING_KEYS.gtmId),
     getSetting<CompanySetting>(SETTING_KEYS.company),
     getSetting<WelcomePopupSetting>("welcomePopup"),
+    getConsentConfig(),
+    getLegalLinks(),
   ]);
   const gtm = gtmId?.trim() ? gtmId.trim() : null;
   const consentCookie = jar.get(CONSENT_COOKIE)?.value;
-  const consent = parseConsent(decodeConsentCookie(consentCookie));
+  const consent = parseConsent(decodeConsentCookie(consentCookie), consentConfig.version);
 
   // Welcome popup suppression: known CONFIRMED subscriber (by session email)
   const session = await auth();
@@ -91,7 +95,7 @@ export default async function StorefrontLayout({
   };
 
   return (
-    <ConsentProvider initialConsent={consent} gtmId={gtm}>
+    <ConsentProvider initialConsent={consent} gtmId={gtm} consentVersion={consentConfig.version} banner={consentConfig.banner} policyHref={legalLinks.cookies}>
       <script
         id="consent-defaults"
         dangerouslySetInnerHTML={{ __html: CONSENT_DEFAULTS_SNIPPET }}

@@ -1,28 +1,25 @@
-import { getSetting } from "@/lib/settings";
-import { z } from "zod";
-import { shippingMethodSchema, type ShippingMethodSetting } from "@/lib/orders/checkout-schema";
+import { getShippingSettings, getTrackingTemplates } from "@/lib/settings";
+import type { ShippingMethodSetting } from "@/lib/orders/checkout-schema";
+import { buildTrackingUrl, type TrackingCarrierKey } from "@/lib/settings-schemas";
 
-/** Carrier tracking URL from Setting templates (§14.12): {number} interpolated. */
+/** Carrier names map onto the two template keys by substring (Pošta Slovenije → ps, GLS → gls). */
+export function carrierTemplateKey(carrier: string): TrackingCarrierKey | null {
+  const name = carrier.toLowerCase();
+  if (name.includes("gls")) return "gls";
+  if (name.includes("pošta") || name.includes("posta")) return "ps";
+  return null;
+}
+
+/** Carrier tracking URL from Setting templates (§14.12): {number} interpolated; https-only, no credentials. */
 export async function trackingUrl(
   carrier: string | null,
   trackingNumber: string | null,
 ): Promise<string | null> {
   if (!carrier || !trackingNumber) return null;
-  const configured = z.record(z.string(), z.string().max(2048)).safeParse(await getSetting<unknown>("tracking.templates"));
-  if (!configured.success) return null;
-  const templates = configured.data;
-  const key = carrier.toLowerCase().includes("gls")
-    ? "gls"
-    : carrier.toLowerCase().includes("pošta") || carrier.toLowerCase().includes("posta")
-      ? "ps"
-      : null;
-  const template = key ? templates[key] : null;
-  if (!template?.includes("{number}")) return null;
-  try {
-    const url = new URL(template.replaceAll("{number}", encodeURIComponent(trackingNumber)));
-    if (url.protocol !== "https:" || url.username || url.password) return null;
-    return url.toString();
-  } catch { return null; }
+  const key = carrierTemplateKey(carrier);
+  if (!key) return null;
+  const templates = await getTrackingTemplates();
+  return buildTrackingUrl(templates[key], trackingNumber);
 }
 
 /**
@@ -39,8 +36,7 @@ export function normalizeTrackingNumber(input: unknown): string | null {
 
 /** Configured checkout methods (§8.1); malformed settings yield none. */
 export async function getShippingMethods(): Promise<ShippingMethodSetting[]> {
-  const parsed = z.array(shippingMethodSchema).safeParse(await getSetting<unknown>("shipping.methods"));
-  return parsed.success ? parsed.data : [];
+  return (await getShippingSettings()).methods;
 }
 
 /** Orders snapshot the chosen method label; older rows may hold the id. */

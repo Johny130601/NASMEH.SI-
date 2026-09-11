@@ -6,8 +6,7 @@ import { getCartLines } from "@/lib/cart/server";
 import { hydrateCartLines } from "@/lib/cart/hydrate";
 import { priceCartForDisplay } from "@/lib/promo/cart-pricing";
 import type { CouponRejection } from "@/lib/promo/coupons";
-import { getSetting, SETTING_KEYS } from "@/lib/settings";
-import { shippingMethodSchema } from "./checkout-schema";
+import { getShippingSettings, getVatRatePercent } from "@/lib/settings";
 
 export const quoteInputSchema = z.object({
   email: z.union([z.email(), z.literal("")]).transform(value => value.toLowerCase()),
@@ -38,15 +37,10 @@ export async function buildCheckoutPricing(raw: unknown) {
   const session = await auth();
   const hydrated = await hydrateCartLines(await getCartLines(session?.user?.id ?? null));
   if (!hydrated.length) throw new Error("empty_cart");
-  const [threshold, vat, rawMethods] = await Promise.all([
-    getSetting<number>(SETTING_KEYS.freeShippingThresholdCents),
-    getSetting<number>(SETTING_KEYS.vatRatePercent),
-    getSetting<unknown>("shipping.methods"),
-  ]);
-  const methods = z.array(shippingMethodSchema).parse(rawMethods ?? []);
-  const method = methods.find(value => value.id === input.shippingMethodId && value.countries.includes(input.country));
+  const [shipping, vat] = await Promise.all([getShippingSettings(), getVatRatePercent()]);
+  const method = shipping.methods.find(value => value.id === input.shippingMethodId && value.countries.includes(input.country));
   if (!method) throw new Error("invalid_shipping_method");
-  const settings = { vatRatePercent: vat ?? 22, freeShippingThresholdCents: threshold ?? 4500, shippingCostCents: method.priceCents };
+  const settings = { vatRatePercent: vat, freeShippingThresholdCents: shipping.freeThresholdCents, shippingCostCents: method.priceCents };
   const display = await priceCartForDisplay(hydrated, settings, input.email);
   const priced = display.priced;
   const coupon = "appliedCoupon" in priced ? priced.appliedCoupon : null;

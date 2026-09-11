@@ -6,10 +6,10 @@ import { db } from "@/lib/db";
 import {
   CONSENT_COOKIE,
   CONSENT_MAX_AGE_S,
-  CONSENT_VERSION,
   encodeConsentCookie,
   serializeConsent,
 } from "@/lib/consent";
+import { getConsentConfig } from "@/lib/settings";
 
 const inputSchema = z.object({
   analytics: z.boolean(),
@@ -24,7 +24,8 @@ export async function saveConsentAction(input: { analytics: boolean; marketing: 
   const parsed = inputSchema.safeParse(input);
   if (!parsed.success) return { ok: false as const };
 
-  const value = serializeConsent({ v: 1, necessary: true, ...parsed.data }, Date.now());
+  const { version } = await getConsentConfig();
+  const value = serializeConsent({ v: version, necessary: true, ...parsed.data }, Date.now());
   const jar = await cookies();
   jar.set(CONSENT_COOKIE, encodeConsentCookie(value), {
     maxAge: CONSENT_MAX_AGE_S,
@@ -34,7 +35,7 @@ export async function saveConsentAction(input: { analytics: boolean; marketing: 
   });
 
   await db.consentLog.create({
-    data: { kind: "cookie", version: CONSENT_VERSION, choices: parsed.data },
+    data: { kind: "cookie", version: String(version), choices: parsed.data },
   });
 
   return { ok: true as const };

@@ -10,7 +10,7 @@ export const CONSENT_COOKIE = "nasmeh_consent";
 export const CONSENT_MAX_AGE_S = 60 * 60 * 24 * 365; // 12 months
 
 export const consentSchema = z.object({
-  v: z.literal(1),
+  v: z.number().int().positive(),
   necessary: z.literal(true), // always on
   analytics: z.boolean(),
   marketing: z.boolean(),
@@ -42,12 +42,15 @@ export function serializeConsent(
   return JSON.stringify(full);
 }
 
-/** Parse a raw cookie value; null when missing/invalid/stale version. */
-export function parseConsent(raw: string | undefined | null): ConsentChoices | null {
+/**
+ * Parse a raw cookie value; null when missing, invalid or from another
+ * consent version (`consent.version` Setting — bumping it re-asks everyone).
+ */
+export function parseConsent(raw: string | undefined | null, version = 1): ConsentChoices | null {
   if (!raw) return null;
   try {
     const parsed = consentSchema.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : null;
+    return parsed.success && parsed.data.v === version ? parsed.data : null;
   } catch {
     return null;
   }

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useConsent } from "./ConsentProvider";
 import { cmp as copy } from "@/lib/copy";
@@ -16,7 +17,7 @@ const CATEGORY_KEYS: CategoryKey[] = ["analytics", "marketing"];
  * a choice is made.
  */
 export function CmpBanner() {
-  const { consent, bannerOpen, save } = useConsent();
+  const { consent, bannerOpen, save, banner, policyHref } = useConsent();
   const [toggles, setToggles] = useState<Record<CategoryKey, boolean>>({
     analytics: consent?.analytics ?? false,
     marketing: consent?.marketing ?? false,
@@ -49,9 +50,14 @@ export function CmpBanner() {
       className="fixed inset-x-0 bottom-0 z-50 border-t border-light-2 bg-white p-5 shadow-xl outline-none md:inset-x-auto md:bottom-5 md:left-5 md:max-w-xl md:rounded-card md:border"
     >
       <h2 id="cmp-title" className="text-xl">
-        {copy.banner.title}
+        {banner.title || copy.banner.title}
       </h2>
-      <p className="mt-2 text-sm text-mid-1">{copy.banner.body}</p>
+      <p className="mt-2 text-sm text-mid-1">
+        {banner.body || copy.banner.body}{" "}
+        <Link href={policyHref} className="underline underline-offset-2" data-cmp-policy-link>
+          {copy.banner.policyLink}
+        </Link>
+      </p>
 
       <fieldset className="mt-4 flex flex-col gap-3">
         <legend className="sr-only">{copy.banner.settingsLabel}</legend>

@@ -66,6 +66,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   doc
     .fontSize(8)
     .text(copy.footer);
+  if (data.footer) doc.text(data.footer);
 
   doc.end();
   return done;

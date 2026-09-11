@@ -10,7 +10,7 @@ import {
   klarnaInstallmentCents,
   bundleSavings,
 } from "@/lib/pricing";
-import { getSetting, SETTING_KEYS } from "@/lib/settings";
+import { getFreeThresholdCents } from "@/lib/settings";
 import { isTestMode } from "@/lib/turnstile";
 import { getEnv } from "@/lib/env";
 import { buildMetadata, siteUrl } from "@/lib/seo";
@@ -113,7 +113,7 @@ export default async function ProductPage({
   const [omnibusLowest, thresholdCents, reviewAggregate, crossSellProducts] =
     await Promise.all([
       discounted ? getOmnibusLowestCents(variant.id) : Promise.resolve(null),
-      getSetting<number>(SETTING_KEYS.freeShippingThresholdCents),
+      getFreeThresholdCents(),
       Promise.resolve(aggregateRatings(product.reviews.map((review) => review.rating))),
       getCatalogProducts().then((all) =>
         all.filter((p) => p.slug !== product.slug),

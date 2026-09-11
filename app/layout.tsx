@@ -1,38 +1,19 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
-import { getSetting, SETTING_KEYS } from "@/lib/settings";
-import { siteUrl } from "@/lib/seo";
-import { common } from "@/lib/copy";
+import { getGoogleVerification, getSeoDefaults } from "@/lib/settings";
+import { rootMetadata } from "@/lib/seo";
+import { DEFAULT_SEO_DEFAULTS } from "@/lib/settings-schemas";
 
 export async function generateMetadata(): Promise<Metadata> {
   // DB may be unreachable during image builds (no DATABASE_URL) — degrade
-  // to metadata without the GSC verification tag.
-  let googleVerification: string | null = null;
+  // to the default metadata without the GSC verification tag.
   try {
-    googleVerification = await getSetting<string>(SETTING_KEYS.googleVerification);
+    const [defaults, googleVerification] = await Promise.all([getSeoDefaults(), getGoogleVerification()]);
+    return rootMetadata(defaults, googleVerification || null);
   } catch {
-    googleVerification = null;
+    return rootMetadata(DEFAULT_SEO_DEFAULTS, null);
   }
-
-  return {
-    metadataBase: new URL(siteUrl()),
-    title: {
-      default: common.siteName,
-      template: `%s | ${common.siteName}`,
-    },
-    description: common.siteTagline,
-    openGraph: {
-      siteName: common.siteName,
-      locale: "sl_SI",
-      type: "website",
-      images: [{ url: "/og-default.svg", width: 1200, height: 628 }],
-    },
-    twitter: { card: "summary_large_image" },
-    ...(googleVerification
-      ? { verification: { google: googleVerification } }
-      : {}),
-  };
 }
 
 export default function RootLayout({ children }: { children: ReactNode }) {

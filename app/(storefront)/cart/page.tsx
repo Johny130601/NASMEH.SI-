@@ -7,7 +7,7 @@ import { type PromoSettings } from "@/lib/promo";
 import { priceCartForDisplay } from "@/lib/promo/cart-pricing";
 import { getCatalogProducts } from "@/lib/catalog";
 import { getOmnibusLowestCents } from "@/lib/omnibus";
-import { getSetting, SETTING_KEYS } from "@/lib/settings";
+import { getShippingSettings, getVatRatePercent } from "@/lib/settings";
 import { formatDdvLine, formatEUR } from "@/lib/pricing";
 import { isTestMode } from "@/lib/turnstile";
 import { getEnv } from "@/lib/env";
@@ -39,15 +39,11 @@ export default async function CartPage({
   const lines = await getCartLines(session?.user?.id ?? null);
   const hydrated = await hydrateCartLines(lines);
 
-  const [thresholdCents, vatRatePercent, shippingCostCents] = await Promise.all([
-    getSetting<number>(SETTING_KEYS.freeShippingThresholdCents),
-    getSetting<number>(SETTING_KEYS.vatRatePercent),
-    getSetting<number>("shipping.standardCostCents"),
-  ]);
+  const [shipping, vatRatePercent] = await Promise.all([getShippingSettings(), getVatRatePercent()]);
   const settings: PromoSettings = {
-    vatRatePercent: vatRatePercent ?? 22,
-    freeShippingThresholdCents: thresholdCents ?? 4500,
-    shippingCostCents: shippingCostCents ?? 390,
+    vatRatePercent,
+    freeShippingThresholdCents: shipping.freeThresholdCents,
+    shippingCostCents: shipping.standardCostCents,
   };
 
   const { priced, rejection: couponRejection, code: activeCode } =

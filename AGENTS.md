@@ -49,6 +49,8 @@ Hard rules (from the master spec, §15):
 │   ├── promo/              # promo engine — PURE functions (see §7)
 │   ├── payments/           # Stripe + PayPal clients, webhook handlers
 │   ├── pricing.ts          # VAT math, Omnibus 30-day-low lookups
+│   ├── settings.ts         # getSetting + validated readers (readSetting, typed getters with defaults) — the storefront's only Setting reads
+│   ├── settings-schemas.ts # every Setting shape as the zod schema the admin forms validate and the readers apply (header-free)
 │   ├── price-history.ts    # the ONLY write path for Variant prices (appends PriceHistory)
 │   ├── inventory/          # stock.ts: the ONLY write path for stock increases (arms restock alerts); restock.ts operator entry
 │   ├── orders/             # transitions.ts (paid/shipped/delivered state machine), confirmation + shipped email delivery
@@ -211,6 +213,7 @@ Workflow rules:
 13. **Stock increases go through the stock helper.** Any code that raises `Variant.stock` calls `setVariantStockInTx` / `adjustVariantStockInTx` from `lib/inventory/stock.ts` inside the caller's transaction: the helper locks the row and arms back-in-stock alerts on a 0 → N transition in the same transaction; sending happens post-commit (`lib/inventory/restock.ts`) with the daily job as the retry path. `deductOrderInventory` (paid orders) stays the only decrement path. Seeds and tests use the helper too; a hand-written `stock` update is a bug.
 15. **Catalog media go through `lib/admin/media.ts`.** Every upload is decoded and re-encoded to WebP, written under `catalog-uploads/<owner>/<ownerId>/` with a random name and served by `app/uploads/[owner]/[ownerId]/[filename]/route.ts`; deleting a `MediaImage` row or a banner removes its file. The global library is the `media` owner (`MediaAsset` rows); its files are shared by URL and are only deleted through the library, never with the setting or page that references them. Nothing writes into `public/` at runtime (the standalone server copies that directory at start and lists it once).
 16. **Customer mail goes through `resolveMail`.** Every customer-facing send in `lib/email/mailer.ts` (and the ticket receipt in `lib/support/delivery.ts`) names a key from `lib/email/template-defs.ts` and passes its placeholder values plus the code template as the fallback; `resolveMail` renders the operator's `EmailTemplate` override when one exists and never lets a broken override block a transactional mail. A new customer mail gets a key, placeholders with samples and a default body in the same change; staff-only mail stays code-only.
+17. **Settings have one schema and one reader.** Every Setting the storefront reads is declared in `lib/settings-schemas.ts` (schema + default) and read through a typed getter in `lib/settings.ts` that applies the schema and falls back to the default; the admin action validates with the same schema before writing. A new Setting ships its schema, default, reader, admin form and seed/migration row in one change; storefront code never parses a Setting ad hoc, and a form must not accept what a downstream helper refuses (the VAT rate is a whole percent because `lib/pricing.ts` says so).
 
 ---
 

@@ -11,6 +11,7 @@ import {
 } from "../lib/price-history";
 import { setVariantStockInTx } from "../lib/inventory/stock";
 import { LEGAL_PAGES } from "./seed-legal";
+import { COOKIES } from "../lib/copy/cmp";
 import { PDP_CONTENT } from "./seed-pdp";
 import { DEFAULT_CONTACT_SETTINGS } from "../lib/support/settings";
 
@@ -431,6 +432,19 @@ async function seedSettings() {
     },
     { key: "marquee.href", value: "/checkout" },
     { key: "marquee.active", value: true },
+    // Phase 7 step 6: settings the admin edits and the storefront reads with fallbacks
+    { key: "invoice.footer", value: "" },
+    { key: "analytics.ga4Id", value: "" },
+    { key: "analytics.metaPixelId", value: "" },
+    { key: "analytics.tiktokPixelId", value: "" },
+    { key: "seo.defaults", value: { titleTemplate: "%s | Nasmeh.si", description: "", indexable: true } },
+    { key: "consent.version", value: 1 },
+    { key: "consent.cookies", value: COOKIES },
+    { key: "consent.banner", value: { title: "", body: "" } },
+    {
+      key: "legal.links",
+      value: { terms: "/pogoji-poslovanja", privacy: "/politika-zasebnosti", cookies: "/politika-piskotkov", withdrawal: "/odstop-od-pogodbe", complaints: "/reklamacije" },
+    },
     {
       // Homepage section order and visibility (§14.10)
       key: "home.sections",

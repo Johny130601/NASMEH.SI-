@@ -7,6 +7,7 @@ export const cmp = {
     rejectAll: "Zavrni",
     saveChoice: "Shrani izbiro",
     settingsLabel: "Nastavitve piškotkov",
+    policyLink: "Več o piškotkih",
   },
   categories: {
     necessary: {

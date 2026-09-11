@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { buildMetadata } from "@/lib/seo";
-import { cmp as copy, COOKIES, legal } from "@/lib/copy";
+import { cmp as copy, legal } from "@/lib/copy";
+import { getConsentConfig } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,7 @@ export default async function CookiePolicyPage() {
     where: { slug: SLUG, published: true },
   });
   if (!page) notFound();
+  const { cookies: cookieRows } = await getConsentConfig();
 
   return (
     <article className="mx-auto max-w-(--container-narrow) px-(--padding) py-16">
@@ -55,8 +57,8 @@ export default async function CookiePolicyPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-light-3">
-            {COOKIES.map((cookie) => (
-              <tr key={cookie.name}>
+            {cookieRows.map((cookie) => (
+              <tr key={cookie.name} data-cookie-row={cookie.name}>
                 <td className="px-4 py-3 font-medium text-dark-1">
                   {cookie.name}
                 </td>

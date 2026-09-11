@@ -34,6 +34,8 @@ interface WizardProps {
   turnstileSiteKey: string | null;
   initialQuote: CheckoutQuote | null;
   activeCode: string | null;
+  /** `legal.links` Setting: the terms and withdrawal pages named in the payment step. */
+  legalLinks: { terms: string; withdrawal: string };
 }
 
 interface FormState {
@@ -62,6 +64,7 @@ export function CheckoutWizard({
   turnstileSiteKey,
   initialQuote,
   activeCode,
+  legalLinks,
 }: WizardProps) {
   const router = useRouter();
   const [step, setStep] = useState(0);
@@ -396,11 +399,11 @@ export function CheckoutWizard({
           </fieldset>
           <p className="text-xs text-mid-2">
             {checkout.payment.legalNote}{" "}
-            <Link href="/pogoji-poslovanja" className="underline underline-offset-2">
+            <Link href={legalLinks.terms} className="underline underline-offset-2" data-legal-terms>
               {checkout.payment.terms}
             </Link>{" "}
             {checkout.payment.and}{" "}
-            <Link href="/odstop-od-pogodbe" className="underline underline-offset-2">
+            <Link href={legalLinks.withdrawal} className="underline underline-offset-2" data-legal-withdrawal>
               {checkout.payment.withdrawal}
             </Link>
             .

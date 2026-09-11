@@ -23,6 +23,12 @@ export interface ConsentContextValue {
   consent: ConsentChoices | null;
   bannerOpen: boolean;
   gtmId: string | null;
+  /** `consent.version` Setting: stored with every choice; a bump re-opens the banner. */
+  consentVersion: number;
+  /** Operator copy overrides (`consent.banner`); empty strings fall back to the copy file. */
+  banner: { title: string; body: string };
+  /** Cookie-policy link (`legal.links.cookies`). */
+  policyHref: string;
   openBanner: () => void;
   save: (choices: { analytics: boolean; marketing: boolean }) => Promise<void>;
 }
@@ -47,10 +53,16 @@ function pushConsentModeUpdate(choices: { analytics: boolean; marketing: boolean
 export function ConsentProvider({
   initialConsent,
   gtmId,
+  consentVersion,
+  banner,
+  policyHref,
   children,
 }: {
   initialConsent: ConsentChoices | null;
   gtmId: string | null;
+  consentVersion: number;
+  banner: { title: string; body: string };
+  policyHref: string;
   children: ReactNode;
 }) {
   const [consent, setConsent] = useState<ConsentChoices | null>(initialConsent);
@@ -62,17 +74,17 @@ export function ConsentProvider({
     async (choices: { analytics: boolean; marketing: boolean }) => {
       const result = await saveConsentAction(choices);
       if (result.ok) {
-        setConsent({ v: 1, necessary: true, ...choices, ts: Date.now() });
+        setConsent({ v: consentVersion, necessary: true, ...choices, ts: Date.now() });
         pushConsentModeUpdate(choices);
         setBannerOpen(false);
       }
     },
-    [],
+    [consentVersion],
   );
 
   const value = useMemo(
-    () => ({ consent, bannerOpen, gtmId, openBanner, save }),
-    [consent, bannerOpen, gtmId, openBanner, save],
+    () => ({ consent, bannerOpen, gtmId, consentVersion, banner, policyHref, openBanner, save }),
+    [consent, bannerOpen, gtmId, consentVersion, banner, policyHref, openBanner, save],
   );
 
   return (

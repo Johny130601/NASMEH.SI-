@@ -1,22 +1,7 @@
-import { z } from "zod";
 import { getSetting } from "@/lib/settings";
+import { contactSettingsSchema, DEFAULT_CONTACT_SETTINGS, type ContactSettings } from "./settings-schema";
 
-export const contactSettingsSchema = z.object({
-  supportEmail: z.string().trim().toLowerCase().max(254).pipe(z.email()),
-  complianceEmail: z.string().trim().toLowerCase().max(254).pipe(z.email()),
-  hours: z.string().trim().min(1).max(300),
-  responseTime: z.string().trim().min(1).max(300),
-}).strict();
-
-export type ContactSettings = z.infer<typeof contactSettingsSchema>;
-
-/** Placeholder values are seeded data, never an operational launch promise. */
-export const DEFAULT_CONTACT_SETTINGS: ContactSettings = {
-  supportEmail: "podpora@nasmeh.test",
-  complianceEmail: "skladnost@nasmeh.test",
-  hours: "Delovni čas bomo objavili ob odprtju trgovine.",
-  responseTime: "Na vaše sporočilo bomo odgovorili po e-pošti.",
-};
+export { contactSettingsSchema, DEFAULT_CONTACT_SETTINGS, type ContactSettings };
 
 export async function getContactSettings(): Promise<ContactSettings> {
   const value = await getSetting<unknown>("support.contact");
