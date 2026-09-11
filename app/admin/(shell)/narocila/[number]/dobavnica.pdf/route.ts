@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { AdminAccessError, requirePermission } from "@/lib/admin/access";
 import { db } from "@/lib/db";
 import { generatePackingSlipPdf } from "@/lib/invoice/packing-slip";
@@ -13,8 +14,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ num
     if (error instanceof AdminAccessError) return new Response(null, { status: 404 });
     throw error;
   }
-  const { number } = await params;
-  const order = await db.order.findUnique({ where: { number }, include: { items: true } });
+  const number = z.string().trim().min(3).max(40).safeParse((await params).number);
+  if (!number.success) return new Response(null, { status: 404 });
+  const order = await db.order.findUnique({ where: { number: number.data }, include: { items: true } });
   if (!order) return new Response(null, { status: 404 });
   const company = await getSetting<CompanySetting>(SETTING_KEYS.company);
   const pdf = await generatePackingSlipPdf(order, company);

@@ -1,4 +1,5 @@
 import NextAuth from "next-auth";
+import { authErrorLogger } from "@/lib/auth-logger";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import Credentials from "next-auth/providers/credentials";
 import { db } from "@/lib/db";
@@ -10,6 +11,7 @@ import { validateSessionToken } from "@/lib/auth-session";
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   adapter: PrismaAdapter(db),
+  logger: { error: authErrorLogger },
   providers: [
     Credentials({
       credentials: {

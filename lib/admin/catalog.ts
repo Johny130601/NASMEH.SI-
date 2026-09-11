@@ -187,8 +187,11 @@ export function parseProductFilters(query: Record<string, string | string[] | un
   return { q: single(query.q).slice(0, 120), status: (PRODUCT_STATUSES as readonly string[]).includes(status) ? status as ProductStatus : null };
 }
 
+export const PRODUCT_LIST_LIMIT = 500;
+
 export async function listProducts(filters: ProductFilters) {
   return db.product.findMany({
+    take: PRODUCT_LIST_LIMIT,
     where: {
       ...(filters.status ? { status: filters.status } : {}),
       ...(filters.q ? { OR: [{ title: { contains: filters.q, mode: "insensitive" } }, { slug: { contains: filters.q, mode: "insensitive" } }, { variants: { some: { sku: { contains: filters.q, mode: "insensitive" } } } }] } : {}),

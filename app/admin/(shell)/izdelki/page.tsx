@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePagePermission } from "@/lib/admin/access";
-import { listProducts, parseProductFilters, PRODUCT_STATUSES } from "@/lib/admin/catalog";
+import { listProducts, parseProductFilters, PRODUCT_LIST_LIMIT, PRODUCT_STATUSES } from "@/lib/admin/catalog";
 import { DEFAULT_LOW_STOCK_THRESHOLD } from "@/lib/admin/dashboard";
 import { parseBadges } from "@/lib/catalog";
 import { getSetting } from "@/lib/settings";
@@ -43,6 +43,7 @@ export default async function AdminProductsPage({ searchParams }: { searchParams
         <button type="submit" className="rounded-btn bg-dark-1 px-4 py-2 text-sm text-white">{copy.common.apply}</button>
         <Link href="/admin/izdelki" className="rounded-btn border border-light-1 px-4 py-2 text-sm">{copy.common.reset}</Link>
       </form>
+      {products.length >= PRODUCT_LIST_LIMIT ? <p role="status" className="mt-3 text-sm text-warning" data-list-truncated>{copy.common.truncated.replace("{n}", String(PRODUCT_LIST_LIMIT))}</p> : null}
 
       <div className="mt-4 overflow-x-auto rounded-card border border-light-2 bg-white">
         <table className="w-full min-w-[56rem] text-sm">

@@ -1,4 +1,5 @@
 import type { OrderStatus, Prisma } from "@prisma/client";
+import { z } from "zod";
 import { db } from "@/lib/db";
 import { formatEUR } from "@/lib/pricing";
 import { refundedQuantities } from "@/lib/orders/refunds";
@@ -31,20 +32,25 @@ function parseDate(value: string, endOfDay: boolean): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Search params of the order list and its CSV export; anything malformed falls back to "no filter". */
+export const orderFiltersSchema = z.object({
+  q: z.string().trim().transform((value) => value.slice(0, 120)).catch(""),
+  status: z.string().trim().toUpperCase().pipe(z.enum(ORDER_STATUSES as [OrderStatus, ...OrderStatus[]])).nullable().catch(null),
+  od: z.string().trim().regex(DATE).transform((value) => parseDate(value, false)).nullable().catch(null),
+  do: z.string().trim().regex(DATE).transform((value) => parseDate(value, true)).nullable().catch(null),
+  provider: z.string().trim().toLowerCase().pipe(z.enum(["stripe", "paypal", "test"])).nullable().catch(null),
+  country: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).nullable().catch(null),
+  stran: z.coerce.number().int().min(1).max(100_000).catch(1),
+});
+
 export function parseOrderFilters(query: Query): OrderFilters {
-  const status = single(query.status).toUpperCase();
-  const provider = single(query.provider).toLowerCase();
-  const country = single(query.country).toUpperCase();
-  const page = Number.parseInt(single(query.stran) || "1", 10);
-  return {
-    q: single(query.q).slice(0, 120),
-    status: (ORDER_STATUSES as string[]).includes(status) ? status as OrderStatus : null,
-    from: parseDate(single(query.od), false),
-    to: parseDate(query.do === undefined ? "" : single(query.do), true),
-    provider: ["stripe", "paypal", "test"].includes(provider) ? provider : null,
-    country: /^[A-Z]{2}$/.test(country) ? country : null,
-    page: Number.isInteger(page) && page > 0 ? page : 1,
-  };
+  const parsed = orderFiltersSchema.parse({
+    q: single(query.q), status: single(query.status), od: single(query.od), do: single(query.do), provider: single(query.provider), country: single(query.country),
+    stran: single(query.stran) || "1",
+  });
+  return { q: parsed.q, status: parsed.status, from: parsed.od, to: parsed.do, provider: parsed.provider, country: parsed.country, page: parsed.stran };
 }
 
 export function orderWhere(filters: OrderFilters): Prisma.OrderWhereInput {

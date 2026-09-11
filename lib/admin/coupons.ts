@@ -68,8 +68,11 @@ export function parseCouponFilters(query: Record<string, string | string[] | und
   return { q: single(query.q).toUpperCase().slice(0, 40), active: state === "aktivni" ? true : state === "neaktivni" ? false : null };
 }
 
+export const COUPON_LIST_LIMIT = 500;
+
 export async function listCoupons(filters: CouponFilters) {
   return db.coupon.findMany({
+    take: COUPON_LIST_LIMIT,
     where: {
       ...(filters.active === null ? {} : { active: filters.active }),
       ...(filters.q ? { code: { contains: filters.q } } : {}),

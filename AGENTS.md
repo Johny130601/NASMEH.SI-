@@ -39,6 +39,8 @@ Hard rules (from the master spec, §15):
 ├── app/                    # Next.js App Router — ALL routes for all three surfaces
 │   ├── (storefront)/       # public storefront: /, /trgovina, /izdelek/[slug], /cart, /checkout, /racun, /kontakt, /sledi, /odstop-od-pogodbe, /reklamacije, /prijava-nezelenega-ucinka, token routes (/potrdi*, /odjava-zaloga) …
 │   ├── admin/              # admin dashboard (/admin/...) — staff roles; (shell) group = 2FA gate + sidebar, 2fa/ = enrolment
+│   │                       # (shell) routes: narocila, stranke, podpora, izdelki, kolekcije, paketi, kuponi, ocene, vsebina (domov, oglasna-vrstica, popup),
+│   │                       # strani, navigacija, mediji, e-posta, nastavitve (dostava, davki-racuni, trzenje, podpora), ekipa, racun
 │   └── api/                # Route Handlers: /api/webhooks/stripe, /api/webhooks/paypal, public JSON endpoints
 ├── components/
 │   ├── storefront/         # Ui* primitives (button, pill, card, marquee, modal…), sections, product card

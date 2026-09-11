@@ -11,6 +11,22 @@ import { dismissCookieBanner, enrolledTotpFields, loginStaff, prisma, waitForMai
 const PASSWORD = "CmsAcceptance123!";
 const SETTING_KEYS = ["home.hero", "home.sections", "marquee.text", "marquee.href", "marquee.active"] as const;
 
+/** Snapshot before each test and restore after it — afterEach still runs when a test times out, a finally block does not (step 6 finding F3). */
+let snapshot: { settings: Array<{ key: string; value: unknown }>; headerItems: unknown } = { settings: [], headerItems: [] };
+test.beforeEach(async () => {
+  snapshot = {
+    settings: await prisma.setting.findMany({ where: { key: { in: [...SETTING_KEYS] } } }),
+    headerItems: (await prisma.menu.findUniqueOrThrow({ where: { handle: "header" } })).items,
+  };
+});
+test.afterEach(async () => {
+  for (const key of SETTING_KEYS) {
+    const original = snapshot.settings.find((row) => row.key === key);
+    if (original) await prisma.setting.update({ where: { key }, data: { value: original.value as object } });
+    else await prisma.setting.deleteMany({ where: { key } });
+  }
+  await prisma.menu.update({ where: { handle: "header" }, data: { items: snapshot.headerItems as object[] } });
+});
 test.afterAll(async () => { await prisma.$disconnect(); });
 
 async function staff(role: "MANAGER" | "SUPPORT", key: string) {
@@ -54,8 +70,6 @@ test("manager edits the homepage, marquee, header menu, a page, the media librar
   const key = randomUUID().slice(0, 8);
   const manager = await staff("MANAGER", key);
   const shopper = `cms-kupec-${key}@test.si`;
-  const settings = await prisma.setting.findMany({ where: { key: { in: [...SETTING_KEYS] } } });
-  const headerMenu = await prisma.menu.findUniqueOrThrow({ where: { handle: "header" } });
   const shop = await browser.newContext();
   const front = await shop.newPage();
   let mediaUrl: string | null = null;
@@ -217,12 +231,6 @@ test("manager edits the homepage, marquee, header menu, a page, the media librar
     expect(await prisma.emailTemplate.count({ where: { key: "orderConfirmation" } })).toBe(0);
   } finally {
     await shop.close();
-    for (const key of SETTING_KEYS) {
-      const original = settings.find((row) => row.key === key);
-      if (original) await prisma.setting.update({ where: { key }, data: { value: original.value as object } });
-      else await prisma.setting.deleteMany({ where: { key } });
-    }
-    await prisma.menu.update({ where: { handle: "header" }, data: { items: headerMenu.items as object[] } });
     await prisma.contentPage.deleteMany({ where: { slug: `e2e-stran-${key}` } });
     await prisma.emailTemplate.deleteMany({ where: { key: "orderConfirmation" } });
     const leftover = await prisma.mediaAsset.findMany({ where: { alt: `E2E slika ${key}` } });

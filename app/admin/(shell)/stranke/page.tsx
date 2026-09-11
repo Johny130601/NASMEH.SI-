@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePagePermission } from "@/lib/admin/access";
-import { listCustomers, parseCustomerFilters } from "@/lib/admin/customers";
+import { CUSTOMER_SCAN_LIMIT, listCustomers, parseCustomerFilters } from "@/lib/admin/customers";
 import { formatEUR } from "@/lib/pricing";
 import { admin as copy } from "@/lib/copy";
 
@@ -54,6 +54,7 @@ export default async function AdminCustomersPage({ searchParams }: { searchParam
           <Link href="/admin/stranke" className="rounded-btn border border-light-1 px-4 py-2 text-sm">{copy.common.reset}</Link>
         </div>
       </form>
+      {result.truncated ? <p role="status" className="mt-3 text-sm text-warning" data-list-truncated>{copy.common.truncated.replace("{n}", String(CUSTOMER_SCAN_LIMIT))}</p> : null}
       <p className="mt-2 text-xs text-mid-2">{copy.customers.total.replace("{total}", String(result.total))}</p>
 
       <div className="mt-3 overflow-x-auto rounded-card border border-light-2 bg-white">

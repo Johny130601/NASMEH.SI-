@@ -1,4 +1,5 @@
 import QRCode from "qrcode";
+import { z } from "zod";
 import { AdminAccessError, requirePermission } from "@/lib/admin/access";
 import { couponLink } from "@/lib/admin/coupons";
 import { db } from "@/lib/db";
@@ -13,8 +14,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     if (error instanceof AdminAccessError) return new Response(null, { status: 404 });
     throw error;
   }
-  const { id } = await params;
-  const coupon = await db.coupon.findUnique({ where: { id }, select: { code: true } });
+  const id = z.string().trim().min(1).max(64).safeParse((await params).id);
+  if (!id.success) return new Response(null, { status: 404 });
+  const coupon = await db.coupon.findUnique({ where: { id: id.data }, select: { code: true } });
   if (!coupon) return new Response(null, { status: 404 });
   const svg = await QRCode.toString(couponLink(coupon.code), { type: "svg", errorCorrectionLevel: "M", margin: 1, width: 512 });
   return new Response(svg, {

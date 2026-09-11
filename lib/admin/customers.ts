@@ -41,7 +41,11 @@ function addressName(value: unknown): string | null {
     ? (value as { fullName: string }).fullName : null;
 }
 
-export async function listCustomers(filters: CustomerFilters): Promise<{ rows: CustomerRow[]; total: number; page: number; pages: number }> {
+/** Accounts and guest orders are merged in memory; both scans are capped and the page says so when a cap is hit. */
+export const CUSTOMER_SCAN_LIMIT = 2000;
+const GUEST_ORDER_SCAN_LIMIT = 5000;
+
+export async function listCustomers(filters: CustomerFilters): Promise<{ rows: CustomerRow[]; total: number; page: number; pages: number; truncated: boolean }> {
   const [users, guestOrders] = await Promise.all([
     db.user.findMany({
       where: {
@@ -54,14 +58,16 @@ export async function listCustomers(filters: CustomerFilters): Promise<{ rows: C
         orders: { select: { status: true, totalCents: true, refundedCents: true } },
       },
       orderBy: { createdAt: "desc" },
+      take: CUSTOMER_SCAN_LIMIT,
     }),
     db.order.findMany({
       where: { userId: null, ...(filters.q ? { OR: [{ email: { contains: filters.q, mode: "insensitive" } }, { shippingAddress: { path: ["fullName"], string_contains: filters.q } }] } : {}) },
       select: { email: true, status: true, totalCents: true, refundedCents: true, createdAt: true, shippingAddress: true, marketingOptIn: true, anonymizedAt: true },
       orderBy: { createdAt: "desc" },
-      take: 5000,
+      take: GUEST_ORDER_SCAN_LIMIT,
     }),
   ]);
+  const truncated = users.length >= CUSTOMER_SCAN_LIMIT || guestOrders.length >= GUEST_ORDER_SCAN_LIMIT;
 
   const rows: CustomerRow[] = users.map((user) => ({
     key: `u:${user.id}`, href: `/admin/stranke/${user.id}`, type: "account", name: user.name, email: user.email,
@@ -93,7 +99,7 @@ export async function listCustomers(filters: CustomerFilters): Promise<{ rows: C
   const total = merged.length;
   const pages = Math.max(1, Math.ceil(total / CUSTOMER_PAGE_SIZE));
   const page = Math.min(filters.page, pages);
-  return { rows: merged.slice((page - 1) * CUSTOMER_PAGE_SIZE, page * CUSTOMER_PAGE_SIZE), total, page, pages };
+  return { rows: merged.slice((page - 1) * CUSTOMER_PAGE_SIZE, page * CUSTOMER_PAGE_SIZE), total, page, pages, truncated };
 }
 
 const orderSelect = {
@@ -107,9 +113,9 @@ export async function loadCustomer(userId: string) {
       id: true, email: true, name: true, role: true, marketingOptIn: true, emailVerified: true, createdAt: true,
       adminNotes: true, tags: true, anonymizedAt: true,
       addresses: { orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }] },
-      orders: { select: orderSelect, orderBy: { createdAt: "desc" } },
+      orders: { select: orderSelect, orderBy: { createdAt: "desc" }, take: 200 },
       marketingOptIns: { select: { id: true, kind: true, version: true, choices: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 50 },
-      supportTickets: { select: { id: true, reference: true, topic: true, status: true, createdAt: true }, orderBy: { createdAt: "desc" } },
+      supportTickets: { select: { id: true, reference: true, topic: true, status: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 100 },
       _count: { select: { reviews: true } },
     },
   });
@@ -124,11 +130,11 @@ export async function loadCustomer(userId: string) {
 export async function loadGuest(email: string) {
   const normalised = email.trim().toLowerCase();
   const orders = await db.order.findMany({
-    where: { userId: null, email: normalised }, select: { ...orderSelect, shippingAddress: true, anonymizedAt: true }, orderBy: { createdAt: "desc" },
+    where: { userId: null, email: normalised }, select: { ...orderSelect, shippingAddress: true, anonymizedAt: true }, orderBy: { createdAt: "desc" }, take: 200,
   });
   if (orders.length === 0) return null;
   const tickets = await db.ticket.findMany({
-    where: { userId: null, email: normalised }, select: { id: true, reference: true, topic: true, status: true, createdAt: true }, orderBy: { createdAt: "desc" },
+    where: { userId: null, email: normalised }, select: { id: true, reference: true, topic: true, status: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 100,
   });
   return {
     email: normalised,

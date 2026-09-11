@@ -85,6 +85,8 @@ describe("QR route guard", () => {
     expect((await qr(couponId)).status).toBe(404);
     mocks.auth.mockResolvedValue(session("FULFILLMENT"));
     expect((await qr(couponId)).status).toBe(404);
+    mocks.auth.mockResolvedValue(session("MANAGER"));
+    expect((await qr("x".repeat(65))).status).toBe(404); // step 7: params are validated before the lookup
     expect(mocks.couponFindUnique).not.toHaveBeenCalled();
   });
 

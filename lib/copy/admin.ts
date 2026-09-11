@@ -50,6 +50,7 @@ export const admin = {
     apply: "Filtriraj",
     reset: "Počisti",
     page: "Stran {page} od {pages}",
+    truncated: "Prikazanih je največ {n} vnosov; zožite iskanje ali filtre.",
     prev: "Prejšnja",
     next: "Naslednja",
   },
