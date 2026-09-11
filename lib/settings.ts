@@ -11,6 +11,10 @@ export const SETTING_KEYS = {
   vatRatePercent: "vat.ratePercent",
   marqueeText: "marquee.text",
   marqueeHref: "marquee.href",
+  marqueeActive: "marquee.active",
+  homeSections: "home.sections",
+  homeBundleBanner: "home.bundleBanner",
+  homeRoutineBanner: "home.routineBanner",
   company: "company",
   homeHero: "home.hero",
   gtmId: "analytics.gtmId",
@@ -39,6 +43,27 @@ export interface HeroSlotSetting {
   imageAlt?: string;
   promoOverlayText?: string;
   promoOverlayHref?: string;
+}
+
+/** Homepage composition (§14.10): order and visibility of the four P1 sections. */
+export type HomeSectionId = "hero" | "rail" | "bundleBanner" | "routineBanner";
+export interface HomeSectionSetting {
+  id: HomeSectionId;
+  visible: boolean;
+}
+
+export interface BundleBannerSetting {
+  title: string;
+  cta: string;
+  href: string;
+}
+
+export interface RoutineBannerSetting {
+  title: string;
+  href: string;
+  image: string;
+  imageAlt: string;
+  footnote: string;
 }
 
 export interface MaintenanceSetting {

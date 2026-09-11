@@ -430,6 +430,28 @@ async function seedSettings() {
       value: "Brezplačna dostava pri naročilih nad 45 €",
     },
     { key: "marquee.href", value: "/checkout" },
+    { key: "marquee.active", value: true },
+    {
+      // Homepage section order and visibility (§14.10)
+      key: "home.sections",
+      value: [
+        { id: "hero", visible: true },
+        { id: "rail", visible: true },
+        { id: "bundleBanner", visible: true },
+        { id: "routineBanner", visible: true },
+      ],
+    },
+    { key: "home.bundleBanner", value: { title: "Naši paketi", cta: "Nakupuj zdaj", href: "/trgovina?kolekcija=paketi" } },
+    {
+      key: "home.routineBanner",
+      value: {
+        title: "Vaša vsakodnevna rutina beljenja — urejena.",
+        href: "/izdelek/paket-popolna-rutina",
+        image: "/uploads/placeholder-rutina-wide.svg",
+        imageAlt: "Paket popolna rutina — trakci, ustna voda in serum",
+        footnote: "*Rezultati se lahko razlikujejo od osebe do osebe. Izdelki niso nadomestilo ustne higiene pri zobozdravniku.",
+      },
+    },
     {
       key: "company",
       value: {

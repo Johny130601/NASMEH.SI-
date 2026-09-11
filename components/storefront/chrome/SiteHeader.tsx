@@ -15,10 +15,11 @@ import { SearchOverlay } from "./SearchOverlay";
  * main nav. Single-market chrome: SI only, no region selector.
  */
 export async function SiteHeader() {
-  const [marqueeText, marqueeHref, headerItems, mobileItems, session] =
+  const [marqueeText, marqueeHref, marqueeActive, headerItems, mobileItems, session] =
     await Promise.all([
       getSetting<string>(SETTING_KEYS.marqueeText),
       getSetting<string>(SETTING_KEYS.marqueeHref),
+      getSetting<boolean>(SETTING_KEYS.marqueeActive),
       getMenu("header"),
       getMenu("mobile"),
       auth(),
@@ -56,10 +57,12 @@ export async function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-40 bg-white">
-      <UiMarquee
-        text={marqueeText ?? home.marqueeFallback}
-        href={marqueeHref ?? undefined}
-      />
+      {marqueeActive !== false ? (
+        <UiMarquee
+          text={marqueeText ?? home.marqueeFallback}
+          href={marqueeHref || undefined}
+        />
+      ) : null}
 
       {/* Utility bar (desktop only) */}
       <div className="hidden bg-light-3 md:block">

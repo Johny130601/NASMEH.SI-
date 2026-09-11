@@ -2,10 +2,19 @@ import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
 import { authEmailSchema } from "@/lib/auth-validation";
 import { sendMail } from "@/lib/email/mailer";
+import { resolveMail } from "@/lib/email/templates/render";
 import { renderSupportStaffEmail, renderSupportCustomerEmail, ticketDetailsKind } from "@/lib/email/templates/support-ticket";
+import { supportEmail } from "@/lib/copy/support-email";
 
 const LEASE_MS = 5 * 60_000;
 export interface TicketDeliveryCounters { processed: number; sent: number; failed: number; skipped: number }
+
+/** The receipt is the one support mail an operator may override (§14.11 "withdrawal received"). */
+async function customerReceipt(reference: string, details: unknown) {
+  const kind = ticketDetailsKind(details);
+  return resolveMail("supportReceipt", { reference, note: kind ? supportEmail.customer.notes[kind] : "" },
+    () => renderSupportCustomerEmail({ reference, kind }));
+}
 
 /** One claim per persisted recipient. SMTP acceptance and the DB acknowledgement
  * cannot be atomic; after a crash that gap is retried with the same Message-ID. */
@@ -25,7 +34,7 @@ async function deliverOne(id: string): Promise<"sent" | "failed" | "skipped"> {
     const recipient = authEmailSchema.parse(delivery.recipient);
     const content = delivery.kind === "STAFF"
       ? renderSupportStaffEmail(delivery.ticket)
-      : renderSupportCustomerEmail({ reference: delivery.ticket.reference, kind: ticketDetailsKind(delivery.ticket.details) });
+      : await customerReceipt(delivery.ticket.reference, delivery.ticket.details);
     await sendMail({
       ...content, to: recipient,
       ...(delivery.kind === "STAFF" ? { replyTo: authEmailSchema.parse(delivery.ticket.email) } : {}),

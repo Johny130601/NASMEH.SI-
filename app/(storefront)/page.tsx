@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { getCatalogProducts } from "@/lib/catalog";
 import { getOmnibusLowestCents } from "@/lib/omnibus";
-import { getSetting, SETTING_KEYS, type HeroSlotSetting } from "@/lib/settings";
+import { getSetting, SETTING_KEYS, type BundleBannerSetting, type HeroSlotSetting, type RoutineBannerSetting } from "@/lib/settings";
+import { bundleBannerWithDefaults, normaliseHomeSections, routineBannerWithDefaults } from "@/lib/admin/cms";
 import { isTestMode } from "@/lib/turnstile";
 import { getEnv } from "@/lib/env";
 import { buildMetadata } from "@/lib/seo";
@@ -22,10 +23,16 @@ export const metadata: Metadata = buildMetadata({
 });
 
 export default async function HomePage() {
-  const [hero, products] = await Promise.all([
+  const [hero, products, sectionSetting, bundleSetting, routineSetting] = await Promise.all([
     getSetting<HeroSlotSetting>(SETTING_KEYS.homeHero),
     getCatalogProducts(),
+    getSetting<unknown>(SETTING_KEYS.homeSections),
+    getSetting<BundleBannerSetting>(SETTING_KEYS.homeBundleBanner),
+    getSetting<RoutineBannerSetting>(SETTING_KEYS.homeRoutineBanner),
   ]);
+  const sections = normaliseHomeSections(sectionSetting).filter((section) => section.visible);
+  const bundleBanner = bundleBannerWithDefaults(bundleSetting);
+  const routineBanner = routineBannerWithDefaults(routineSetting);
   const rail = products.slice(0, 4);
 
   // Omnibus lines for discounted cards
@@ -43,13 +50,12 @@ export default async function HomePage() {
   const env = getEnv();
   const testToken = isTestMode() ? (env.TURNSTILE_TEST_TOKEN ?? null) : null;
 
-  return (
-    <>
-      {/* §4.1 hero product-launch slot */}
-      <HeroSection hero={hero} />
-
-      {/* §4.2 "Naše uspešnice" rail */}
+  // §4 sections in the order and visibility set in /admin/vsebina/domov.
+  const rendered = {
+    hero: <HeroSection key="hero" hero={hero} />,
+    rail: (
       <section
+        key="rail"
         id="izdelki"
         className="mx-auto max-w-(--container-wide) px-(--padding) py-16"
       >
@@ -71,12 +77,10 @@ export default async function HomePage() {
           </div>
         )}
       </section>
+    ),
+    bundleBanner: <BundleBanner key="bundleBanner" banner={bundleBanner} />,
+    routineBanner: <RoutineBanner key="routineBanner" banner={routineBanner} />,
+  };
 
-      {/* §4.3 bundle banner */}
-      <BundleBanner />
-
-      {/* §4.4 full-width routine-bundle banner + live-HTML footnote */}
-      <RoutineBanner />
-    </>
-  );
+  return <>{sections.map((section) => rendered[section.id])}</>;
 }

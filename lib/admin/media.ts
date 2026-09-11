@@ -14,13 +14,15 @@ import sharp from "sharp";
  */
 export const MAX_MEDIA_BYTES = 4 * 1024 * 1024;
 export const MEDIA_MIME: Record<string, string> = { "image/jpeg": "jpeg", "image/png": "png", "image/webp": "webp" };
-export const MEDIA_OWNERS = ["products", "collections"] as const;
+export const MEDIA_OWNERS = ["products", "collections", "media"] as const;
+/** Owner id of the global media library (§14.10) under catalog-uploads/media/. */
+export const MEDIA_LIBRARY_OWNER_ID = "knjiznica-medijev";
 export type MediaOwner = (typeof MEDIA_OWNERS)[number];
 
 export const CATALOG_UPLOAD_DIR = path.join(process.cwd(), "catalog-uploads");
-export const MEDIA_OWNER_ID = /^[a-z0-9]{10,40}$/i;
+export const MEDIA_OWNER_ID = /^[a-z0-9][a-z0-9-]{9,39}$/i;
 export const MEDIA_FILENAME = /^[a-f0-9]{24}\.webp$/;
-const MANAGED_URL = /^\/uploads\/(products|collections)\/([a-z0-9]{10,40})\/([a-f0-9]{24}\.webp)$/i;
+const MANAGED_URL = /^\/uploads\/(products|collections|media)\/([a-z0-9][a-z0-9-]{9,39})\/([a-f0-9]{24}\.webp)$/i;
 
 export class InvalidMediaFile extends Error {
   constructor(readonly reason: "mime" | "size" | "content") {

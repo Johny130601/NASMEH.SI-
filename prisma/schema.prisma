@@ -589,8 +589,26 @@ enum ContentTemplate {
   DEFAULT
   LEGAL
   CONTACT
-  HELP
   LANDING
+}
+
+// Operator overrides of the transactional mails (§14.10): subject + body with {{placeholders}}
+model EmailTemplate {
+  key       String   @id
+  subject   String
+  bodyHtml  String
+  updatedAt DateTime @updatedAt
+}
+
+// Media library (§14.10): hero poster, banners; files under catalog-uploads/media/
+model MediaAsset {
+  id        String   @id @default(cuid())
+  url       String   @unique
+  alt       String   @default("")
+  width     Int
+  height    Int
+  bytes     Int
+  createdAt DateTime @default(now())
 }
 
 model ContentPage {

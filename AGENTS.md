@@ -56,7 +56,8 @@ Hard rules (from the master spec, §15):
 │   ├── support/            # tickets, topic routing, private attachments, ticket-mail delivery
 │   ├── back-in-stock/      # signed one-click unsubscribe tokens
 │   ├── auth.ts             # Auth.js config
-│   ├── admin/              # permission matrix, access gate (requirePermission), TOTP, pre-auth, dashboard/catalog/coupon/review queries, managed media
+│   ├── admin/              # permission matrix, access gate (requirePermission), TOTP, pre-auth, dashboard/catalog/coupon/review/CMS queries (cms.ts, cms-schemas.ts), managed media
+│   ├── email/              # mailer, code templates, template-defs.ts (editable keys, placeholders, samples), templates/render.ts (operator overrides through resolveMail)
 │   ├── koda-code.ts        # coupon code schema shared by /koda, the cart and the admin form (no server imports)
 │   └── copy/               # Slovenian UI copy files (see §7)
 ├── prisma/
@@ -101,7 +102,7 @@ Schema-first in `prisma/schema.prisma`; evolve only via migrations.
 | **Ticket** | Durable support request with a receipt reference, topic/reason, reporter, checked order context and privacy acknowledgment; private attachments and independent retryable staff/customer email-delivery rows. |
 | **Menu** | Navigation builder: header (incl. mega-menu featured cards + colored sale link), utility bar, footer columns, mobile drawer. |
 
-Supporting tables not listed: `PriceHistory`, `ConsentLog`, `OrderNote` (internal and customer-visible notes), `Refund` (one row per operator refund; the row id is the provider idempotency key), email/template tables, sessions — add them as the spec demands, with migrations.
+Supporting tables not listed: `PriceHistory`, `ConsentLog`, `OrderNote` (internal and customer-visible notes), `Refund` (one row per operator refund; the row id is the provider idempotency key), `EmailTemplate` (operator subject/body override per mail key), `MediaAsset` (library files with alt text and dimensions), sessions — add them as the spec demands, with migrations.
 
 ## 5. Key architectural decisions — and WHY
 
@@ -208,7 +209,8 @@ Workflow rules:
 12. **Copy patterns, never assets.** Mechanics from the research dossiers are fair game; HiSmile names, copy lines, imagery, and the pink identity are not.
 14. **Refunds go through `lib/orders/refunds.ts`.** Operator refunds and paid-order cancellations create a `Refund` row first, move the money through the provider abstraction (`PaymentProvider.refund`, keyed by the row id so a retry cannot pay twice), then apply the local state and restock through the stock helper; webhook handlers only reconcile provider-originated refunds (Stripe amounts are cumulative, PayPal refund ids already recorded are skipped). No other code raises `Order.refundedCents`.
 13. **Stock increases go through the stock helper.** Any code that raises `Variant.stock` calls `setVariantStockInTx` / `adjustVariantStockInTx` from `lib/inventory/stock.ts` inside the caller's transaction: the helper locks the row and arms back-in-stock alerts on a 0 → N transition in the same transaction; sending happens post-commit (`lib/inventory/restock.ts`) with the daily job as the retry path. `deductOrderInventory` (paid orders) stays the only decrement path. Seeds and tests use the helper too; a hand-written `stock` update is a bug.
-15. **Catalog media go through `lib/admin/media.ts`.** Every upload is decoded and re-encoded to WebP, written under `catalog-uploads/<owner>/<ownerId>/` with a random name and served by `app/uploads/[owner]/[ownerId]/[filename]/route.ts`; deleting a `MediaImage` row or a banner removes its file. Nothing writes into `public/` at runtime (the standalone server copies that directory at start and lists it once).
+15. **Catalog media go through `lib/admin/media.ts`.** Every upload is decoded and re-encoded to WebP, written under `catalog-uploads/<owner>/<ownerId>/` with a random name and served by `app/uploads/[owner]/[ownerId]/[filename]/route.ts`; deleting a `MediaImage` row or a banner removes its file. The global library is the `media` owner (`MediaAsset` rows); its files are shared by URL and are only deleted through the library, never with the setting or page that references them. Nothing writes into `public/` at runtime (the standalone server copies that directory at start and lists it once).
+16. **Customer mail goes through `resolveMail`.** Every customer-facing send in `lib/email/mailer.ts` (and the ticket receipt in `lib/support/delivery.ts`) names a key from `lib/email/template-defs.ts` and passes its placeholder values plus the code template as the fallback; `resolveMail` renders the operator's `EmailTemplate` override when one exists and never lets a broken override block a transactional mail. A new customer mail gets a key, placeholders with samples and a default body in the same change; staff-only mail stays code-only.
 
 ---
 
