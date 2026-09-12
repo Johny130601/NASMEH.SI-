@@ -1,4 +1,8 @@
 import { z } from "zod";
+import { isValidPostalCode } from "./checkout-constants";
+
+// Client components import these from checkout-constants (no zod in their bundle); server code from here.
+export { EU_COUNTRIES, isValidPostalCode, type ShippingMethodSetting } from "./checkout-constants";
 
 /** Checkout form contract (§8.1) — intent only; money is re-priced server-side. */
 export const checkoutFormSchema = z.object({
@@ -23,14 +27,6 @@ export const checkoutFormSchema = z.object({
   quoteToken: z.string().regex(/^[a-f0-9]{64}$/),
 }).refine(input => isValidPostalCode(input.country, input.postalCode), { path: ["postalCode"], message: "Invalid postal code" });
 
-export function isValidPostalCode(country: string, postalCode: string): boolean {
-  const rules: Record<string, RegExp> = {
-    SI: /^\d{4}$/, AT: /^\d{4}$/, HU: /^\d{4}$/, BE: /^\d{4}$/,
-    HR: /^\d{5}$/, IT: /^\d{5}$/, DE: /^\d{5}$/, FR: /^\d{5}$/,
-    CZ: /^\d{3}\s?\d{2}$/, SK: /^\d{3}\s?\d{2}$/, PL: /^\d{2}-?\d{3}$/, NL: /^\d{4}\s?[A-Za-z]{2}$/,
-  };
-  return rules[country]?.test(postalCode.trim()) ?? false;
-}
 
 export const shippingMethodSchema = z.object({
   id: z.string().min(1), carrier: z.string(), label: z.string(),
@@ -39,27 +35,3 @@ export const shippingMethodSchema = z.object({
 });
 
 export type CheckoutFormInput = z.infer<typeof checkoutFormSchema>;
-
-export interface ShippingMethodSetting {
-  id: string;
-  carrier: string;
-  label: string;
-  priceCents: number;
-  estimate: string;
-  countries?: string[];
-}
-
-export const EU_COUNTRIES: Array<{ code: string; label: string }> = [
-  { code: "SI", label: "Slovenija" },
-  { code: "AT", label: "Avstrija" },
-  { code: "HR", label: "Hrvaška" },
-  { code: "IT", label: "Italija" },
-  { code: "HU", label: "Madžarska" },
-  { code: "DE", label: "Nemčija" },
-  { code: "CZ", label: "Češka" },
-  { code: "SK", label: "Slovaška" },
-  { code: "PL", label: "Poljska" },
-  { code: "FR", label: "Francija" },
-  { code: "NL", label: "Nizozemska" },
-  { code: "BE", label: "Belgija" },
-];

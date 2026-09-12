@@ -31,3 +31,7 @@ catalog-uploads/
 
 # os / misc
 .DS_Store
+docs/testing/lighthouse/**/*.html
+docs/testing/lighthouse/**/*.json
+!docs/testing/lighthouse/**/manifest.json
+.lighthouseci/

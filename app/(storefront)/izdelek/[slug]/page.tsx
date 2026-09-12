@@ -138,6 +138,7 @@ export default async function ProductPage({
     "@context": "https://schema.org",
     "@type": "Product",
     name: product.title,
+    sku: variant.sku,
     description: product.seoDescription ?? product.description,
     image: product.media.map((m) => `${base}${m.url}`),
     brand: { "@type": "Brand", name: common.siteName },
@@ -233,7 +234,8 @@ export default async function ProductPage({
         </nav>
 
         <div className="mt-6 grid gap-10 md:grid-cols-2 md:gap-16">
-          {/* 2. Portrait gallery (0.6875:1), first image fetchpriority=high */}
+          {/* 2. Portrait gallery (0.6875:1): first image fetchpriority=high, second eager (it enters the
+              first mobile viewport and must not be the lazy-loaded LCP), the rest lazy */}
           <div className="flex flex-col gap-4">
             {product.media.length === 0 ? (
               <div aria-hidden="true" className="aspect-[0.6875] w-full rounded-card bg-light-3" />
@@ -248,7 +250,9 @@ export default async function ProductPage({
                   height={1280}
                   {...(index === 0
                     ? { fetchPriority: "high" }
-                    : { loading: "lazy" })}
+                    : index === 1
+                      ? { loading: "eager" }
+                      : { loading: "lazy" })}
                   className="aspect-[0.6875] w-full rounded-card bg-light-3 object-cover"
                 />
               ))

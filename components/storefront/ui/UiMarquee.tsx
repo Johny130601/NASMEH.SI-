@@ -9,7 +9,10 @@ export interface UiMarqueeProps {
 /**
  * Infinite CSS marquee (research 06 §13–14): brand-color bar, 10s loop,
  * duplicated track (second half aria-hidden), single accessible announcement,
- * honors prefers-reduced-motion (see globals.css).
+ * honors prefers-reduced-motion (see globals.css). The text is dark on the
+ * brand bar: white on brand measures 3:1 at 14 px, short of WCAG AA's 4.5:1
+ * (Phase 9 step 2). The link carries the announcement as its name because
+ * its visible track is hidden from assistive technology.
  */
 export function UiMarquee({ text, href }: UiMarqueeProps) {
   const track = (
@@ -27,9 +30,9 @@ export function UiMarquee({ text, href }: UiMarqueeProps) {
   );
 
   return (
-    <div className="ui-marquee bg-brand text-white" role="region" aria-label={text}>
+    <div className="ui-marquee bg-brand text-dark-1" role="region" aria-label={text}>
       {href ? (
-        <Link href={href} className="block">
+        <Link href={href} className="block" aria-label={text}>
           {track}
         </Link>
       ) : (

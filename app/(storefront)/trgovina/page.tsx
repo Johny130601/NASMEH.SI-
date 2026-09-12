@@ -84,12 +84,15 @@ export default async function ShopPage({
   return (
     <>
       {/* full-width promo banner (separate mobile crop) */}
+      {/* intrinsic sizes reserve the banner's box before the artwork arrives (no layout shift) */}
       <picture>
-        <source srcSet="/uploads/placeholder-trgovina-mobile.svg" media="(width < 768px)" />
+        <source srcSet="/uploads/placeholder-trgovina-mobile.svg" media="(width < 768px)" width={800} height={500} />
         <img
           src="/uploads/placeholder-trgovina-wide.svg"
           alt={catalog.bannerAlt}
-          className="w-full object-cover"
+          width={1600}
+          height={500}
+          className="h-auto w-full object-cover"
         />
       </picture>
 

@@ -126,7 +126,7 @@ export default async function CartPage({
         <>
           {/* Free-shipping progress bar */}
           <div className="mt-8" data-shipping-progress>
-            <p className="text-sm text-dark-1" role="status">
+            <p id="shipping-progress-label" className="text-sm text-dark-1" role="status">
               {priced.freeShipping.reached
                 ? cart.progress.reached
                 : priced.subtotalCents - ("discountCents" in priced ? priced.discountCents : 0) === 0
@@ -139,6 +139,7 @@ export default async function CartPage({
             <div
               className="mt-2 h-2 overflow-hidden rounded-btn bg-light-2"
               role="progressbar"
+              aria-labelledby="shipping-progress-label"
               aria-valuenow={priced.freeShipping.progressPercent}
               aria-valuemin={0}
               aria-valuemax={100}

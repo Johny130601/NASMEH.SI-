@@ -2,7 +2,9 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
-import { loadStripe } from "@stripe/stripe-js";
+// The package's main entry injects Stripe.js (250 kB) as a side effect of being imported, i.e. on
+// the first checkout step; the pure entry loads it when loadStripe runs — at the payment step, with a key.
+import { loadStripe } from "@stripe/stripe-js/pure";
 import { PayPalButtons, PayPalScriptProvider } from "@paypal/react-paypal-js";
 import { capturePayPalAction, resumeOrderPaymentAction } from "@/app/(storefront)/actions/payment";
 import { testDriverPayAction, type TestPayOutcome } from "@/app/(storefront)/actions/checkout";

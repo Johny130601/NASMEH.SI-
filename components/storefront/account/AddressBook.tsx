@@ -8,7 +8,7 @@ import {
   setDefaultAddressAction,
   updateMarketingPreferenceAction,
 } from "@/app/(storefront)/actions/address";
-import { EU_COUNTRIES } from "@/lib/orders/checkout-schema";
+import { EU_COUNTRIES } from "@/lib/orders/checkout-constants";
 import { account as copy } from "@/lib/copy";
 import { UiButton } from "../ui/UiButton";
 import { UiInput } from "../ui/UiInput";

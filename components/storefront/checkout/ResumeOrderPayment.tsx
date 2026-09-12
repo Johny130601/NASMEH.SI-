@@ -7,7 +7,13 @@ import type { PlaceOrderResult } from "@/lib/orders/create";
 import { paymentResumeState } from "@/lib/orders/resume-state";
 import { orders } from "@/lib/copy";
 import { UiButton } from "../ui/UiButton";
-import { ProviderPaymentPanel } from "./ProviderPaymentPanel";
+import dynamic from "next/dynamic";
+
+// Loaded when the customer resumes a payment, like the checkout's own panel (Phase 9 step 2).
+const ProviderPaymentPanel = dynamic(
+  () => import("./ProviderPaymentPanel").then((module) => module.ProviderPaymentPanel),
+  { ssr: false, loading: () => <div data-pay-panel-loading aria-hidden="true" className="h-24 animate-pulse rounded-card bg-light-3" /> },
+);
 
 /** Load payment details only through the ownership-checked server action. */
 export function ResumeOrderPayment({ orderNumber, stripeKey, paypalClientId }: {

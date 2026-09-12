@@ -57,6 +57,7 @@ export function HeroSection({ hero }: { hero: HeroSlotSetting | null }) {
             <img
               src={content.poster}
               alt={content.imageAlt ?? home.hero.mediaAlt}
+              fetchPriority="high"
               className="aspect-[4/5] w-full rounded-card object-cover"
             />
           ) : (

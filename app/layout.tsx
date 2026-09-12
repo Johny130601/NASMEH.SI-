@@ -16,9 +16,19 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
+/** The one Plus Jakarta Sans subset every page renders (app/globals.css). */
+const FONT_FILES = ["/fonts/jakarta-sl.woff2"] as const;
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="sl">
+      <head>
+        {/* Preloading the font takes it off the critical chain (Phase 9 step 2);
+            the file is served immutable (next.config.ts). */}
+        {FONT_FILES.map((href) => (
+          <link key={href} rel="preload" href={href} as="font" type="font/woff2" crossOrigin="anonymous" />
+        ))}
+      </head>
       <body>{children}</body>
     </html>
   );

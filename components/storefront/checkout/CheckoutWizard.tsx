@@ -9,7 +9,7 @@ import {
   checkEmailExistsAction,
   placeOrderAction,
 } from "@/app/(storefront)/actions/checkout";
-import { EU_COUNTRIES, isValidPostalCode, type ShippingMethodSetting } from "@/lib/orders/checkout-schema";
+import { EU_COUNTRIES, isValidPostalCode, type ShippingMethodSetting } from "@/lib/orders/checkout-constants";
 import { checkout } from "@/lib/copy";
 import { UiButton } from "../ui/UiButton";
 import { UiInput } from "../ui/UiInput";
@@ -18,8 +18,15 @@ import { quoteCheckoutAction } from "@/app/(storefront)/actions/payment";
 import type { CheckoutQuote } from "@/lib/orders/quote";
 import type { PlaceOrderResult } from "@/lib/orders/create";
 import { CheckoutSummary } from "./CheckoutSummary";
-import { ProviderPaymentPanel } from "./ProviderPaymentPanel";
+import dynamic from "next/dynamic";
 import { TurnstileWidget } from "../chrome/TurnstileWidget";
+
+// The payment panel (Stripe and PayPal React bindings, 14 kB gzipped) loads when an
+// order has been placed, not with the address form (Phase 9 step 2).
+const ProviderPaymentPanel = dynamic(
+  () => import("./ProviderPaymentPanel").then((module) => module.ProviderPaymentPanel),
+  { ssr: false, loading: () => <div data-pay-panel-loading aria-hidden="true" className="h-24 animate-pulse rounded-card bg-light-3" /> },
+);
 
 type Provider = "stripe" | "paypal" | "test";
 

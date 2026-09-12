@@ -102,7 +102,8 @@ export async function SiteHeader() {
             <SearchOverlay />
             <Link
               href="/cart"
-              aria-label={copy.cart.open}
+              // The visible badge count must be part of the accessible name (WCAG 2.5.3).
+              aria-label={cartCount > 0 ? `${copy.cart.open} (${cartCount})` : copy.cart.open}
               data-cart-link
               className="relative flex h-11 w-11 items-center justify-center rounded-btn text-dark-1 transition-colors hover:bg-light-3"
             >
