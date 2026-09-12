@@ -3,7 +3,13 @@ name: nasmeh
 services:
   app:
     build: .
+    # Explicit image name: scripts/restore.sh starts a second compose project from this
+    # image without rebuilding (Phase 9 step 3).
+    image: nasmeh-app
     restart: unless-stopped
+    logging: &logging
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
     env_file: .env
     environment:
       # internal compose network — overrides the localhost URL from .env
@@ -33,6 +39,7 @@ services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres

@@ -166,17 +166,9 @@ docker compose --profile tools up -d # also adminer (DB UI) on demand
 
 Secrets live in the host's `.env` (gitignored). No secret is ever baked into the image.
 
-### Backups (postgres volume)
+### Backups, restore, monitoring (Phase 9 step 3)
 
-```bash
-# backup — run on the host, cron it
-docker compose exec -T db pg_dump -U postgres nasmeh | gzip > backups/nasmeh-$(date +%F).sql.gz
-
-# restore
-gunzip -c backups/nasmeh-2026-09-09.sql.gz | docker compose exec -T db psql -U postgres nasmeh
-```
-
-Also back up all four media volumes with `tar`: `/app/catalog-uploads` (product and collection media), `/app/public/uploads` (placeholders), `/app/review-uploads` (reviews) and `/app/support-uploads` (ticket photos). Restore them alongside the database; never restore private customer files into `public`. Daily host-level cron is sufficient at our scale.
+`scripts/backup.sh [root]` (host cron, daily) dumps the database through the `db` container and archives the four media volumes — `/app/catalog-uploads`, `/app/public/uploads` and the private `/app/review-uploads` and `/app/support-uploads` — into one dated directory with a manifest, keeping 14 daily and 8 weekly backups. `scripts/restore.sh <dir>` brings a backup up as a separate compose project (`nasmeh-restore`, port 3100) from the same image and checks `/api/health`; private photos go back into their private volumes only, never into `public/`. Both containers log through `json-file` with rotation (10 MB × 5). The health endpoint reports the database and process metrics; an uptime checker with a `"db":"up"` keyword match on it is the alert source. Procedures, cron lines, rollback and incidents: **docs/RUNBOOK.md**.
 
 ## 7. Development workflow
 
