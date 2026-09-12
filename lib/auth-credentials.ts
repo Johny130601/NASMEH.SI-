@@ -1,10 +1,11 @@
 import { CredentialsSignin } from "@auth/core/errors";
 import type { Role } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getEnv } from "@/lib/env";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { authEmailSchema, humanTokenSchema } from "@/lib/auth-validation";
 import { isStaffRole } from "@/lib/admin/permissions";
@@ -17,6 +18,19 @@ class BotCheckError extends CredentialsSignin { code = "bot_check"; }
 class MfaRequiredError extends CredentialsSignin { code = "mfa_required"; }
 class MfaInvalidError extends CredentialsSignin { code = "mfa_invalid"; }
 class MfaExpiredError extends CredentialsSignin { code = "mfa_expired"; }
+/** Too many password attempts for the address or from the client (Phase 9 step 1). */
+class RateLimitedError extends CredentialsSignin { code = "rate_limited"; }
+
+/** Attempts per address and per client within a window; the TOTP step has its own limit in lib/admin/mfa.ts. */
+export const LOGIN_ATTEMPT_LIMIT = { perEmail: 10, perClient: 200, windowMs: 15 * 60_000 } as const; // per client: a shared NAT or the e2e suite must never trip it
+
+async function clientAddress(): Promise<string> {
+  try {
+    return (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  } catch {
+    return "unknown"; // outside a request scope (direct calls in tests)
+  }
+}
 
 const passwordSchema = z.object({
   email: authEmailSchema,
@@ -57,6 +71,10 @@ export async function authorizeCredentials(raw: unknown) {
 
   const parsed = passwordSchema.safeParse(raw);
   if (!parsed.success) return null;
+  const client = await clientAddress();
+  const perEmail = checkRateLimit(`login:${parsed.data.email}`, LOGIN_ATTEMPT_LIMIT.perEmail, LOGIN_ATTEMPT_LIMIT.windowMs);
+  const perClient = checkRateLimit(`login-ip:${client}`, LOGIN_ATTEMPT_LIMIT.perClient, LOGIN_ATTEMPT_LIMIT.windowMs);
+  if (!perEmail.allowed || !perClient.allowed) throw new RateLimitedError();
   if (!await verifyTurnstile(parsed.data.turnstileToken)) throw new BotCheckError();
   const user = await db.user.findUnique({ where: { email: parsed.data.email } });
   if (!user?.passwordHash) return null;

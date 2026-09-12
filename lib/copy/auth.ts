@@ -22,6 +22,7 @@ export const auth = {
     resetOk: "Geslo je posodobljeno — prijavite se.",
     genericError: "Prijava ni uspela. Poskusite znova.",
     mfaExpired: "Potrditev prijave je potekla. Prijavite se znova.",
+    rateLimited: "Preveč poskusov prijave. Počakajte nekaj minut in poskusite znova.",
   },
   mfa: {
     title: "Potrditvena koda",

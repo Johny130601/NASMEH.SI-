@@ -51,7 +51,7 @@ describe("GDPR export route", () => {
 describe("packing slip route", () => {
   it("refuses out-of-range order numbers before the lookup and 404s unknown orders", async () => {
     expect((await slipGet("NS")).status).toBe(404);
-    expect((await slipGet("N".repeat(41))).status).toBe(404);
+    expect((await slipGet("N".repeat(65))).status).toBe(404);
     expect(mocks.orderFindUnique).not.toHaveBeenCalled();
     expect((await slipGet("NS-2026-00042")).status).toBe(404);
     expect(mocks.orderFindUnique).toHaveBeenCalledTimes(1);

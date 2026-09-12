@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { isStaffRole } from "@/lib/admin/permissions";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
@@ -16,9 +17,11 @@ export async function GET(
   const session = await auth();
   if (!session?.user) redirect("/prijava");
 
-  const { number } = await params;
+  // Bounded, not shaped: order numbers are NS-YYYY-NNNNN in production, test fixtures are longer.
+  const number = z.string().trim().min(3).max(64).safeParse((await params).number);
+  if (!number.success) notFound();
   const order = await db.order.findUnique({
-    where: { number },
+    where: { number: number.data },
     include: { items: true },
   });
   if (!order) notFound();

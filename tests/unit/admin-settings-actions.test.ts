@@ -106,13 +106,20 @@ describe("settings actions: validation and stored shapes", () => {
     expect(await bumpConsentVersionAction()).toEqual({ ok: true, version: 5 });
     expect(await saveLegalLinksAction({ ...DEFAULT_LEGAL_LINKS, terms: "https://x" })).toEqual({ ok: false, error: "invalid" });
     expect(await saveLegalLinksAction({ ...DEFAULT_LEGAL_LINKS, terms: "/pogoji-2026" })).toEqual({ ok: true });
-    expect(await saveMaintenanceAction({ enabled: true, password: "", message: "" })).toEqual({ ok: false, error: "invalid" });
+    expect(await saveMaintenanceAction({ enabled: true, password: "", message: "" })).toEqual({ ok: false, error: "invalid" }); // no stored hash
     expect(await saveMaintenanceAction({ enabled: true, password: "geslo123", message: "Kmalu" })).toEqual({ ok: true });
+    const stored = written().maintenance as { enabled: boolean; passwordHash?: string; message: string };
+    expect(stored.enabled).toBe(true);
+    expect(stored.passwordHash).toMatch(/^\$2[aby]\$/);
+    expect(stored).not.toHaveProperty("password");
+    mocks.findUnique.mockImplementation(async ({ where }: { where: { key: string } }) => (where.key === "maintenance" ? { key: where.key, value: { enabled: false, passwordHash: "$2a$10$existing" } } : null));
+    expect(await saveMaintenanceAction({ enabled: true, password: "", message: "Ohrani" })).toEqual({ ok: true }); // blank keeps the stored hash
+    expect(written().maintenance).toEqual({ enabled: true, passwordHash: "$2a$10$existing", message: "Ohrani" });
     expect(await saveContactSettingsAction({ ...contact, supportEmail: "nope" })).toEqual({ ok: false, error: "invalid" });
     expect(await saveContactSettingsAction(contact)).toEqual({ ok: true });
     expect(written()).toMatchObject({
       "consent.cookies": [cookie], "consent.banner": { title: "Piškotki", body: "" }, "consent.version": 5,
-      "legal.links": { ...DEFAULT_LEGAL_LINKS, terms: "/pogoji-2026" }, maintenance: { enabled: true, password: "geslo123", message: "Kmalu" }, "support.contact": contact,
+      "legal.links": { ...DEFAULT_LEGAL_LINKS, terms: "/pogoji-2026" }, "support.contact": contact,
     });
   });
 });

@@ -26,7 +26,8 @@ export async function subscribeNewsletterAction(input: {
     return { ok: false, message: copy.invalidEmail };
   }
 
-  const human = await verifyTurnstile(input.turnstileToken);
+  const token = z.string().max(2048).default("").safeParse(input.turnstileToken);
+  const human = await verifyTurnstile(token.success ? token.data : "");
   if (!human) {
     return { ok: false, message: copy.botCheckFailed };
   }
@@ -53,7 +54,7 @@ export async function subscribeNewsletterAction(input: {
     await sendSubscriptionVerification(email, token);
     return { ok: true, message: copy.success };
   } catch (error) {
-    console.error("newsletter subscribe failed", error);
+    console.error("newsletter subscribe failed", error instanceof Error ? error.name : "unknown");
     return { ok: false, message: copy.genericError };
   }
 }

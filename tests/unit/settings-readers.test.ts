@@ -78,8 +78,10 @@ describe("typed readers", () => {
     rows.set("legal.links", { ...DEFAULT_LEGAL_LINKS, terms: "/pogoji-2026" });
     expect((await getLegalLinks()).terms).toBe("/pogoji-2026");
     expect(await getMaintenance()).toEqual({ enabled: false });
-    rows.set("maintenance", { enabled: true, password: "pw", message: "Kmalu" });
-    expect(await getMaintenance()).toEqual({ enabled: true, password: "pw", message: "Kmalu" });
+    rows.set("maintenance", { enabled: true, passwordHash: "$2a$10$hash", message: "Kmalu" });
+    expect(await getMaintenance()).toEqual({ enabled: true, passwordHash: "$2a$10$hash", message: "Kmalu" });
+    rows.set("maintenance", { enabled: true, password: "legacy-plain", message: "Kmalu" });
+    expect(await getMaintenance()).toEqual({ enabled: true, message: "Kmalu" }); // a plain legacy password is dropped: nobody can unlock until a new one is set
     expect((await getContactSettingsLenient()).supportEmail).toBe("podpora@nasmeh.test");
     rows.set("support.contact", { supportEmail: "a@b.si", complianceEmail: "c@b.si", hours: "h", responseTime: "r" });
     expect((await getContactSettingsLenient()).supportEmail).toBe("a@b.si");

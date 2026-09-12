@@ -11,5 +11,6 @@ export function authErrorLogger(error: Error): void {
   if (error instanceof CredentialsSignin && error.code === "mfa_required") return;
   // Production bundles minify class names; the Auth.js `type` is stable (the default logger prints it too).
   const name = error instanceof AuthError ? error.type : error.name;
-  console.error(`[auth][error] ${name}: ${error.message}`, error.cause ?? "");
+  // The cause (a provider error) is named, never dumped: it can carry the submitted address.
+  console.error(`[auth][error] ${name}: ${error.message}`, error.cause instanceof Error ? error.cause.name : "");
 }

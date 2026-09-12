@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   analyticsSchema, buildTrackingUrl, companySchema, consentBannerSchema, consentCookiesSchema, consentVersionSchema, contactSettingsSchema,
-  DEFAULT_LEGAL_LINKS, googleVerificationSchema, invoiceFooterSchema, isValidTrackingTemplate, legalLinksSchema, maintenanceSchema, seoDefaultsSchema,
+  DEFAULT_LEGAL_LINKS, googleVerificationSchema, invoiceFooterSchema, isValidTrackingTemplate, legalLinksSchema, maintenanceSchema, maintenanceStoredSchema, seoDefaultsSchema,
   shippingSettingsSchema, sitePathSchema, trackingTemplatesSchema, vatRateSchema,
 } from "@/lib/settings-schemas";
 
@@ -97,11 +97,13 @@ describe("marketing, SEO, consent, legal, maintenance, support", () => {
     expect(sitePathSchema.safeParse("/pogoji?x=1#top").success).toBe(true);
   });
 
-  it("maintenance needs a password only while enabled", () => {
+  it("maintenance: a new password is optional but at least 4 characters; the stored shape carries only a hash", () => {
     expect(maintenanceSchema.safeParse({ enabled: false, password: "", message: "" }).success).toBe(true);
-    expect(maintenanceSchema.safeParse({ enabled: true, password: "", message: "" }).success).toBe(false);
+    expect(maintenanceSchema.safeParse({ enabled: true, password: "", message: "" }).success).toBe(true); // the action checks for a stored hash
     expect(maintenanceSchema.safeParse({ enabled: true, password: "abc", message: "" }).success).toBe(false);
     expect(maintenanceSchema.safeParse({ enabled: true, password: "abcd", message: "Kmalu nazaj" }).success).toBe(true);
+    expect(maintenanceStoredSchema.parse({ enabled: true, passwordHash: "$2a$10$hash", message: "x", password: "plain" })).toEqual({ enabled: true, passwordHash: "$2a$10$hash", message: "x" });
+    expect(maintenanceStoredSchema.safeParse({ enabled: "yes" }).success).toBe(false);
   });
 
   it("contact settings keep the Phase 6 strict shape", () => {

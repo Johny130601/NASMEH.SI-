@@ -38,6 +38,9 @@ const envSchema = z.object({
 
   // /api/jobs/daily bearer secret (host cron)
   JOBS_SECRET: optionalString,
+
+  // Content-Security-Policy mode (Phase 9 step 1): "false" sends the Report-Only header, "true" enforces.
+  CSP_ENFORCE: z.enum(["true", "false"]).default("false"),
 });
 
 export type Env = z.infer<typeof envSchema>;

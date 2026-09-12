@@ -1,14 +1,15 @@
 # syntax=docker/dockerfile:1
 
 # ---------- deps: full node_modules incl. generated Prisma client ----------
-FROM node:20-alpine AS deps
+# node:20-alpine pinned by digest (Phase 9 step 1); refresh the digest when bumping the base image.
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
 RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund --maxsockets=10
 
 # ---------- builder: Next.js standalone output ----------
-FROM node:20-alpine AS builder
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
@@ -16,7 +17,7 @@ COPY . .
 RUN npx prisma generate && npm run build
 
 # ---------- runner: slim, non-root, standalone ----------
-FROM node:20-alpine AS runner
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
@@ -24,7 +25,7 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0
 
 # Prisma CLI for `migrate deploy` at container start (matches @prisma/client major)
-RUN npm install -g prisma@6 --no-audit --no-fund && npm cache clean --force
+RUN npm install -g prisma@6.19.3 --no-audit --no-fund && npm cache clean --force
 
 COPY --from=builder --chown=node:node /app/public ./public
 COPY --from=builder --chown=node:node /app/.next/standalone ./

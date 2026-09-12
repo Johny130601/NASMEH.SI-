@@ -120,7 +120,7 @@ export async function saveVariantAction(input: { productId: string; variantId: s
       return (await setVariantStockInTx(tx, id, variant.stock)).armedAlerts;
     }, { maxWait: 10_000, timeout: 20_000 });
     if (armed > 0) {
-      try { await sendPendingRestockAlerts(); } catch (error) { console.error("Restock alerts remain queued", error); }
+      try { await sendPendingRestockAlerts(); } catch (error) { console.error("Restock alerts remain queued", error instanceof Error ? error.name : "unknown"); }
     }
     refreshProduct(product.slug);
     return { ok: true, armed };

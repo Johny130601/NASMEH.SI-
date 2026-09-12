@@ -653,7 +653,9 @@ export const admin = {
       },
       maintenance: {
         title: "Vzdrževalni način",
-        fields: { enabled: "Trgovina je zaklenjena z geslom", password: "Geslo za dostop (najmanj 4 znaki)", message: "Sporočilo obiskovalcem (neobvezno)" },
+        fields: { enabled: "Trgovina je zaklenjena z geslom", password: "Novo geslo za dostop (prazno = ohrani obstoječe; najmanj 4 znaki)", message: "Sporočilo obiskovalcem (neobvezno)" },
+        hasPassword: "Geslo je nastavljeno (shranjeno kot zgoščena vrednost, ne v čistopisu).",
+        noPassword: "Geslo še ni nastavljeno; brez njega trgovine ni mogoče zakleniti.",
         hint: "Skrbništvo in prijava ostaneta dostopna; kupci vidijo stran z geslom, dokler ne vnesejo gesla.",
         invalid: "Zaklenjena trgovina potrebuje geslo (4–80 znakov).",
       },

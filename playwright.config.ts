@@ -30,7 +30,15 @@ export default defineConfig({
       NASMEH_E2E: "1", // explicit e2e harness flag — NODE_ENV is inlined by the build
       TURNSTILE_TEST_TOKEN: "e2e-turnstile-token",
       PORT: String(PORT),
-      HOSTNAME: "127.0.0.1", // loopback only: tests use 127.0.0.1, no firewall prompt on Windows
+      // Loopback only (no firewall prompt on Windows). The server binds through
+      // `localhost` resolved IPv4-first, so it listens on 127.0.0.1 where the tests
+      // connect, while Next.js sees `localhost` as its own origin: its URL class
+      // normalizes loopback IPs to `localhost`, and a middleware redirect is only
+      // relativized when the two agree — bound to 127.0.0.1 every middleware
+      // redirect left the server absolute on `localhost`, cross-origin for the
+      // browser (Phase 9 step 1 finding F7).
+      HOSTNAME: "localhost",
+      NODE_OPTIONS: "--dns-result-order=ipv4first",
       // Auth.js resolves absolute redirects against AUTH_URL — must match this server
       AUTH_URL: baseURL,
       NEXT_PUBLIC_SITE_URL: baseURL,

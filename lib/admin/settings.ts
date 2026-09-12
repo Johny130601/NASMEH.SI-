@@ -63,8 +63,8 @@ export async function loadMarketingScreen() {
   const [analytics, googleVerification, seo, consent, legalLinks, maintenance] = await Promise.all([
     getAnalyticsIds(), getGoogleVerification(), getSeoDefaults(), getConsentConfig(), getLegalLinks(), getMaintenance(),
   ]);
-  const maintenanceForm: MaintenanceInput = { enabled: maintenance.enabled, password: maintenance.password ?? "", message: maintenance.message ?? "" };
-  return { analytics, googleVerification, seo, consent, legalLinks, maintenance: maintenanceForm };
+  const maintenanceForm: MaintenanceInput = { enabled: maintenance.enabled, password: "", message: maintenance.message ?? "" };
+  return { analytics, googleVerification, seo, consent, legalLinks, maintenance: maintenanceForm, maintenanceHasPassword: !!maintenance.passwordHash };
 }
 
 export async function loadContactScreen() {

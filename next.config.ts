@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { STATIC_SECURITY_HEADERS } from "./lib/security/headers";
 
 const nextConfig: NextConfig = {
   output: "standalone",
@@ -11,6 +12,11 @@ const nextConfig: NextConfig = {
   // pdfkit loads AFM font data from disk at runtime — trace it into standalone
   outputFileTracingIncludes: {
     "*": ["./node_modules/pdfkit/js/data/**/*"],
+  },
+  // Static security headers on every response (pages and API); the CSP with
+  // its per-request nonce is added by the middleware (lib/security/headers.ts).
+  async headers() {
+    return [{ source: "/(.*)", headers: STATIC_SECURITY_HEADERS.map(({ key, value }) => ({ key, value })) }];
   },
 };
 

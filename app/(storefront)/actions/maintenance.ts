@@ -1,13 +1,16 @@
 "use server";
 
-import { cookies } from "next/headers";
-import { getSetting, SETTING_KEYS, type MaintenanceSetting } from "@/lib/settings";
+import bcrypt from "bcryptjs";
+import { cookies, headers } from "next/headers";
+import { z } from "zod";
 import { getEnv } from "@/lib/env";
 import {
   MAINTENANCE_COOKIE,
   MAINTENANCE_MAX_AGE_S,
   maintenanceCookieValue,
 } from "@/lib/maintenance";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { getMaintenance } from "@/lib/settings";
 import { maintenance as copy } from "@/lib/copy";
 
 export interface MaintenanceResult {
@@ -15,14 +18,26 @@ export interface MaintenanceResult {
   message?: string;
 }
 
-/** Password gate for maintenance mode (spec §3.6). */
+const inputSchema = z.object({ password: z.string().max(80) });
+
+/**
+ * Password gate for maintenance mode (spec §3.6). The password is stored as a
+ * bcrypt hash (Phase 9 step 1, backlog B15); guesses are bounded per client.
+ */
 export async function unlockMaintenanceAction(input: {
   password: string;
 }): Promise<MaintenanceResult> {
-  const setting = await getSetting<MaintenanceSetting>(SETTING_KEYS.maintenance);
-  if (!setting?.enabled) return { ok: true };
+  const setting = await getMaintenance();
+  if (!setting.enabled) return { ok: true };
 
-  if (setting.password && input.password === setting.password) {
+  const parsed = inputSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: copy.wrongPassword };
+  const client = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  if (!checkRateLimit(`maintenance-unlock:${client}`, 10, 10 * 60_000).allowed) {
+    return { ok: false, message: copy.wrongPassword };
+  }
+
+  if (setting.passwordHash && await bcrypt.compare(parsed.data.password, setting.passwordHash)) {
     const jar = await cookies();
     jar.set(
       MAINTENANCE_COOKIE,

@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: copy.settings.marketing.title, robots
 /** /admin/nastavitve/trzenje — analytics ids, Search Console, SEO defaults, consent, legal links, maintenance (§14.14). */
 export default async function AdminMarketingSettingsPage() {
   await requirePagePermission("settings:manage");
-  const { analytics, googleVerification, seo, consent, legalLinks, maintenance } = await loadMarketingScreen();
+  const { analytics, googleVerification, seo, consent, legalLinks, maintenance, maintenanceHasPassword } = await loadMarketingScreen();
   return (
     <section className="mx-auto max-w-(--container-wide)" data-admin-settings-marketing>
       <Link href="/admin/nastavitve" className="text-sm text-mid-1 underline underline-offset-4">{copy.common.back}</Link>
@@ -22,7 +22,7 @@ export default async function AdminMarketingSettingsPage() {
         <SeoDefaultsForm initial={seo} />
         <ConsentEditor initial={consent} />
         <LegalLinksForm initial={legalLinks} />
-        <MaintenanceForm initial={maintenance} />
+        <MaintenanceForm initial={maintenance} hasPassword={maintenanceHasPassword} />
       </div>
     </section>
   );

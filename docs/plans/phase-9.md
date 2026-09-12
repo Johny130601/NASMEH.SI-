@@ -1,10 +1,10 @@
 # Phase 9 — Hardening & launch
 
-**Date:** 2026-09-11. **Status:** planned, not started. Source: GENERAL_PLAN.md Phase 9 (six checkpoints) and NASMEH_FEATURES.md §2.3, §3.6, §15. Depends on Phases 0–7 (all locally accepted; Phase 7 closed on 2026-09-11 with [step 7](../testing/phase-7-step-7-2026-09-11.md)). Runs under the user's 2026-09-10 direction: steps execute in order without a stop between checkpoints where their inputs exist; every step still ends with an acceptance record (`docs/testing/phase-9-step-N-<date>.md`), a ledger update and a commit. Steps 4–6 depend on external gates and stop at the gate they cannot pass locally.
+**Date:** 2026-09-11, updated 2026-09-12. **Status:** step 1 complete and locally verified ([step 1](../testing/phase-9-step-1-2026-09-12.md)); step 2 next. Source: GENERAL_PLAN.md Phase 9 (six checkpoints) and NASMEH_FEATURES.md §2.3, §3.6, §15. Depends on Phases 0–7 (all locally accepted; Phase 7 closed on 2026-09-11 with [step 7](../testing/phase-7-step-7-2026-09-11.md)). Runs under the user's 2026-09-10 direction: steps execute in order without a stop between checkpoints where their inputs exist; every step still ends with an acceptance record (`docs/testing/phase-9-step-N-<date>.md`), a ledger update and a commit. Steps 4–6 depend on external gates and stop at the gate they cannot pass locally.
 
 ## Checkpoints
 
-1. Security review and dependency remediation — backlog B14 (login form without JavaScript) and B15 (maintenance password hashing) land here.
+1. Security review and dependency remediation — backlog B14 (login form without JavaScript) and B15 (maintenance password hashing) land here. **Complete 2026-09-12** ([acceptance record](../testing/phase-9-step-1-2026-09-12.md)); the CSP ships report-only, the dependency advisories are dispositioned rather than upgraded (Auth.js peer ranges pin nodemailer and `@auth/core`).
 2. Performance: Core Web Vitals budgets, Lighthouse CI, image/font/JS audit, caching strategy; sitemap/robots/JSON-LD re-audit after backlog B1.
 3. Backups and disaster recovery with a restore drill into a fresh stack; monitoring with a forced-failure alert test.
 4. GDPR and legal finalisation — gate **D4** (legal review, IRPS provider, accountant confirmation). Local part: the audit checklist and the consent-log review; the sign-off itself is external.

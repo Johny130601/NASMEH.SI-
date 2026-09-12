@@ -29,14 +29,22 @@ export async function subscribeBackInStockAction(input: {
     return { ok: false, message: copy.invalidEmail };
   }
 
-  const human = await verifyTurnstile(input.turnstileToken);
+  const shape = z.object({
+    productSlug: z.string().trim().min(1).max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    turnstileToken: z.string().max(2048).default(""),
+  }).safeParse(input);
+  if (!shape.success) {
+    return { ok: false, message: copy.genericError };
+  }
+
+  const human = await verifyTurnstile(shape.data.turnstileToken);
   if (!human) {
     return { ok: false, message: copy.botCheckFailed };
   }
 
   try {
     const product = await db.product.findUnique({
-      where: { slug: input.productSlug },
+      where: { slug: shape.data.productSlug },
       include: { variants: { take: 1, orderBy: { priceCents: "asc" } } },
     });
     if (!product) {
@@ -85,7 +93,7 @@ export async function subscribeBackInStockAction(input: {
     await sendBackInStockVerification(email, token, product.title);
     return { ok: true, message: copy.success };
   } catch (error) {
-    console.error("back-in-stock subscribe failed", error);
+    console.error("back-in-stock subscribe failed", error instanceof Error ? error.name : "unknown");
     return { ok: false, message: copy.genericError };
   }
 }

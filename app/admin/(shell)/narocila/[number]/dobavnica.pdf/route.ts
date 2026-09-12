@@ -14,7 +14,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ num
     if (error instanceof AdminAccessError) return new Response(null, { status: 404 });
     throw error;
   }
-  const number = z.string().trim().min(3).max(40).safeParse((await params).number);
+  const number = z.string().trim().min(3).max(64).safeParse((await params).number);
   if (!number.success) return new Response(null, { status: 404 });
   const order = await db.order.findUnique({ where: { number: number.data }, include: { items: true } });
   if (!order) return new Response(null, { status: 404 });

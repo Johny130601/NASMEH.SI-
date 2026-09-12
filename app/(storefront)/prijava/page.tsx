@@ -32,7 +32,7 @@ export default async function LoginPage({
         </p>
       ) : error ? (
         <p role="alert" className="mb-4 rounded-card border border-error bg-white p-4 text-sm text-error">
-          {error === "bot_check" ? copy.botCheck : error === "mfa_expired" ? copy.login.mfaExpired : copy.login.invalidCredentials}
+          {error === "bot_check" ? copy.botCheck : error === "mfa_expired" ? copy.login.mfaExpired : error === "rate_limited" ? copy.login.rateLimited : copy.login.invalidCredentials}
         </p>
       ) : null}
       {verificirano ? (

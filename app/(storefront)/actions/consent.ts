@@ -31,6 +31,8 @@ export async function saveConsentAction(input: { analytics: boolean; marketing: 
     maxAge: CONSENT_MAX_AGE_S,
     path: "/",
     sameSite: "lax",
+    httpOnly: true, // the provider receives the parsed choice from the server; no script reads the cookie
+
     secure: process.env.NODE_ENV === "production",
   });
 

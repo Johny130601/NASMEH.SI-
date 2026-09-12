@@ -394,6 +394,8 @@ async function seedAdmin() {
 }
 
 async function seedSettings() {
+  // Maintenance password as a bcrypt hash (Phase 9 step 1, B15); the plain value is documented for local use only.
+  const maintenanceHash = await bcrypt.hash("nasmeh-vzdrzevanje", 10);
   const settings: Array<{ key: string; value: unknown }> = [
     { key: "support.contact", value: DEFAULT_CONTACT_SETTINGS },
     { key: "shipping.freeThresholdCents", value: FREE_SHIPPING_THRESHOLD_CENTS },
@@ -526,7 +528,7 @@ async function seedSettings() {
       key: "maintenance",
       value: {
         enabled: false,
-        password: "nasmeh-vzdrzevanje",
+        passwordHash: maintenanceHash,
         message: "Trgovina se pripravlja — vrnite se kmalu.",
       },
     },

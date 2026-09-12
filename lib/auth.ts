@@ -36,7 +36,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       try {
         await mergeGuestCartIntoUserCart(user.id);
       } catch (error) {
-        console.error("cart merge-on-login failed", error);
+        console.error("cart merge-on-login failed", error instanceof Error ? error.name : "unknown");
       }
     },
   },

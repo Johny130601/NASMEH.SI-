@@ -123,12 +123,16 @@ export const legalLinksSchema = z.object({
 });
 export type LegalLinksInput = z.input<typeof legalLinksSchema>;
 
+/** Form input: `password` is a NEW password ("" keeps the stored hash); the action refuses enabling without any hash. */
 export const maintenanceSchema = z.object({
   enabled: z.boolean(),
   password: z.union([z.literal(""), z.string().min(4).max(80)]),
   message: text(300),
-}).refine((value) => !value.enabled || value.password.length > 0, { message: "password", path: ["password"] });
+});
 export type MaintenanceInput = z.input<typeof maintenanceSchema>;
+/** Stored shape: the password lives only as a bcrypt hash (Phase 9 step 1, backlog B15); the middleware reads `enabled`. */
+export const maintenanceStoredSchema = z.object({ enabled: z.boolean(), passwordHash: z.string().optional(), message: z.string().optional() });
+export type MaintenanceStored = z.output<typeof maintenanceStoredSchema>;
 
 // ---------- defaults the readers fall back to ----------
 

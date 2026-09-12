@@ -176,7 +176,7 @@ export function LegalLinksForm({ initial }: { initial: LegalLinksInput }) {
   );
 }
 
-export function MaintenanceForm({ initial }: { initial: MaintenanceInput }) {
+export function MaintenanceForm({ initial, hasPassword }: { initial: MaintenanceInput; hasPassword: boolean }) {
   const [maintenance, setMaintenance] = useState(initial);
   const { pending, run, status } = useSettingsSave(c.marketing.maintenance.invalid);
   return (
@@ -190,6 +190,7 @@ export function MaintenanceForm({ initial }: { initial: MaintenanceInput }) {
           <UiInput label={c.marketing.maintenance.fields.password} name="maintenancePassword" maxLength={80} autoComplete="off" value={maintenance.password} onChange={(event) => setMaintenance({ ...maintenance, password: event.target.value })} />
           <UiInput label={c.marketing.maintenance.fields.message} name="maintenanceMessage" maxLength={300} value={maintenance.message} onChange={(event) => setMaintenance({ ...maintenance, message: event.target.value })} />
         </div>
+        <p className="text-xs text-mid-2" data-maintenance-password-state={hasPassword ? "set" : "none"}>{hasPassword ? c.marketing.maintenance.hasPassword : c.marketing.maintenance.noPassword}</p>
         <SaveRow pending={pending} status={status} />
       </SettingsSection>
     </form>

@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import bcrypt from "bcryptjs";
 import type { Page } from "@playwright/test";
 import { encryptSecret } from "@/lib/admin/secrets";
 import { base32Decode, generateTotpSecret, hotp, TOTP_STEP_SECONDS } from "@/lib/admin/totp";
@@ -24,13 +25,12 @@ export async function setGtmId(value: string) {
 }
 
 export async function setMaintenanceEnabled(enabled: boolean) {
+  // Stored as a bcrypt hash (Phase 9 step 1); the plain password is the test constant below.
+  const value = { enabled, passwordHash: bcrypt.hashSync(MAINTENANCE_PASSWORD, 4) };
   await prisma.setting.upsert({
     where: { key: "maintenance" },
-    update: { value: { enabled, password: "nasmeh-vzdrzevanje" } },
-    create: {
-      key: "maintenance",
-      value: { enabled, password: "nasmeh-vzdrzevanje" },
-    },
+    update: { value },
+    create: { key: "maintenance", value },
   });
 }
 

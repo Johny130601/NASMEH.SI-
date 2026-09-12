@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import type { ReactNode } from "react";
 import { CONSENT_COOKIE, decodeConsentCookie, parseConsent } from "@/lib/consent";
 import {
@@ -48,6 +48,7 @@ export default async function StorefrontLayout({
   // Maintenance mode is gated in middleware (rewrite to /vzdrzevanje) so
   // gated pages never execute and nothing leaks into the RSC payload.
   const jar = await cookies();
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   const [gtmId, company, welcomePopup, consentConfig, legalLinks] = await Promise.all([
     getSetting<string>(SETTING_KEYS.gtmId),
     getSetting<CompanySetting>(SETTING_KEYS.company),
@@ -98,6 +99,7 @@ export default async function StorefrontLayout({
     <ConsentProvider initialConsent={consent} gtmId={gtm} consentVersion={consentConfig.version} banner={consentConfig.banner} policyHref={legalLinks.cookies}>
       <script
         id="consent-defaults"
+        nonce={nonce}
         dangerouslySetInnerHTML={{ __html: CONSENT_DEFAULTS_SNIPPET }}
       />
       <JsonLd data={organizationLd} />

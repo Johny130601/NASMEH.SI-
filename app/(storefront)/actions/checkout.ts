@@ -59,7 +59,7 @@ export async function captureCheckoutEmailAction(input: {
     });
     return { ok: true };
   } catch (error) {
-    console.error("[captureCheckoutEmailAction] failed:", error);
+    console.error("[captureCheckoutEmailAction] failed:", error instanceof Error ? error.name : "unknown");
     return { ok: false };
   }
 }

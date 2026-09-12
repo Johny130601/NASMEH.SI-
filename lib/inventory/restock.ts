@@ -16,7 +16,7 @@ export async function setVariantStock(variantId: string, stock: number): Promise
     try {
       await sendPendingRestockAlerts();
     } catch (error) {
-      console.error("Restock alerts remain queued", error);
+      console.error("Restock alerts remain queued", error instanceof Error ? error.name : "unknown");
     }
   }
   return change;

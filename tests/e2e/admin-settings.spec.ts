@@ -224,7 +224,8 @@ test("owner edits shipping, tax, marketing, consent, legal, maintenance and supp
     // Maintenance: the storefront locks behind the password for a new visitor while the admin stays open; the password unlocks it.
     await page.goto("/admin/nastavitve/trzenje");
     await page.locator("[data-maintenance-enabled]").check();
-    await page.getByLabel("Geslo za dostop (najmanj 4 znaki)").fill(`geslo-${key}`);
+    await expect(page.locator("[data-maintenance-password-state]")).toHaveAttribute("data-maintenance-password-state", "set"); // seeded hash
+    await page.getByLabel("Novo geslo za dostop (prazno = ohrani obstoječe; najmanj 4 znaki)").fill(`geslo-${key}`);
     await page.getByLabel("Sporočilo obiskovalcem (neobvezno)").fill(`Vzdrževanje ${key}`);
     await saved(page, "maintenance");
     const lockedContext = await browser.newContext();

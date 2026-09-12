@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { COOKIES } from "@/lib/copy/cmp";
 import {
   companySchema, consentBannerSchema, consentCookiesSchema, consentVersionSchema, contactSettingsSchema, DEFAULT_CONSENT_VERSION, DEFAULT_FREE_THRESHOLD_CENTS,
-  DEFAULT_LEGAL_LINKS, DEFAULT_SEO_DEFAULTS, DEFAULT_STANDARD_COST_CENTS, DEFAULT_VAT_RATE_PERCENT, legalLinksSchema, seoDefaultsSchema, shippingMethodSchema,
+  DEFAULT_LEGAL_LINKS, DEFAULT_SEO_DEFAULTS, DEFAULT_STANDARD_COST_CENTS, DEFAULT_VAT_RATE_PERCENT, legalLinksSchema, maintenanceStoredSchema, seoDefaultsSchema, shippingMethodSchema,
 } from "@/lib/settings-schemas";
 import { DEFAULT_CONTACT_SETTINGS } from "@/lib/support/settings-schema";
 
@@ -88,7 +88,8 @@ export interface RoutineBannerSetting {
 
 export interface MaintenanceSetting {
   enabled: boolean;
-  password?: string;
+  /** bcrypt hash; absent until an operator sets a password (Phase 9 step 1). */
+  passwordHash?: string;
   message?: string;
 }
 
@@ -177,10 +178,8 @@ export async function getLegalLinks() {
   return readSetting(SETTING_KEYS.legalLinks, legalLinksSchema, DEFAULT_LEGAL_LINKS);
 }
 
-const storedMaintenanceSchema = z.object({ enabled: z.boolean(), password: z.string().optional(), message: z.string().optional() });
-
 export async function getMaintenance(): Promise<MaintenanceSetting> {
-  return readSetting(SETTING_KEYS.maintenance, storedMaintenanceSchema, { enabled: false });
+  return readSetting(SETTING_KEYS.maintenance, maintenanceStoredSchema, { enabled: false });
 }
 
 /** For the admin form: the ticket path keeps its strict parse, the screen shows defaults for a missing row. */

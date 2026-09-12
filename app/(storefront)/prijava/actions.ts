@@ -19,7 +19,7 @@ export async function loginAction(formData: FormData) {
     if (error instanceof AuthError) {
       if (error instanceof CredentialsSignin) {
         if (error.code === "mfa_required") redirect("/prijava/2fa");
-        if (["unverified", "bot_check"].includes(error.code)) redirect(`/prijava?error=${error.code}`);
+        if (["unverified", "bot_check", "rate_limited"].includes(error.code)) redirect(`/prijava?error=${error.code}`);
       }
       redirect("/prijava?error=credentials");
     }

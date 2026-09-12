@@ -1,10 +1,11 @@
 "use server";
 
+import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/admin/access";
 import { saveSettingValue } from "@/lib/admin/cms";
-import { getConsentConfig, SETTING_KEYS } from "@/lib/settings";
+import { getConsentConfig, getMaintenance, SETTING_KEYS } from "@/lib/settings";
 import {
   analyticsSchema, companySchema, consentBannerSchema, consentCookiesSchema, contactSettingsSchema, googleVerificationSchema, invoiceFooterSchema,
   legalLinksSchema, maintenanceSchema, seoDefaultsSchema, shippingSettingsSchema, trackingTemplatesSchema, vatRateSchema,
@@ -143,11 +144,15 @@ export async function saveLegalLinksAction(input: LegalLinksInput): Promise<Sett
   return { ok: true };
 }
 
+/** A new password replaces the stored hash; an empty one keeps it; locking needs one (backlog B15). */
 export async function saveMaintenanceAction(input: MaintenanceInput): Promise<SettingsActionResult> {
   await requirePermission("settings:manage");
   const parsed = maintenanceSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid" };
-  await saveSettingValue(SETTING_KEYS.maintenance, parsed.data);
+  const current = await getMaintenance();
+  const passwordHash = parsed.data.password ? await bcrypt.hash(parsed.data.password, 10) : current.passwordHash;
+  if (parsed.data.enabled && !passwordHash) return { ok: false, error: "invalid" };
+  await saveSettingValue(SETTING_KEYS.maintenance, { enabled: parsed.data.enabled, ...(passwordHash ? { passwordHash } : {}), message: parsed.data.message });
   refreshStorefront("/vzdrzevanje", "/admin/nastavitve/trzenje");
   return { ok: true };
 }
