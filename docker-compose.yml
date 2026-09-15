@@ -14,8 +14,18 @@ services:
     environment:
       # internal compose network — overrides the localhost URL from .env
       DATABASE_URL: postgresql://postgres:postgres@db:5432/nasmeh
+      # PORT in .env is the HOST port (ports: below). env_file would carry it into
+      # the container and make the server listen on it instead of 3000, so the
+      # health check, the port mapping and the proxy would all miss (Phase 9 step 5
+      # rehearsal, staging on PORT=3001). The container always listens on 3000.
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
     ports:
-      - "${PORT:-3000}:3000"
+      # Loopback only: the reverse proxy reaches the container over the proxy
+      # network (docker-compose.proxy.yml), so nothing on the LAN or the internet
+      # talks to the app without TLS. Health checks and the host cron use
+      # http://127.0.0.1:${PORT}.
+      - "127.0.0.1:${PORT:-3000}:3000"
     volumes:
       - uploads:/app/public/uploads
       - review_uploads:/app/review-uploads
@@ -29,12 +39,9 @@ services:
         limits:
           cpus: "1.0"
           memory: 512M
-    # Optional: attach to the host's existing reverse-proxy network
-    # (create once on the host: `docker network create proxy`,
-    #  then point Traefik/nginx at app:3000)
-    # networks:
-    #   - default
-    #   - proxy
+    # The host's reverse-proxy network is added by docker-compose.proxy.yml
+    # (`-f docker-compose.yml -f docker-compose.proxy.yml`), never by editing
+    # this file on the server.
 
   db:
     image: postgres:16-alpine
@@ -84,8 +91,3 @@ volumes:
   support_uploads:
   catalog_uploads:
 
-# Optional external proxy network — uncomment on the host together with the
-# app service `networks:` block above.
-# networks:
-#   proxy:
-#     external: true

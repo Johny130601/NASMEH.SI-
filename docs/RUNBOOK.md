@@ -1,17 +1,115 @@
 # Runbook — nasmeh.si on the home server
 
-Operations reference for the compose stack in this repository (`docker-compose.yml`: `app` + `db`, optional `adminer`/`mailpit` under the `tools` profile). Conventions and environment variables: AGENTS.md §6. Written in Phase 9 step 3 ([record](testing/phase-9-step-3-2026-09-12.md)); the deployment itself (step 5) and the go-live checklist (step 6) add their sections when they land.
+Operations reference for the compose stack in this repository (`docker-compose.yml`: `app` + `db`, optional `adminer`/`mailpit` under the `tools` profile). Conventions and environment variables: AGENTS.md §6. Written in Phase 9 step 3 ([record](testing/phase-9-step-3-2026-09-12.md)); the host section came with step 5 ([record](testing/phase-9-step-5-2026-09-15.md)); the go-live checklist (step 6) adds its section when it lands.
 
 All commands run on the host, from the directory that holds `docker-compose.yml` and the host's `.env`. Production never uses `docker-compose.override.yml` (it publishes Postgres for local development): keep it out of the server checkout, and pass `-f docker-compose.yml` when in doubt.
+
+## Host
+
+The shape below was rehearsed on the workstation on 2026-09-15 — the production project and a staging project behind a TLS-terminating nginx on a shared docker network, both from fresh databases ([step 5 record](testing/phase-9-step-5-2026-09-15.md)). The host runs exactly this; only the hostnames, certificates and secrets differ.
+
+### Prerequisites
+
+- Docker Engine with Compose v2, and the existing reverse proxy (Traefik or nginx) with a docker network the app can join: `docker network create proxy` when it has none, and its name in `.env` as `PROXY_NETWORK`.
+- DNS for `nasmeh.si` (and `staging.nasmeh.si`) pointing at the host; certificates at the proxy (Let's Encrypt through Traefik or certbot). The app serves plain HTTP inside the network and sends every security header except HSTS, which the proxy adds.
+- A checkout of the tagged release (say `/srv/nasmeh`) without `docker-compose.override.yml`, and the host `.env` next to it.
+
+### The host `.env`
+
+| Variable | Production value |
+|---|---|
+| `PORT` | a free host port; the app is published on `127.0.0.1:PORT` only, the proxy reaches it over the network |
+| `PROXY_NETWORK` | the proxy's docker network (default `proxy`) |
+| `NEXT_PUBLIC_SITE_URL`, `AUTH_URL` | `https://nasmeh.si` — read at request time, never baked into the image: every absolute link (sitemap, canonicals, mails, coupon links, PDF links) and every auth callback comes from here |
+| `AUTH_SECRET`, `JOBS_SECRET` | long random strings (`openssl rand -base64 48`), different on staging |
+| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | the owner's address and a strong one-time password for the first start (below); delete the password line after the first sign-in |
+| `DATABASE_URL` | keep the example value: compose wires the app to the `db` container itself |
+| `STRIPE_*`, `PAYPAL_*`, `SMTP_*`, `EMAIL_FROM`, `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | the live credentials (step 6); staging keeps test keys |
+| `CSP_ENFORCE` | `false` until a full browser pass on the host logs no `[csp]` lines, then `true` (no rebuild) |
+| `NASMEH_E2E`, `TURNSTILE_TEST_TOKEN` | never set on a host |
+
+### First start (empty database)
+
+```sh
+docker network create proxy                                              # once, unless the proxy already owns one
+docker compose -f docker-compose.yml -f docker-compose.proxy.yml build
+docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d
+docker compose -f docker-compose.yml logs app | grep -E "\[entrypoint\]|\[bootstrap\]"
+curl -fsS http://127.0.0.1:${PORT:-3000}/api/health
+```
+
+The entrypoint applies the migrations; the last of them insert the six legal pages as published, unreviewed drafts when they are missing. The server then creates the OWNER account from `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` when the database has none (`[bootstrap] OWNER account created …` in the log; in production the `.env.example` password is refused and the log says so — fix `.env` and restart). Sign in at `https://nasmeh.si/prijava`, enrol the second factor, remove `SEED_ADMIN_PASSWORD` from `.env`, then enter the company data, shipping methods, support mailboxes and the index/maintenance switches under `/admin/nastavitve` and the catalogue under `/admin/izdelki`. Never run `npm run db:seed` against a host database: it writes the demo catalogue, coupons and price history.
+
+### Reverse proxy
+
+nginx in a container on the proxy network (the block the rehearsal ran, without the port and the self-signed certificate):
+
+```nginx
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name nasmeh.si;
+    ssl_certificate     /etc/letsencrypt/live/nasmeh.si/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/nasmeh.si/privkey.pem;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;  # HSTS lives here
+    client_max_body_size 12m;     # four review photos at 2 MB plus multipart overhead (bodySizeLimit 10mb)
+    proxy_read_timeout 60s;
+    resolver 127.0.0.11 valid=10s ipv6=off;   # resolve the container at request time, so nginx survives a recreate
+    location / {
+        set $upstream http://nasmeh-app-1:3000;   # compose container name: <project>-app-1
+        proxy_pass $upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+    }
+}
+server { listen 80; server_name nasmeh.si; return 301 https://$host$request_uri; }
+```
+
+An nginx installed on the host itself proxies to `http://127.0.0.1:PORT` instead and needs no `resolver` line (and no proxy compose file).
+
+Traefik: labels on the `app` service, in a `docker-compose.traefik.yml` layered like the proxy file (or the same routes in Traefik's file provider):
+
+```yaml
+services:
+  app:
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.nasmeh.rule: Host(`nasmeh.si`)
+      traefik.http.routers.nasmeh.entrypoints: websecure
+      traefik.http.routers.nasmeh.tls.certresolver: letsencrypt
+      traefik.http.services.nasmeh.loadbalancer.server.port: "3000"
+      traefik.http.middlewares.nasmeh-hsts.headers.stsSeconds: "31536000"
+      traefik.http.middlewares.nasmeh-hsts.headers.stsIncludeSubdomains: "true"
+      traefik.http.routers.nasmeh.middlewares: nasmeh-hsts
+```
+
+The app takes none of its own URLs from the proxy headers (`NEXT_PUBLIC_SITE_URL` and `AUTH_URL` decide, redirects stay on the request origin), so a misconfigured proxy cannot send users elsewhere; `X-Forwarded-For` / `X-Real-IP` feed only the rate limits.
+
+### Staging
+
+Same image, a second compose project with its own `.env.staging` (`PORT=3001`, `NEXT_PUBLIC_SITE_URL`/`AUTH_URL` `https://staging.nasmeh.si`, its own `AUTH_SECRET`/`JOBS_SECRET`, test payment keys):
+
+```sh
+docker compose -p nasmeh-staging --env-file .env.staging -f docker-compose.yml -f docker-compose.proxy.yml up -d
+```
+
+The proxy reaches it as `nasmeh-staging-app-1:3000` under `staging.nasmeh.si`. After the first sign-in switch **maintenance mode on** (with a password for reviewers) and **indexing off** on `/admin/nastavitve/trzenje`: robots.txt then disallows everything, every page carries noindex, and visitors see the maintenance page while `/prijava`, `/admin` and the consent links stay reachable. Preview links are the storefront itself behind the password. Staging owns its volumes (`nasmeh-staging_*`) and database — nothing is shared with production — and gets no daily-job cron.
 
 ## Deploy
 
 ```sh
-git pull                                   # the tagged release
-docker compose -f docker-compose.yml build # image nasmeh-app, migrations run at container start
-docker compose -f docker-compose.yml up -d # app + db; the entrypoint applies prisma migrate deploy, then starts the server
-curl -fsS http://127.0.0.1:${PORT:-3000}/api/health   # {"status":"ok","db":"up",...}
+git pull                                                               # the tagged release
+docker compose -f docker-compose.yml -f docker-compose.proxy.yml build # image nasmeh-app, migrations run at container start
+docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d # app + db; the entrypoint applies prisma migrate deploy, then starts the server
+curl -fsS http://127.0.0.1:${PORT:-3000}/api/health                    # {"status":"ok","db":"up",...}
 ```
+
+The proxy file only adds the network; `backup.sh`, `restore.sh` and every `exec` below work with `-f docker-compose.yml` alone.
 
 Migrations are applied on every start by the entrypoint; never run `prisma migrate dev` against the deployed database. A release that adds a migration is backed up first (below) — the dump is the rollback for the schema.
 
@@ -67,10 +165,10 @@ To promote a restored stack after a disaster: stop the live project (`docker com
 
 | Job | Schedule | Command |
 |---|---|---|
-| Daily delivery streams (confirmation and shipped-mail retries, review requests, restock alerts, ticket-mail retries) | once a day, e.g. 06:00 | `curl -fsS -X POST -H "Authorization: Bearer $JOBS_SECRET" https://nasmeh.si/api/jobs/daily` |
+| Daily delivery streams (confirmation and shipped-mail retries, review requests, restock alerts, ticket-mail retries) and the retention job | once a day, e.g. 06:00 | `curl -fsS -X POST -H "Authorization: Bearer $JOBS_SECRET" http://127.0.0.1:${PORT}/api/jobs/daily` (loopback: no DNS or TLS in the path; production only, staging gets no cron) |
 | Backup | 03:00 | `scripts/backup.sh` (above) |
 
-`JOBS_SECRET` lives in the host's `.env`; the job answers 401 without it. Both jobs log to files the host rotates with `logrotate`.
+`JOBS_SECRET` lives in the host's `.env`; the job answers 401 without it and with another project's secret. Both jobs log to files the host rotates with `logrotate`; a crontab line that uses `$JOBS_SECRET` and `$PORT` reads them from `.env` first (`set -a; . /srv/nasmeh/.env; set +a`).
 
 ## Monitoring
 

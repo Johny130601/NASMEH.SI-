@@ -3,10 +3,17 @@ import { common } from "@/lib/copy";
 
 const DEFAULT_OG_IMAGE = "/og-default.svg";
 
+/**
+ * Public origin of the store (canonicals, sitemap, mail links, coupon links),
+ * read at request time from the host's `.env`. The key is assembled so the
+ * build cannot inline it: one image serves staging and production with their
+ * own NEXT_PUBLIC_SITE_URL (Phase 9 step 5). Server-only; client code never
+ * needs the absolute origin.
+ */
+const SITE_URL_KEY = ["NEXT_PUBLIC", "SITE_URL"].join("_");
+
 export function siteUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"
-  ).replace(/\/$/, "");
+  return (process.env[SITE_URL_KEY] ?? "http://localhost:3000").replace(/\/$/, "");
 }
 
 export interface SeoDefaultsLike {

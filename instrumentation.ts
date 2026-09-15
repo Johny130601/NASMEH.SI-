@@ -7,5 +7,15 @@ export async function register() {
   ) {
     const { validateEnv } = await import("@/lib/env");
     validateEnv();
+    // Fresh database (Phase 9 step 5): create the OWNER account from
+    // SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD when none exists. Runs after the
+    // entrypoint's `migrate deploy`; a database problem here must not stop the
+    // server, /api/health reports it.
+    const { ensureOwnerAccount } = await import("@/lib/bootstrap/owner");
+    try {
+      await ensureOwnerAccount();
+    } catch (error) {
+      console.error("[bootstrap] owner account check failed", error instanceof Error ? error.name : "unknown");
+    }
   }
 }

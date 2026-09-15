@@ -144,10 +144,10 @@ docker compose --profile tools up -d # also adminer (DB UI) on demand
 ```
 
 - **Dockerfile:** multi-stage on `node:20-alpine` → deps → build → slim runner with Next.js **standalone output** (`output: "standalone"`), **non-root** user, `HEALTHCHECK` hitting `/api/health`.
-- **Container start:** the entrypoint first moves generated legacy review photos out of `public/uploads/reviews` into private `review-uploads`, then runs `npx prisma migrate deploy` and `node server.js`. The media guard verifies durable matching copies before removing public files and refuses startup on collisions, symlinks or unexpected files; investigate preserved files rather than bypassing the guard. Migrations are applied automatically on every deploy; never run `migrate dev` against the deployed database.
+- **Container start:** the entrypoint first moves generated legacy review photos out of `public/uploads/reviews` into private `review-uploads`, then runs `npx prisma migrate deploy` and `node server.js`. On start the server creates the OWNER account from `SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD` when the database has none (`lib/bootstrap/owner.ts`, called from `instrumentation.ts`; production refuses the `.env.example` password), and the last migrations insert the legal drafts when missing — a fresh host database is usable without the dev seed, which must never run on a host. The media guard verifies durable matching copies before removing public files and refuses startup on collisions, symlinks or unexpected files; investigate preserved files rather than bypassing the guard. Migrations are applied automatically on every deploy; never run `migrate dev` against the deployed database.
 - **Services:** `app` (this repo) + `db` (`postgres:16-alpine`, named volume `pgdata`) + optional `adminer` (profile `tools`). All services `restart: unless-stopped`.
-- **Ports:** nothing is hardcoded. `app` publishes `${PORT:-3000}:3000` — override `PORT` in `.env` so it never collides with other containers on the host. `db` is **not** published to the host by default (reachable on the internal network; use the adminer profile for inspection).
-- **Reverse proxy:** the app serves plain HTTP on its port and expects TLS termination at the host's existing proxy. Optional: attach `app` to an **external docker network** (e.g. `proxy`, `docker network create proxy` once on the host) by uncommenting the `networks:` block in compose, and point Traefik/nginx at `app:3000`. Set `NEXT_PUBLIC_SITE_URL` to the public origin so auth callbacks, sitemaps, and email links are absolute and correct.
+- **Ports:** nothing is hardcoded. `app` publishes `127.0.0.1:${PORT:-3000}:3000` (loopback only; the proxy reaches the container over the network) — override `PORT` in `.env` so it never collides with other containers on the host. `db` is **not** published to the host by default (reachable on the internal network; use the adminer profile for inspection).
+- **Reverse proxy:** the app serves plain HTTP on its port and expects TLS termination at the host's existing proxy. Optional: attach `app` to an **external docker network** (e.g. `proxy`, `docker network create proxy` once on the host) with `docker-compose.proxy.yml` (`-f docker-compose.yml -f docker-compose.proxy.yml`; the network name comes from `PROXY_NETWORK`), and point Traefik/nginx at `<project>-app-1:3000` (snippets in the runbook). Set `NEXT_PUBLIC_SITE_URL` (read at request time, never baked into the image — one image serves staging and production) to the public origin so auth callbacks, sitemaps, and email links are absolute and correct.
 - **Resource limits:** document/keep `deploy.resources.limits` in compose (suggested: app 1 CPU / 512M, db 1 CPU / 512M) so the store can't starve neighboring containers.
 
 ### Environment variables
@@ -157,14 +157,16 @@ docker compose --profile tools up -d # also adminer (DB UI) on demand
 | `DATABASE_URL` | `postgresql://…` — compose wires it to the `db` service |
 | `PORT` | Published host port, default **3000** |
 | `AUTH_SECRET` | Auth.js session secret (required) |
-| `AUTH_URL` / `NEXT_PUBLIC_SITE_URL` | Public origin, e.g. `https://nasmeh.si` |
+| `AUTH_URL` / `NEXT_PUBLIC_SITE_URL` | Public origin, e.g. `https://nasmeh.si`; both read at request time (`lib/seo.ts` assembles the key so the build cannot inline it) |
+| `PROXY_NETWORK` | Name of the host's reverse-proxy docker network for `docker-compose.proxy.yml` (default `proxy`) |
+| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | The OWNER account created on the first start of an empty database (and by the dev seed); remove the password after the first sign-in |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe; webhook endpoint `/api/webhooks/stripe` |
 | `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID` | PayPal; webhook `/api/webhooks/paypal` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` | Transactional mail |
 | `JOBS_SECRET` | Dedicated Bearer secret for `POST /api/jobs/daily`; the host scheduler invokes it once a day for the five delivery streams: order-confirmation retries, shipped-email retries, review requests, restock alerts and ticket-email retries. Never expose it to the browser. |
 | `NEXT_PUBLIC_*` | Anything the browser needs (site URL, Stripe publishable key, GTM ID) — **never** put secrets behind `NEXT_PUBLIC_` |
 
-Secrets live in the host's `.env` (gitignored). No secret is ever baked into the image.
+Secrets live in the host's `.env` (gitignored). No secret — and no site URL — is ever baked into the image.
 
 ### Backups, restore, monitoring (Phase 9 step 3)
 

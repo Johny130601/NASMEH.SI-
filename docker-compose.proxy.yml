@@ -1,0 +1,22 @@
+# Phase 9 step 5: attach the app to the host's existing reverse-proxy network.
+# Use it on the host, for production and for the staging project, together
+# with the production file (never docker-compose.override.yml):
+#
+#   docker network create proxy                       # once, unless the proxy already owns one (PROXY_NETWORK in .env)
+#   docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d
+#   docker compose -p nasmeh-staging --env-file .env.staging -f docker-compose.yml -f docker-compose.proxy.yml up -d
+#
+# The proxy reaches the app as <project>-app-1:3000 (compose container name:
+# nasmeh-app-1, nasmeh-staging-app-1); the app itself stays published on
+# 127.0.0.1 only (docker-compose.yml). Nothing here touches db. Proxy snippets
+# for nginx and Traefik: docs/RUNBOOK.md, "Host".
+services:
+  app:
+    networks:
+      - default
+      - proxy
+
+networks:
+  proxy:
+    external: true
+    name: ${PROXY_NETWORK:-proxy}
