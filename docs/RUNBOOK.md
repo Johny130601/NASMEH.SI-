@@ -1,6 +1,6 @@
 # Runbook — nasmeh.si on the home server
 
-Operations reference for the compose stack in this repository (`docker-compose.yml`: `app` + `db`, optional `adminer`/`mailpit` under the `tools` profile). Conventions and environment variables: AGENTS.md §6. Written in Phase 9 step 3 ([record](testing/phase-9-step-3-2026-09-12.md)); the host section came with step 5 ([record](testing/phase-9-step-5-2026-09-15.md)); the go-live checklist (step 6) adds its section when it lands.
+Operations reference for the compose stack in this repository (`docker-compose.yml`: `app` + `db`, optional `adminer`/`mailpit` under the `tools` profile). Conventions and environment variables: AGENTS.md §6. Written in Phase 9 step 3 ([record](testing/phase-9-step-3-2026-09-12.md)); the host section came with step 5 ([record](testing/phase-9-step-5-2026-09-15.md)); release tags and the go-live section with step 6 ([record](testing/phase-9-step-6-2026-09-15.md), [checklist](testing/go-live-checklist.md)).
 
 All commands run on the host, from the directory that holds `docker-compose.yml` and the host's `.env`. Production never uses `docker-compose.override.yml` (it publishes Postgres for local development): keep it out of the server checkout, and pass `-f docker-compose.yml` when in doubt.
 
@@ -103,19 +103,22 @@ The proxy reaches it as `nasmeh-staging-app-1:3000` under `staging.nasmeh.si`. A
 ## Deploy
 
 ```sh
-git pull                                                               # the tagged release
-docker compose -f docker-compose.yml -f docker-compose.proxy.yml build # image nasmeh-app, migrations run at container start
-docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d # app + db; the entrypoint applies prisma migrate deploy, then starts the server
-curl -fsS http://127.0.0.1:${PORT:-3000}/api/health                    # {"status":"ok","db":"up",...}
+git pull                                                                          # the tagged release
+NEW=$(git rev-parse --short HEAD)
+IMAGE_TAG=$NEW docker compose -f docker-compose.yml -f docker-compose.proxy.yml build # builds and tags nasmeh-app:$NEW
+sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=$NEW/" .env                                        # the release the stack runs
+docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d              # app + db; the entrypoint applies prisma migrate deploy, then starts the server
+curl -fsS http://127.0.0.1:${PORT:-3000}/api/health                               # {"status":"ok","db":"up",...}
+docker images nasmeh-app                                                          # the releases kept for rollback; prune old ones with docker rmi
 ```
 
-The proxy file only adds the network; `backup.sh`, `restore.sh` and every `exec` below work with `-f docker-compose.yml` alone.
+The proxy file only adds the network; `backup.sh`, `restore.sh` and every `exec` below work with `-f docker-compose.yml` alone, and `restore.sh` restores with the release named in `.env` (`IMAGE_TAG=<other> scripts/restore.sh …` to restore with another one). Keep the last few release tags; a build without `IMAGE_TAG=` would overwrite the tag `.env` names, so always build with the new tag set.
 
 Migrations are applied on every start by the entrypoint; never run `prisma migrate dev` against the deployed database. A release that adds a migration is backed up first (below) — the dump is the rollback for the schema.
 
 ## Rollback
 
-1. Application only (no migration in the release): `git checkout <previous tag>`, `docker compose -f docker-compose.yml build`, `docker compose -f docker-compose.yml up -d`. The old image starts against the current database.
+1. Application only (no migration in the release): put the previous release tag into `.env` (`sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=<previous>/" .env`, the tags are listed by `docker images nasmeh-app`) and `docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d`. No rebuild, no checkout: the previous image starts against the current database within seconds. (Rehearsed in the step 6 record: a tagged image started without a build.)
 2. Release with a migration: stop the app (`docker compose -f docker-compose.yml stop app`), restore the pre-release dump into the live database (`gunzip -c <backup>/db.sql.gz | docker compose -f docker-compose.yml exec -T db psql -U postgres -d nasmeh -v ON_ERROR_STOP=1`), then step 1. The dump is taken with `--clean --if-exists`, so it replaces the schema and the data; orders placed after the backup are lost — read the backup manifest's `orders:` line before deciding, and prefer a forward fix when the store took orders in between.
 3. Media volumes are not touched by a rollback; a restore of the archives is only needed after volume loss (see the restore drill).
 
@@ -189,6 +192,10 @@ Requests arrive by e-mail at the support mailbox (`support.contact`); the privac
 5. **Record** the request, the identity check and the completion date in a support ticket (create one from the e-mail when none exists).
 
 Backups keep erased data for up to 14 daily and 8 weekly copies (see Backups); after a restore, re-apply every anonymisation done since the backup was taken. `scripts/consent-audit.sql` (read-only) checks the consent log on demand.
+
+## Go-live
+
+[docs/testing/go-live-checklist.md](testing/go-live-checklist.md) is the launch document: every item of sections A–E carries its verification and an evidence cell, and the sign-off block records the release tag, the legal and accountant sign-offs, the €1 order and the owner's decision. `scripts/launch-check.sh https://nasmeh.si` (and `… https://staging.nasmeh.si --staging`) produces the HTTP evidence in one run — health, HSTS, CSP mode, security headers, maintenance and index switches, robots and sitemap on the public origin, product pages present, the six legal pages without the draft notice, the company data behind the withdrawal PDF and the footer, the admin gate and the job route — and exits with the number of open items. Run it before the switch (expect the D2/D4/G4 rows to fail until those gates are passed), after it (exit 0), and after `CSP_ENFORCE=true`.
 
 ## Incidents
 

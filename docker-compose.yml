@@ -4,8 +4,10 @@ services:
   app:
     build: .
     # Explicit image name: scripts/restore.sh starts a second compose project from this
-    # image without rebuilding (Phase 9 step 3).
-    image: nasmeh-app
+    # image without rebuilding (Phase 9 step 3). IMAGE_TAG (.env) names the release the
+    # stack runs: `IMAGE_TAG=<sha> docker compose build` tags a new build, editing
+    # IMAGE_TAG in .env and `up -d` switches releases without a rebuild (Phase 9 step 6).
+    image: nasmeh-app:${IMAGE_TAG:-latest}
     restart: unless-stopped
     logging: &logging
       driver: json-file

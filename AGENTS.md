@@ -159,6 +159,7 @@ docker compose --profile tools up -d # also adminer (DB UI) on demand
 | `AUTH_SECRET` | Auth.js session secret (required) |
 | `AUTH_URL` / `NEXT_PUBLIC_SITE_URL` | Public origin, e.g. `https://nasmeh.si`; both read at request time (`lib/seo.ts` assembles the key so the build cannot inline it) |
 | `PROXY_NETWORK` | Name of the host's reverse-proxy docker network for `docker-compose.proxy.yml` (default `proxy`) |
+| `IMAGE_TAG` | Release the compose stack runs (`nasmeh-app:<tag>`, default `latest`); the runbook's deploy tags each build with the git short sha and rollback switches the tag without a rebuild |
 | `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | The OWNER account created on the first start of an empty database (and by the dev seed); remove the password after the first sign-in |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe; webhook endpoint `/api/webhooks/stripe` |
 | `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID` | PayPal; webhook `/api/webhooks/paypal` |
