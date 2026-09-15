@@ -48,6 +48,8 @@ export interface CompanySetting {
   registrationNumber: string;
   vatId: string;
   email: string;
+  /** Optional trader telephone; "" or absent = not set. */
+  phone?: string;
 }
 
 /** Homepage hero content slot (§4.1, admin-swappable in Phase 7). */
@@ -55,6 +57,8 @@ export interface HeroSlotSetting {
   kicker?: string;
   title: string;
   subtitle: string;
+  /** Plain-text qualifier for a claim in the subtitle, rendered as small live text (§12.6); absent = none. */
+  footnote?: string;
   ctaLabel: string;
   ctaHref: string;
   videoDesktop?: string;

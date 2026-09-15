@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getCatalogProducts, type CatalogProduct } from "@/lib/catalog";
-import { getOmnibusLowestCents } from "@/lib/omnibus";
 import { isTestMode } from "@/lib/turnstile";
 import { getEnv } from "@/lib/env";
 import { buildMetadata } from "@/lib/seo";
@@ -56,24 +55,13 @@ export default async function ShopPage({
     ? (params.razvrsti as SortKey)
     : "priporoceno";
 
+  // cards carry their Omnibus-backed reduction (one batched history query)
   const products = applySort(
     await getCatalogProducts(
       tab === "all" ? undefined : { collectionSlug: tab },
     ),
     sort,
   );
-
-  // Omnibus lines for discounted cards (few — per-product lookup)
-  const omnibusBySlug = new Map<string, number>();
-  for (const product of products) {
-    if (
-      product.compareAtPriceCents !== null &&
-      product.compareAtPriceCents > product.priceCents
-    ) {
-      const lowest = await getOmnibusLowestCents(product.variantId);
-      if (lowest !== null) omnibusBySlug.set(product.slug, lowest);
-    }
-  }
 
   const env = getEnv();
   const testToken = isTestMode() ? (env.TURNSTILE_TEST_TOKEN ?? null) : null;
@@ -159,7 +147,6 @@ export default async function ShopPage({
               <li key={product.slug}>
                 <CatalogCard
                   product={product}
-                  omnibusLowestCents={omnibusBySlug.get(product.slug) ?? null}
                   testToken={testToken}
                 />
               </li>

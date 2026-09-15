@@ -2,12 +2,12 @@ import Link from "next/link";
 import { getEnv } from "@/lib/env";
 import { isTestMode } from "@/lib/turnstile";
 import {
+  getCompany,
+  getLegalLinks,
   getMenu,
-  getSetting,
-  SETTING_KEYS,
-  type CompanySetting,
 } from "@/lib/settings";
 import { footer as copy } from "@/lib/copy";
+import { telHref } from "@/lib/phone";
 import { NewsletterForm } from "./NewsletterForm";
 import { CmpOpenButton } from "../cmp/CmpOpenButton";
 import { PaymentIcons } from "../ui/PaymentIcons";
@@ -22,12 +22,15 @@ const COLUMNS: Array<{ handle: string; title: string }> = [
 /** Site footer (§3.2): capture block, menu columns (mobile accordions),
  *  payment row, company block, legal links + CMP reopen. */
 export async function SiteFooter() {
-  const [company, legalItems, ...columnMenus] = await Promise.all([
-    getSetting<CompanySetting>(SETTING_KEYS.company),
+  const [company, legalLinks, legalItems, ...columnMenus] = await Promise.all([
+    // Validated reader: a malformed row shows no block rather than a partial identity.
+    getCompany(),
+    getLegalLinks(),
     getMenu("footer-pravno"),
     ...COLUMNS.map((col) => getMenu(col.handle)),
   ]);
 
+  const phoneHref = company?.phone ? telHref(company.phone) : null;
   const env = getEnv();
   const siteKey = env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? null;
   const testToken = isTestMode() ? (env.TURNSTILE_TEST_TOKEN ?? null) : null;
@@ -40,7 +43,7 @@ export async function SiteFooter() {
           <h2 className="text-2xl md:text-[2rem]">{copy.newsletter.title}</h2>
           <p className="mt-2 max-w-lg text-sm text-mid-1">{copy.newsletter.hook}</p>
           <div className="mt-6 max-w-xl">
-            <NewsletterForm siteKey={siteKey} testToken={testToken} />
+            <NewsletterForm siteKey={siteKey} testToken={testToken} privacyHref={legalLinks.privacy} />
           </div>
         </div>
       </div>
@@ -113,6 +116,19 @@ export async function SiteFooter() {
               >
                 {company.email}
               </a>
+              {phoneHref && company.phone ? (
+                <>
+                  {" · "}
+                  {copy.company.phone}:{" "}
+                  <a
+                    href={phoneHref}
+                    className="underline underline-offset-2 transition-colors hover:text-dark-1"
+                    data-company-phone
+                  >
+                    {company.phone.trim()}
+                  </a>
+                </>
+              ) : null}
             </address>
           ) : null}
 

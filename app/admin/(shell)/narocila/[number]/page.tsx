@@ -11,7 +11,8 @@ import { admin as copy } from "@/lib/copy";
 import { contact } from "@/lib/copy/contact";
 import { OrderStatusPill } from "@/components/storefront/account/OrderStatusPill";
 import { OrderActions } from "@/components/admin/OrderActions";
-import type { TopicCode } from "@/lib/support/topics";
+import { listUnlinkedTicketsClaimingOrder } from "@/lib/support/tickets";
+import type { ReasonCode, TopicCode } from "@/lib/support/topics";
 
 export const metadata: Metadata = { title: copy.orders.title, robots: { index: false, follow: false } };
 
@@ -31,7 +32,9 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
   const { number } = await params;
   const order = await loadOrderDetail(number);
   if (!order) notFound();
-  const [methods, tracking] = await Promise.all([getShippingMethods(), trackingUrl(order.carrier, order.trackingNumber)]);
+  const [methods, tracking, unlinkedTickets] = await Promise.all([
+    getShippingMethods(), trackingUrl(order.carrier, order.trackingNumber), listUnlinkedTicketsClaimingOrder(order.number),
+  ]);
   const carriers = configuredCarriers(methods);
   const shipping = snapshotAddressLines(order.shippingAddress);
   const billing = snapshotAddressLines(order.billingAddress ?? order.shippingAddress);
@@ -194,6 +197,17 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
               ))}
             </ul>
           )}
+          {unlinkedTickets.length ? (
+            <div className="mt-4 rounded-card border border-warning p-3" data-order-unlinked-tickets>
+              <h3 className="text-sm font-medium">{d.unlinkedTickets}</h3>
+              <p className="mt-1 text-xs text-mid-2">{d.unlinkedTicketsHint}</p>
+              <ul className="mt-2 flex flex-col gap-1 text-sm">
+                {unlinkedTickets.map((ticket) => (
+                  <li key={ticket.id} data-order-unlinked-ticket={ticket.reference}><Link href={`/admin/podpora/${ticket.id}`} className="underline underline-offset-4">{ticket.reference}</Link> · {ticket.reason && Object.hasOwn(contact.reasons, ticket.reason) ? contact.reasons[ticket.reason as ReasonCode] : contact.topics[ticket.topic as TopicCode]?.label ?? ticket.topic} · {formatDateTime(ticket.createdAt)} · {copy.tickets.statuses[ticket.status]} · <span className="text-warning">{d.unlinkedTag}</span></li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </section>
       </div>
 

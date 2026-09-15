@@ -1,8 +1,12 @@
 import { email as copy } from "@/lib/copy";
-import { emailLayout, emailStyles } from "./layout";
+import { emailLayout, emailStyles, escapeHtml } from "./layout";
 
-/** Double opt-in verification email (spec §13.1). */
-export function renderVerifySubscriptionEmail(confirmUrl: string): string {
+/**
+ * Double opt-in verification email (spec §13.1). Carries the signed
+ * withdrawal link as well (GDPR Art. 7(3)), so every subscriber has a way out
+ * from the first mail on.
+ */
+export function renderVerifySubscriptionEmail(confirmUrl: string, unsubscribeUrl: string): string {
   const safeUrl = confirmUrl.replace(/"/g, "%22");
   return emailLayout(`
     <h1 style="${emailStyles.h1}">${copy.verifySubscription.heading}</h1>
@@ -17,5 +21,11 @@ export function renderVerifySubscriptionEmail(confirmUrl: string): string {
       ${copy.verifySubscription.ignore}<br />
       ${copy.verifySubscription.footer}
     </p>
+    ${renderSubscriptionUnsubscribeBlock(unsubscribeUrl)}
   `);
+}
+
+/** The withdrawal sentence and link: rendered by the code template and appended to operator overrides. */
+export function renderSubscriptionUnsubscribeBlock(unsubscribeUrl: string): string {
+  return `<p style="${emailStyles.small}" data-newsletter-unsubscribe>${copy.verifySubscription.unsubscribe} <a href="${escapeHtml(unsubscribeUrl)}" style="${emailStyles.link}">${copy.verifySubscription.unsubscribeCta}</a></p>`;
 }

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRef, useState, useTransition, type FormEvent } from "react";
 import { submitWithdrawalAction } from "@/app/(storefront)/actions/returns";
 import { returns } from "@/lib/copy/returns";
+import { WITHDRAWAL_DELIVERY_STATUSES, type WithdrawalDeliveryStatus } from "@/lib/support/topics";
 import { useAuthChallenge, type AuthChallengeProps } from "../auth/AuthChallenge";
 import { UiButton } from "../ui/UiButton";
 import { UiFormField, UiInput } from "../ui/UiInput";
@@ -11,21 +12,27 @@ import { UiFormField, UiInput } from "../ui/UiInput";
 const copy = returns.withdrawal;
 const textareaClass = "w-full resize-y rounded-input border border-light-1 bg-white p-4 text-base outline-none focus:border-brand";
 
-/** Online model withdrawal form (§12.4): the order e-mail is the proof of purchase. */
+/**
+ * Online model withdrawal form (§12.4). A matching order e-mail links the order; a notice
+ * that matches no order is still recorded, because any timely statement is a valid withdrawal.
+ */
 export function WithdrawalForm({
-  challenge, requestKey: initialRequestKey, defaults, maxDate,
+  challenge, requestKey: initialRequestKey, defaults, maxDate, privacyHref,
 }: {
   challenge: AuthChallengeProps;
   requestKey: string;
   defaults: { name: string; email: string };
   maxDate: string;
+  /** `legal.links` privacy path. */
+  privacyHref: string;
 }) {
   const [requestKey] = useState(initialRequestKey);
   const human = useAuthChallenge(challenge);
   const [pending, startSubmit] = useTransition();
   const submitting = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  const [reference, setReference] = useState<string | null>(null);
+  const [delivery, setDelivery] = useState<WithdrawalDeliveryStatus | null>(null);
+  const [receipt, setReceipt] = useState<{ reference: string; orderLinked: boolean } | null>(null);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -36,19 +43,20 @@ export function WithdrawalForm({
     startSubmit(async () => {
       try {
         const result = await submitWithdrawalAction(data);
-        if (result.ok && result.reference) setReference(result.reference);
+        if (result.ok && result.reference) setReceipt({ reference: result.reference, orderLinked: result.orderLinked !== false });
         else setError(result.error ?? copy.errors.failed);
       } catch { setError(copy.errors.failed); }
       finally { submitting.current = false; human.reset(); }
     });
   }
 
-  if (reference) return (
+  if (receipt) return (
     <div role="status" data-withdrawal-success className="rounded-card border border-success bg-white p-6 md:p-8">
       <h3 className="text-2xl font-semibold">{copy.success.title}</h3>
       <p className="mt-3 leading-relaxed text-mid-1">{copy.success.body}</p>
       <p className="mt-6 text-sm font-medium">{copy.success.reference}</p>
-      <p data-withdrawal-reference className="mt-1 break-all text-xl font-semibold text-brand">{reference}</p>
+      <p data-withdrawal-reference className="mt-1 break-all text-xl font-semibold text-brand">{receipt.reference}</p>
+      {receipt.orderLinked ? null : <p data-withdrawal-unlinked className="mt-5 text-sm leading-relaxed text-mid-1">{copy.success.unlinked}</p>}
       <p className="mt-5 text-sm leading-relaxed text-mid-1">{copy.success.statutory}</p>
     </div>
   );
@@ -61,7 +69,20 @@ export function WithdrawalForm({
         <UiInput id="withdrawal-email" label={copy.fields.email} name="email" type="email" autoComplete="email" defaultValue={defaults.email} required maxLength={254} />
         <UiInput id="withdrawal-address" label={copy.fields.address} name="address" autoComplete="street-address" required minLength={5} maxLength={300} />
         <UiInput id="withdrawal-order" label={copy.fields.orderNumber} hint={copy.fields.orderNumberHint} name="orderNumber" required maxLength={20} />
-        <UiInput id="withdrawal-received" label={copy.fields.receivedAt} name="receivedAt" type="date" required max={maxDate} />
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium text-dark-1">{copy.fields.deliveryStatus}</legend>
+          <div className="flex flex-col gap-2 text-sm text-mid-1 sm:flex-row sm:gap-6">
+            {WITHDRAWAL_DELIVERY_STATUSES.map(value => (
+              <label key={value} className="flex items-center gap-2">
+                <input type="radio" name="deliveryStatus" value={value} required checked={delivery === value} onChange={() => setDelivery(value)} className="size-4 accent-brand" />
+                {value === "received" ? copy.fields.delivery.received : copy.fields.delivery.notReceived}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        {delivery === "received" ? (
+          <UiInput id="withdrawal-received" label={copy.fields.receivedAt} name="receivedAt" type="date" required max={maxDate} />
+        ) : null}
         <UiFormField label={copy.fields.items} htmlFor="withdrawal-items">
           <textarea id="withdrawal-items" name="items" required minLength={5} maxLength={2000} rows={4} aria-describedby="withdrawal-items-hint" className={textareaClass} />
           <p id="withdrawal-items-hint" className="text-sm leading-relaxed text-mid-1">{copy.fields.itemsHint}</p>
@@ -74,7 +95,7 @@ export function WithdrawalForm({
             <input name="privacyAccepted" type="checkbox" required className="mt-1 size-4 shrink-0 accent-brand" />
             <span>{copy.privacy}</span>
           </label>
-          <Link href="/politika-zasebnosti" className="ml-7 inline-block text-sm text-mid-1 underline underline-offset-4">{copy.privacyLink}</Link>
+          <Link href={privacyHref} className="ml-7 inline-block text-sm text-mid-1 underline underline-offset-4">{copy.privacyLink}</Link>
         </div>
       </fieldset>
       {error ? <p role="alert" className="text-sm text-error">{error}</p> : null}

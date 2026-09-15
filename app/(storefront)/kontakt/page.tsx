@@ -6,6 +6,7 @@ import { getAuthChallengeProps } from "@/lib/auth-challenge";
 import { contact } from "@/lib/copy/contact";
 import { db } from "@/lib/db";
 import { buildMetadata } from "@/lib/seo";
+import { getLegalLinks } from "@/lib/settings";
 import { getContactSettings } from "@/lib/support/settings";
 import { TOPIC_CODES } from "@/lib/support/topics";
 
@@ -23,7 +24,7 @@ export default async function ContactPage({
 }: {
   searchParams: Promise<{ tema?: string }>;
 }) {
-  const [session, settings, params] = await Promise.all([auth(), getContactSettings(), searchParams]);
+  const [session, settings, params, legalLinks] = await Promise.all([auth(), getContactSettings(), searchParams, getLegalLinks()]);
   const initialTopic = TOPIC_CODES.find((code) => code === params.tema) ?? null;
   const orders = session?.user?.id ? await db.order.findMany({
     where: { userId: session.user.id },
@@ -48,6 +49,7 @@ export default async function ContactPage({
           accountOrders={orders.map(order => ({ ...order, createdAt: order.createdAt.toISOString() }))}
           defaults={{ name: session?.user?.name ?? "", email: session?.user?.email ?? "" }}
           initialTopic={initialTopic}
+          privacyHref={legalLinks.privacy}
         />
         <aside className="rounded-card bg-light-3 p-6" aria-labelledby="contact-channels-title">
           <h2 id="contact-channels-title" className="text-lg font-semibold">{contact.channels.title}</h2>

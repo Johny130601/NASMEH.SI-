@@ -75,12 +75,40 @@ test("sort menu is keyboard/SSR friendly (details of links)", async ({
 test("Omnibus line shows on discounted serum card", async ({ page }) => {
   await page.goto("/trgovina");
   const serum = page.locator("[data-product-card='serum-korektor-barve-zob']");
+  // the struck figure IS the history-backed prior price, repeated on the 30-day line
   await expect(
     serum.locator("span.line-through").first(),
-  ).toContainText("24,99"); // compare-at strike
+  ).toContainText("24,99");
   await expect(
-    serum.getByText(/Najnižja cena v zadnjih 30 dneh/),
+    serum.getByText(/Najnižja cena v 30 dneh pred znižanjem/),
   ).toBeVisible();
+  await expect(serum.locator("[data-omnibus-line]")).toContainText("24,99");
+  // no announced reduction → plain price, no strikethrough, no line
+  const strips = page.locator("[data-product-card='belilni-trakci-za-zobe']");
+  await expect(strips.locator("span.line-through")).toHaveCount(0);
+  await expect(strips.locator("[data-omnibus-line]")).toHaveCount(0);
+});
+
+test("every card surface carries the Omnibus line with its strikethrough", async ({ page }) => {
+  // search results
+  await page.goto("/iskanje?q=serum");
+  const searchCard = page.locator("[data-product-card='serum-korektor-barve-zob']");
+  await expect(searchCard.locator("span.line-through")).toContainText("24,99");
+  await expect(searchCard.locator("[data-omnibus-line]")).toContainText("24,99");
+
+  // PDP rails (cross-sell / "Ljudje tudi kupujejo") on another product
+  await page.goto("/izdelek/belilni-trakci-za-zobe");
+  const railCards = page.locator("[data-product-card='serum-korektor-barve-zob']");
+  await expect(railCards.first()).toBeVisible();
+  const count = await railCards.count();
+  for (let index = 0; index < count; index += 1) {
+    await expect(railCards.nth(index).locator("span.line-through")).toContainText("24,99");
+    await expect(railCards.nth(index).locator("[data-omnibus-line]")).toContainText("24,99");
+  }
+  // every strikethrough on the page has its 30-day line
+  await expect(page.locator("[data-product-card] span.line-through")).toHaveCount(
+    await page.locator("[data-product-card] [data-omnibus-line]").count(),
+  );
 });
 
 test("sold-out card shows Razprodano + Obvestite me CTA", async ({ page }) => {
@@ -107,5 +135,6 @@ test("SSR: grid + banner + tabs in initial HTML", async ({ request }) => {
   expect(html).toContain("Vsi izdelki");
   expect(html).toContain("placeholder-trgovina-wide.svg");
   expect(html).toContain("kolekcija=paketi");
-  expect(html).toContain("Najnižja cena v zadnjih 30 dneh");
+  expect(html).toContain("Najnižja cena v 30 dneh pred znižanjem");
+  expect(html).not.toContain("Najnižja cena v zadnjih 30 dneh");
 });

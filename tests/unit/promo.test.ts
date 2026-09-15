@@ -18,6 +18,7 @@ function line(overrides: Partial<CartLineInput> = {}): CartLineInput {
     quantity: 1,
     priceCents: 3499,
     compareAtPriceCents: null,
+    reduced: false,
     vatRatePercent: 22,
     maxCartQuantity: 5,
     isBundle: false,

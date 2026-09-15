@@ -5,9 +5,10 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/db", () => ({ db: {} }));
 
 import {
-  CONTENT_TEMPLATES, HOME_SECTION_IDS, RESERVED_SLUGS, SHADOWED_SLUGS, bundleBannerSchema, contentPageSchema, heroSchema, homeSectionsSchema,
-  isReservedSlug, linkSchema, marqueeSchema, menuItemsSchema, normaliseMenuItems, pageSlugSchema, routineBannerSchema, welcomePopupSchema,
+  CONTENT_TEMPLATES, HERO_CLAIM_FIELDS, HOME_SECTION_IDS, LEGAL_PAGE_SLUGS, RESERVED_SLUGS, SHADOWED_SLUGS, bundleBannerSchema, contentPageSchema, heroClaimLacksFootnote, heroSchema, homeSectionsSchema,
+  isReservedSlug, linkSchema, linkedPageSlug, marqueeSchema, menuItemsSchema, normaliseMenuItems, pageSlugSchema, protectedPageSlugs, routineBannerSchema, welcomePopupSchema,
 } from "@/lib/admin/cms-schemas";
+import { DEFAULT_LEGAL_LINKS } from "@/lib/settings-schemas";
 import { bundleBannerWithDefaults, heroToInput, normaliseHomeSections, routineBannerWithDefaults } from "@/lib/admin/cms";
 import { home } from "@/lib/copy";
 
@@ -47,6 +48,38 @@ describe("homepage schemas", () => {
     expect(parsed).toMatchObject({ kicker: "NOVO", ctaHref: "#izdelki", videoDesktop: null, videoMobile: null, promoOverlayHref: null, poster: "/uploads/media/knjiznica-medijev/0123456789abcdef01234567.webp" });
     expect(heroSchema.safeParse({ ...parsed, poster: "javascript:x", videoDesktop: "", videoMobile: "", promoOverlayHref: "" }).success).toBe(false);
     expect(heroSchema.safeParse({ ...parsed, title: "", videoDesktop: "", videoMobile: "", poster: "", promoOverlayHref: "" }).success).toBe(false);
+    expect(parsed.footnote).toBe("");
+  });
+
+  it("hero footnote: optional plain text up to 300 characters, required once the subtitle carries a claim marker", () => {
+    const base = { kicker: "", title: "Naslov", subtitle: "Za svetlejši nasmeh", ctaLabel: "Kupi", ctaHref: "#izdelki", videoDesktop: "", videoMobile: "", poster: "", imageAlt: "", promoOverlayText: "", promoOverlayHref: "" };
+    expect(heroSchema.safeParse(base).success).toBe(true);
+    expect(heroSchema.parse({ ...base, footnote: " *Rezultati se razlikujejo. " }).footnote).toBe("*Rezultati se razlikujejo.");
+    expect(heroSchema.safeParse({ ...base, footnote: "x".repeat(301) }).success).toBe(false);
+    for (const subtitle of ["Za svetlejši nasmeh*", "Jamstvo^ vračila"]) {
+      const missing = heroSchema.safeParse({ ...base, subtitle, footnote: "  " });
+      expect(missing.success, subtitle).toBe(false);
+      expect(missing.error?.issues[0]?.path).toEqual(["footnote"]);
+      expect(heroSchema.safeParse({ ...base, subtitle, footnote: "*Rezultati se lahko razlikujejo." }).success, subtitle).toBe(true);
+    }
+    expect(heroClaimLacksFootnote({ subtitle: "Nasmeh*", footnote: undefined })).toBe(true);
+    expect(heroClaimLacksFootnote({ subtitle: "Nasmeh*", footnote: "*Opomba" })).toBe(false);
+    expect(heroClaimLacksFootnote({ subtitle: "Nasmeh", footnote: "" })).toBe(false);
+  });
+
+  it("hero footnote: a claim marker in any visible hero text needs the footnote, not only in the subtitle", () => {
+    const base = { kicker: "NOVO", title: "Naslov", subtitle: "Za svetlejši nasmeh", ctaLabel: "Kupi", ctaHref: "#izdelki", videoDesktop: "", videoMobile: "", poster: "", imageAlt: "", promoOverlayText: "Dostava", promoOverlayHref: "" };
+    expect(HERO_CLAIM_FIELDS).toEqual(["kicker", "title", "subtitle", "ctaLabel", "promoOverlayText"]);
+    for (const [key, value] of [["kicker", "NOVO*"], ["title", "Belejši zobje v 14 dneh*"], ["subtitle", "Nasmeh^"], ["ctaLabel", "Kupi*"], ["promoOverlayText", "Dostava^"]] as const) {
+      const missing = heroSchema.safeParse({ ...base, [key]: value, footnote: "" });
+      expect(missing.success, key).toBe(false);
+      expect(missing.error?.issues[0]?.path, key).toEqual(["footnote"]);
+      expect(heroSchema.safeParse({ ...base, [key]: value, footnote: "*Rezultati se lahko razlikujejo." }).success, key).toBe(true);
+      expect(heroClaimLacksFootnote({ ...base, [key]: value, footnote: " " }), key).toBe(true);
+    }
+    // Links, media paths and the image alt are not visible claim text.
+    expect(heroSchema.safeParse({ ...base, imageAlt: "Trakci*", ctaHref: "/trgovina?x=*", footnote: "" }).success).toBe(true);
+    expect(heroClaimLacksFootnote({ title: "Naslov", promoOverlayText: null })).toBe(false);
   });
 
   it("banner schemas require their copy and a valid link", () => {
@@ -57,7 +90,8 @@ describe("homepage schemas", () => {
   });
 
   it("fills the editor from copy when no setting exists and keeps stored values otherwise", () => {
-    expect(heroToInput(null)).toMatchObject({ title: home.hero.title, ctaLabel: home.hero.cta, ctaHref: "#izdelki", poster: "", videoDesktop: "" });
+    expect(heroToInput(null)).toMatchObject({ title: home.hero.title, ctaLabel: home.hero.cta, ctaHref: "#izdelki", poster: "", videoDesktop: "", footnote: "" });
+    expect(heroToInput({ title: "Moj", subtitle: "Nasmeh*", footnote: "*Opomba", ctaLabel: "Kupi", ctaHref: "/trgovina" })).toMatchObject({ subtitle: "Nasmeh*", footnote: "*Opomba" });
     expect(heroToInput({ title: "Moj", ctaLabel: "Kupi", ctaHref: "/trgovina", poster: "/p.webp" } as unknown as Parameters<typeof heroToInput>[0])).toMatchObject({ title: "Moj", subtitle: home.hero.subtitle, ctaHref: "/trgovina", poster: "/p.webp" });
     expect(bundleBannerWithDefaults(null)).toEqual({ title: home.bundleBanner.title, cta: home.bundleBanner.cta, href: "/trgovina?kolekcija=paketi" });
     expect(bundleBannerWithDefaults({ title: "X", cta: "Y", href: "/z" })).toEqual({ title: "X", cta: "Y", href: "/z" });
@@ -120,5 +154,24 @@ describe("page schema and reserved slugs", () => {
     }
     expect(isReservedSlug("pogoji-poslovanja")).toBe(false);
     expect(isReservedSlug("moja-stran")).toBe(false);
+  });
+
+  it("reads the page slug of a same-site legal link without its query string, hash or trailing slash", () => {
+    expect(linkedPageSlug("/pogoji-poslovanja?e2e=abc")).toBe("pogoji-poslovanja");
+    expect(linkedPageSlug(" /politika-zasebnosti#piskotki ")).toBe("politika-zasebnosti");
+    expect(linkedPageSlug("/reklamacije/")).toBe("reklamacije");
+    for (const href of ["/", "/pravno/pogoji", "pogoji-poslovanja", "https://nasmeh.si/pogoji-poslovanja", "/Pogoji", "?x=1"]) expect(linkedPageSlug(href), href).toBeNull();
+  });
+
+  it("protects the shadowed pages, the fixed legal pages and every page legal.links names", () => {
+    const defaults = protectedPageSlugs(Object.values(DEFAULT_LEGAL_LINKS));
+    for (const slug of [...SHADOWED_SLUGS, ...LEGAL_PAGE_SLUGS]) expect(defaults.has(slug), slug).toBe(true);
+    expect([...LEGAL_PAGE_SLUGS]).toEqual(["pogoji-poslovanja", "politika-zasebnosti", "garancija-vracila-denarja"]);
+    expect(defaults.has("moja-stran")).toBe(false);
+    const moved = protectedPageSlugs(Object.values({ ...DEFAULT_LEGAL_LINKS, terms: "/pogoji-2026?e2e=1", privacy: "/pravno/zasebnost" }));
+    expect(moved.has("pogoji-2026")).toBe(true);
+    // The fixed slugs stay protected after a link moves away from them.
+    expect(moved.has("pogoji-poslovanja")).toBe(true);
+    expect(moved.has("pravno")).toBe(false);
   });
 });

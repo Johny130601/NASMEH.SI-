@@ -6,10 +6,11 @@ import { retryPendingShippedEmails } from "@/lib/orders/shipped-delivery";
 import { sendDueReviewRequests } from "@/lib/jobs/review-requests";
 import { sendPendingRestockAlerts } from "@/lib/jobs/restock-alerts";
 import { retryPendingTicketEmails } from "@/lib/support/delivery";
+import { runRetention } from "@/lib/jobs/retention";
 
 export const dynamic = "force-dynamic";
 
-/** Host-cron endpoint. Responses and failure logs expose counts only. */
+/** Host-cron endpoint: deliveries, then retention clean-up. Responses and failure logs expose counts only. */
 export async function POST(request: Request) {
   const secret = getEnv().JOBS_SECRET;
   const provided = Buffer.from(request.headers.get("authorization") ?? "");
@@ -24,8 +25,9 @@ export async function POST(request: Request) {
     const reviews = await sendDueReviewRequests();
     const restockAlerts = await sendPendingRestockAlerts();
     const ticketRetries = await retryPendingTicketEmails();
-    return NextResponse.json({ ...reviews, confirmationRetries, shippedRetries, restockAlerts, ticketRetries }, {
-      status: reviews.failed || confirmationRetries.failed || shippedRetries.failed || restockAlerts.failed || ticketRetries.failed ? 503 : 200,
+    const retention = await runRetention();
+    return NextResponse.json({ ...reviews, confirmationRetries, shippedRetries, restockAlerts, ticketRetries, retention }, {
+      status: reviews.failed || confirmationRetries.failed || shippedRetries.failed || restockAlerts.failed || ticketRetries.failed || retention.failed ? 503 : 200,
     });
   } catch {
     console.error("Daily delivery job requires retry");

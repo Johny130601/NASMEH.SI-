@@ -5,6 +5,9 @@ import { invoice as copy } from "@/lib/copy/invoice";
 import type { InvoiceData } from "./data";
 import { snapshotAddressLines } from "@/lib/account/order-view";
 
+/** The embedded OFL Unicode font every generated PDF uses (Helvetica cannot encode č/š/ž). */
+export const PDF_FONT_PATH = path.join(process.cwd(), "public/fonts/invoice-liberation-sans.ttf");
+
 /** PDF invoice (§14.7) — pdfkit, dependency-light, standalone-safe. */
 export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   // Embed a complete, OFL-licensed Unicode font. PDF's built-in Helvetica
@@ -12,7 +15,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   const doc = new PDFDocument({
     size: "A4",
     margin: 50,
-    font: path.join(process.cwd(), "public/fonts/invoice-liberation-sans.ttf"),
+    font: PDF_FONT_PATH,
     info: { Title: copy.title(data.number) },
   });
   const chunks: Buffer[] = [];
@@ -32,12 +35,17 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     doc.fontSize(9).text(data.company.address);
     doc.text(copy.registration(data.company.registrationNumber));
     doc.text(copy.vatId(data.company.vatId));
+    doc.text(copy.email(data.company.email));
+    if (data.company.phone?.trim()) doc.text(copy.phone(data.company.phone.trim()));
   }
 
   doc.moveDown();
   doc.fontSize(11).text(copy.customer);
-  doc.fontSize(9).text(data.customerEmail);
-  for (const line of snapshotAddressLines(data.address)) doc.text(line);
+  doc.fontSize(9);
+  const addressLines = snapshotAddressLines(data.address);
+  if (data.customerName && !addressLines.includes(data.customerName)) doc.text(data.customerName);
+  doc.text(data.customerEmail);
+  for (const line of addressLines) doc.text(line);
 
   doc.moveDown();
   doc.fontSize(10).text(copy.items);
@@ -57,6 +65,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   }
   doc.text(`${copy.shipping}: ${formatEUR(data.shippingCents)}`);
   // Tax is the immutable paid-order snapshot, not a new calculation at download.
+  doc.text(copy.taxBase(data.vatRatePercent, data.taxBaseCents));
   doc.text(copy.vat(data.vatRatePercent, data.vatCents));
   doc.fontSize(12).text(`${copy.total}: ${formatEUR(data.totalCents)}`, {
     align: "right",

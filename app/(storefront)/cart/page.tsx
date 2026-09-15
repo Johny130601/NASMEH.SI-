@@ -6,7 +6,7 @@ import { hydrateCartLines } from "@/lib/cart/hydrate";
 import { type PromoSettings } from "@/lib/promo";
 import { priceCartForDisplay } from "@/lib/promo/cart-pricing";
 import { getCatalogProducts } from "@/lib/catalog";
-import { getOmnibusLowestCents } from "@/lib/omnibus";
+import { getPriceReductions } from "@/lib/omnibus";
 import { getShippingSettings, getVatRatePercent } from "@/lib/settings";
 import { formatDdvLine, formatEUR } from "@/lib/pricing";
 import { isTestMode } from "@/lib/turnstile";
@@ -69,17 +69,9 @@ export default async function CartPage({
       ? curated
       : catalogProducts.filter((product) => !inCartSlugs.has(product.slug));
 
-  // Omnibus lines for discounted lines
-  const omnibusByVariant = new Map<string, number>();
-  for (const line of hydrated) {
-    if (
-      line.compareAtPriceCents !== null &&
-      line.compareAtPriceCents > line.priceCents
-    ) {
-      const lowest = await getOmnibusLowestCents(line.variantId);
-      if (lowest !== null) omnibusByVariant.set(line.variantId, lowest);
-    }
-  }
+  // Omnibus-backed reductions for the cart lines (one batched history query;
+  // the rail cards carry theirs from getCatalogProducts)
+  const reductions = await getPriceReductions(hydrated);
 
   const env = getEnv();
   const testToken = isTestMode() ? (env.TURNSTILE_TEST_TOKEN ?? null) : null;
@@ -164,10 +156,7 @@ export default async function CartPage({
                 const hydratedLine = hydrated.find(
                   (h) => h.variantId === line.variantId,
                 )!;
-                const discounted =
-                  line.compareAtPriceCents !== null &&
-                  line.compareAtPriceCents > line.unitPriceCents;
-                const omnibus = omnibusByVariant.get(line.variantId) ?? null;
+                const reduction = reductions.get(line.variantId) ?? null;
                 return (
                   <li
                     key={line.variantId}
@@ -199,18 +188,25 @@ export default async function CartPage({
                           </Link>
                           <p className="text-xs text-mid-2">{line.sku}</p>
                         </div>
-                        <p className="text-sm text-dark-1">
-                          {discounted ? (
-                            <span className="mr-2 text-xs text-mid-2 line-through">
-                              {formatEUR(line.compareAtPriceCents!)}
-                            </span>
-                          ) : null}
+                        <p className="text-sm text-dark-1" data-line-total>
                           {formatEUR(line.lineTotalCents)}
                         </p>
                       </div>
-                      {discounted && omnibus !== null ? (
-                        <p className="mt-0.5 text-xs text-mid-2">
-                          {cart.line.omnibusPrefix}: {formatEUR(omnibus)}
+                      {/* per-unit figures stay together (struck prior price next to the unit
+                          price, never next to the line total) */}
+                      {reduction || line.quantity > 1 ? (
+                        <p className="mt-1 text-xs text-mid-1" data-unit-price>
+                          {reduction ? (
+                            <span className="mr-1 text-mid-2 line-through">
+                              {formatEUR(reduction.priorPriceCents)}
+                            </span>
+                          ) : null}
+                          {formatEUR(line.unitPriceCents)} {cart.line.perUnit}
+                        </p>
+                      ) : null}
+                      {reduction ? (
+                        <p className="mt-0.5 text-xs text-mid-2" data-omnibus-line>
+                          {cart.line.omnibusPrefix}: {formatEUR(reduction.priorPriceCents)}
                         </p>
                       ) : null}
                       {line.bundleComponents.length > 0 ? (

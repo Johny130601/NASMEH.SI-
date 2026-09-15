@@ -14,7 +14,8 @@ export const cart = {
     remove: "Odstrani izdelek",
     maxQuantity: "Največ 5 kosov na naročilo",
     bundleContents: "Vsebina paketa",
-    omnibusPrefix: "Najnižja cena v zadnjih 30 dneh",
+    omnibusPrefix: "Najnižja cena v 30 dneh pred znižanjem",
+    perUnit: "na kos",
   },
   crossSell: "Ljudje tudi kupujejo",
   checkout: {

@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { getOrderReceipt, hasOrderAccess } from "@/lib/orders/access";
 import { getEnv } from "@/lib/env";
 import { formatDdvLine, formatEUR } from "@/lib/pricing";
+import { deliveryEstimate, getShippingMethods } from "@/lib/tracking";
 import { buildMetadata } from "@/lib/seo";
 import { orders } from "@/lib/copy";
 import { UiButton } from "@/components/storefront/ui/UiButton";
@@ -44,6 +45,8 @@ export default async function ConfirmationPage({
   const cancelled = order.status === "CANCELLED";
   const refunded = order.status === "REFUNDED";
   const purchaser = await getOrderReceipt(order);
+  // Same source as the confirmation and shipped mails: the chosen method's configured estimate.
+  const estimate = paid ? deliveryEstimate(order.shippingMethod, await getShippingMethods()) : null;
   const env = getEnv();
 
   const purchaseEvent: EcommerceEvent | null = paid
@@ -137,10 +140,12 @@ export default async function ConfirmationPage({
 
         {paid ? (
           <>
-            <p className="mt-6 text-sm text-dark-1">
-              {orders.confirmation.deliveryEstimate}
-            </p>
-            <p className="mt-1 text-xs text-mid-2">
+            {estimate ? (
+              <p className="mt-6 text-sm text-dark-1" data-delivery-estimate>
+                {orders.confirmation.deliveryEstimate(estimate)}
+              </p>
+            ) : null}
+            <p className={`${estimate ? "mt-1" : "mt-6"} text-xs text-mid-2`}>
               {orders.confirmation.trackingNote}
             </p>
           </>

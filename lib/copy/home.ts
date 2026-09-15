@@ -4,7 +4,7 @@ export const home = {
     kicker: "Kmalu",
     title: "Nov standard domačega beljenja zob",
     subtitle:
-      "Trije izdelki zvezdniki in ena rutina. Trgovina se odpre kmalu — to je tehnični predogled.",
+      "Belilni trakci, ustna voda in serum korektor za domačo nego nasmeha. Trgovina se odpre kmalu — to je tehnični predogled.",
     cta: "Nakupuj zdaj",
     mediaAlt: "Nasmeh.si — predstavitveni vizual",
   },
@@ -20,10 +20,10 @@ export const home = {
     cta: "Nakupuj zdaj",
   },
   routineBanner: {
-    title: "Vaša vsakodnevna rutina beljenja — urejena.",
+    title: "Trakci, ustna voda in serum v enem paketu.",
     imageAlt: "Paket popolna rutina — trakci, ustna voda in serum",
     footnote:
-      "*Rezultati se lahko razlikujejo od osebe do osebe. Izdelki niso nadomestilo ustne higiene pri zobozdravniku.",
+      "Rezultati se lahko razlikujejo od osebe do osebe. Izdelki niso nadomestilo ustne higiene pri zobozdravniku.",
   },
   marqueeFallback: "Dobrodošli na Nasmeh.si",
   vatIncluded: "DDV vključen",

@@ -1,12 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ auth: vi.fn(), lookup: vi.fn(), verify: vi.fn(), create: vi.fn(), deliver: vi.fn() }));
+const mocks = vi.hoisted(() => ({ auth: vi.fn(), lookup: vi.fn(), product: vi.fn(), verify: vi.fn(), create: vi.fn(), deliver: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ auth: mocks.auth }));
-vi.mock("@/lib/db", () => ({ db: { order: { findFirst: mocks.lookup } } }));
+vi.mock("@/lib/db", () => ({ db: { order: { findFirst: mocks.lookup }, product: { findUnique: mocks.product } } }));
 vi.mock("@/lib/turnstile", () => ({ verifyTurnstile: mocks.verify }));
 vi.mock("@/lib/support/tickets", () => ({ createContactTicket: mocks.create }));
 vi.mock("@/lib/support/delivery", () => ({ deliverTicketEmails: mocks.deliver }));
 import { lookupContactOrderAction, submitContactAction } from "@/app/(storefront)/actions/contact";
+import { submitWithdrawalAction } from "@/app/(storefront)/actions/returns";
+import { submitAdverseEventAction } from "@/app/(storefront)/actions/adverse";
+import { adverse } from "@/lib/copy/adverse";
 import { contact } from "@/lib/copy/contact";
+import { returns } from "@/lib/copy/returns";
 function form() {
   const f = new FormData();
   for (const [key, value] of Object.entries({ requestKey: "0ea827bf-3fd0-4b4d-af19-8f80d4661888", name: "Živa Ščuk", email: "ziva@example.test", topic: "ADVICE", reason: "HOW_TO_USE", message: "Prosim za pomoč pri uporabi izdelka.", privacyAccepted: "on", turnstileToken: "challenge" })) f.set(key, value);
@@ -59,5 +63,44 @@ describe("contact server boundaries", () => {
     const f = form(); f.set("photos", "../../private");
     expect(await submitContactAction(f)).toEqual({ ok: false, error: contact.errors.photos });
     expect(mocks.deliver).not.toHaveBeenCalled();
+  });
+});
+
+function formOf(fields: Record<string, string>) {
+  const f = new FormData();
+  for (const [key, value] of Object.entries(fields)) f.set(key, value);
+  return f;
+}
+const withdrawalFields = {
+  requestKey: "0ea827bf-3fd0-4b4d-af19-8f80d4661888", name: "Živa Ščuk", email: "ziva@example.test", address: "Testna ulica 1, 1000 Ljubljana",
+  orderNumber: "NS-2026-00042", deliveryStatus: "not_received", items: "1 × Belilni trakci", privacyAccepted: "on", turnstileToken: "challenge",
+};
+const adverseFields = {
+  requestKey: "0ea827bf-3fd0-4b4d-af19-8f80d4661888", name: "Živa Ščuk", email: "ziva@example.test", reporterType: "USER",
+  productSlug: "serum-korektor-barve-zob", purchasePlace: "nasmeh.si", description: "Po prvi uporabi je bilo dlesni rdeče in pekoče.",
+  ongoing: "no", medicalTreatment: "no", privacyAccepted: "on", turnstileToken: "challenge",
+};
+
+describe("withdrawal and adverse-event server boundaries", () => {
+  it("accepts a withdrawal before delivery without a date and reports an unlinked notice", async () => {
+    mocks.create.mockResolvedValue({ ok: true, ticketId: "ticket", reference: "NP-W", orderLinked: false });
+    expect(await submitWithdrawalAction(formOf(withdrawalFields))).toEqual({ ok: true, reference: "NP-W", orderLinked: false });
+    const [input] = mocks.create.mock.calls[0];
+    expect(input).toMatchObject({ topic: "RETURN", reason: "WITHDRAWAL", orderNumber: "NS-2026-00042", details: { kind: "withdrawal", goodsReceived: false, receivedAt: "" } });
+    expect(input.message).toContain("Blago še ni prejeto");
+  });
+  it("requires the receipt date only for received goods", async () => {
+    expect(await submitWithdrawalAction(formOf({ ...withdrawalFields, deliveryStatus: "received" }))).toEqual({ ok: false, error: returns.withdrawal.errors.invalid });
+    expect(mocks.create).not.toHaveBeenCalled();
+    mocks.create.mockResolvedValue({ ok: true, ticketId: "ticket", reference: "NP-W", orderLinked: true });
+    expect(await submitWithdrawalAction(formOf({ ...withdrawalFields, deliveryStatus: "received", receivedAt: "2026-09-01" }))).toEqual({ ok: true, reference: "NP-W", orderLinked: true });
+    expect(mocks.create.mock.calls[0][0].details).toMatchObject({ goodsReceived: true, receivedAt: "2026-09-01" });
+  });
+  it("accepts an adverse report whose batch number is stated as unknown, and refuses one with neither", async () => {
+    mocks.product.mockResolvedValue({ slug: "serum-korektor-barve-zob", title: "Serum korektor barve zob" });
+    expect(await submitAdverseEventAction(formOf(adverseFields))).toEqual({ ok: false, error: adverse.errors.invalid });
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(await submitAdverseEventAction(formOf({ ...adverseFields, batchUnknown: "on" }))).toEqual({ ok: true, reference: "NP-123" });
+    expect(mocks.create.mock.calls[0][0].details).toMatchObject({ kind: "adverse", batchNumber: "", batchUnknown: true });
   });
 });

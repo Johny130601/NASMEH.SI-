@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { getCatalogProducts } from "@/lib/catalog";
-import { getOmnibusLowestCents } from "@/lib/omnibus";
 import { getSetting, SETTING_KEYS, type BundleBannerSetting, type HeroSlotSetting, type RoutineBannerSetting } from "@/lib/settings";
 import { bundleBannerWithDefaults, normaliseHomeSections, routineBannerWithDefaults } from "@/lib/admin/cms";
 import { isTestMode } from "@/lib/turnstile";
@@ -33,19 +32,8 @@ export default async function HomePage() {
   const sections = normaliseHomeSections(sectionSetting).filter((section) => section.visible);
   const bundleBanner = bundleBannerWithDefaults(bundleSetting);
   const routineBanner = routineBannerWithDefaults(routineSetting);
+  // cards carry their Omnibus-backed reduction from getCatalogProducts
   const rail = products.slice(0, 4);
-
-  // Omnibus lines for discounted cards
-  const omnibusBySlug = new Map<string, number>();
-  for (const product of rail) {
-    if (
-      product.compareAtPriceCents !== null &&
-      product.compareAtPriceCents > product.priceCents
-    ) {
-      const lowest = await getOmnibusLowestCents(product.variantId);
-      if (lowest !== null) omnibusBySlug.set(product.slug, lowest);
-    }
-  }
 
   const env = getEnv();
   const testToken = isTestMode() ? (env.TURNSTILE_TEST_TOKEN ?? null) : null;
@@ -69,7 +57,6 @@ export default async function HomePage() {
                 <CatalogCard
                   key={product.slug}
                   product={product}
-                  omnibusLowestCents={omnibusBySlug.get(product.slug) ?? null}
                   testToken={testToken}
                 />
               ))}

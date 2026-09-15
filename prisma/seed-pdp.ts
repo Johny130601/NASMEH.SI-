@@ -1,6 +1,13 @@
 /**
  * Rich Slovenian PDP content (metafields pattern, AGENTS §4) — DATA, not UI copy.
- * Claims marked with * or ^ resolve to the Jamstvo/Testirano accordions (§12.6).
+ * Claims marked with * or ^ resolve to the Jamstvo / Opombe k navedbam accordions (§12.6).
+ *
+ * Claims discipline (Phase 9 step 4, Reg. 655/2013): no evidence file exists for
+ * any product yet, so efficacy claims stay qualitative and qualified — no study
+ * figures, durations, mechanisms or tolerance promises until the responsible
+ * person supplies the substantiation (D4). SEO descriptions and FAQ answers
+ * carry no markers because snippets and FAQPage JSON-LD cannot resolve them;
+ * prices, savings and delivery terms are never stated here (the PDP computes them).
  */
 export interface PdpContent {
   seoTitle: string;
@@ -22,20 +29,23 @@ export interface PdpContent {
   education: Array<{ heading: string; body: string }>;
 }
 
-const GUARANTEE_HTML = `<p>Z nakupom ni nobenega tveganja: če z rezultati niste zadovoljni, vam v 30 dneh od prevzema vrnemo kupnino. Pogoj je predhodna prijava na info@nasmeh.si z dokazilom o nakupu; podrobnosti so na strani Odstop od pogodbe. Jamstvo velja za prvi kupljeni izdelek enake vrste na stranko.</p>`;
+/** Short summary only: /garancija-vracila-denarja is the single statement of the terms. */
+export const GUARANTEE_HTML = `<p>Za izdelek velja 30-dnevno jamstvo vračila denarja. Pogoji in postopek so objavljeni na strani <a href="/garancija-vracila-denarja" class="underline underline-offset-2">Jamstvo vračila denarja</a>. Jamstvo ne vpliva na vaše zakonske pravice, kot sta pravica do odstopa od pogodbe in uveljavljanje pravic zaradi stvarne napake.</p>`;
+
+const STRIPS_NOTES_HTML = `<p>*Rezultati se lahko razlikujejo od osebe do osebe: odvisni so od izhodiščnega odtenka zob in navad, kot so kava, čaj in kajenje. Izdelki niso nadomestilo ustne higiene pri zobozdravniku.</p>`;
 
 export const PDP_CONTENT: Record<string, PdpContent> = {
   "belilni-trakci-za-zobe": {
     seoTitle: "Belilni trakci za zobe (14 uporab) — brez peroksida",
     seoDescription:
-      "Belilni trakci Nasmeh.si za vidno svetlejši nasmeh v 14 dneh. Nežna formula brez peroksida, 30 minut na dan, rezultati že po prvi uporabi*.",
+      "Belilni trakci Nasmeh.si: 14-dnevni protokol, 30 minut na dan, formula brez peroksida. Sestavine (INCI), navodila za uporabo in pogoji jamstva na strani izdelka.",
     customFields: {
-      uspChips: ["Rezultati že po 1 uporabi*", "30 minut na dan", "Brez peroksida"],
+      uspChips: ["Za svetlejši nasmeh*", "30 minut na dan", "Brez peroksida"],
       intro:
-        "Naš vodilni izdelek: belilni trakci, ki jih zobe in dlesni ne čutijo. Formula brez peroksida deluje na površinske in globlje madeže — za nasmeh, ki ga opazite vi in vsi okoli vas.",
+        "Naš vodilni izdelek: belilni trakci za domačo uporabo s formulo brez peroksida — za svetlejši nasmeh*.",
       bullets: [
-        "Vidno svetlejši zobje že po prvi uporabi*",
-        "Nežno do sklenine — brez pekočega občutka",
+        "Za svetlejši nasmeh po 14-dnevnem protokolu*",
+        "Enostavna uporaba v 3 korakih",
         "Le 30 minut na dan, doma ali na poti",
         "14 uporab v pakiranju (14-dnevni protokol)",
       ],
@@ -43,27 +53,27 @@ export const PDP_CONTENT: Record<string, PdpContent> = {
       crossSell: ["ustna-voda-globinsko-ciscenje", "serum-korektor-barve-zob", "paket-popolna-rutina"],
     },
     accordions: {
-      howItWorks: `<p>Trak se namesti na zobe in deluje 30 minut: aktivni belilni kompleks se veže na barvne pigmente v sklenini in jih razgradi, ne da bi dražil dlesni ali sklenino. Uporaba je suha in enostavna — trak se odlepi brez ostankov. Za najboljše rezultate uporabljajte 14 zaporednih dni.</p>`,
-      inci: `<p>Aqua, Glycerin, PVP, Cellulose Gum, Carbomer, Aroma, Sodium Hydroxide, Sodium Saccharin, Mentha Piperita Oil, Xylitol, Tocopherol.</p><p>Formula ne vsebuje vodikovega peroksida, SLS in parabenov.</p>`,
+      howItWorks: `<p>Trak namestite na zobe in ga pustite 30 minut: ves ta čas zadrži formulo ob površini zob. Uporaba je suha in enostavna — trak se odlepi brez ostankov. Za najboljše rezultate uporabljajte 14 zaporednih dni. Če se pojavi neugodje, uporabo prekinite in se posvetujte z zobozdravnikom.</p>`,
+      inci: `<p>Aqua, Glycerin, PVP, Cellulose Gum, Carbomer, Aroma, Sodium Hydroxide, Sodium Saccharin, Mentha Piperita Oil, Xylitol, Tocopherol.</p><p>Formula ne vsebuje vodikovega peroksida in SLS.</p>`,
       guarantee: GUARANTEE_HTML,
-      tested: `<p>*V neodvisni potrošniški raziskavi (n = 52, 14 dni) je 89 % udeležencev po prvi uporabi poročalo o vidno svetlejšem nasmehu; po 14 dneh 96 %. Rezultati se lahko razlikujejo od osebe do osebe. Izdelki niso nadomestilo ustne higiene pri zobozdravniku.</p>`,
+      tested: STRIPS_NOTES_HTML,
     },
     faq: [
       {
         q: "Kako hitro bom videl_a rezultate?",
-        a: "Večina uporabnikov opazi razliko že po prvi uporabi*, polni učinek pa po 14-dnevnem protokolu. Rezultat je odvisen tudi od izhodiščnega odtenka in navad (kava, čaj, kajenje).",
+        a: "Protokol traja 14 zaporednih dni. Kdaj in koliko razlike opazite, je odvisno od izhodiščnega odtenka zob in navad (kava, čaj, kajenje), zato se rezultati razlikujejo od osebe do osebe.",
       },
       {
         q: "Ali lahko trakce uporabljam ob občutljivih zobeh?",
-        a: "Da — formula brez peroksida je zasnovana prav za občutljive zobe. Če se pojavi neugodje, uporabo prekinite in se posvetujte z zobozdravnikom.",
+        a: "Če imate občutljive zobe, se pred uporabo posvetujte z zobozdravnikom. Če se med uporabo pojavi neugodje, uporabo prekinite.",
       },
       {
         q: "Ali trakci delujejo na zobnih prevlekah, kronah ali plombah?",
-        a: "Trakci belijo naravno sklenino; umetni materiali (prevleke, krone, plombe) se ne prebarvajo. Priporočamo posvet z zobozdravnikom pred uporabo.",
+        a: "Umetni materiali (prevleke, krone, plombe) ne spremenijo barve. Pred uporabo se posvetujte z zobozdravnikom.",
       },
       {
         q: "Ali so trakci primerni med nosečnostjo?",
-        a: "Prevladujočih dokazov o škodljivosti ni, vendar iz varnostnih razlogov priporočamo, da se med nosečnostjo in dojenjem o uporabi posvetujete z zdravnikom.",
+        a: "Med nosečnostjo in dojenjem se pred uporabo posvetujte z zdravnikom.",
       },
     ],
     education: [
@@ -72,34 +82,34 @@ export const PDP_CONTENT: Record<string, PdpContent> = {
         body: "1. Posušite zobe s papirnatim robčkom. 2. Namestite trak in ga zgladite po zobeh. 3. Počakajte 30 minut, odlepite in sperite. To je vse — brez priprave, brez čiščenja napotkov.",
       },
       {
-        heading: "30 minut, ki jih sploh ne opazite",
-        body: "Trak se popolnoma prilega, zato med nošenjem lahko govorite, delate ali gledate serijo. Beljenje se zgodi samo — vi se samo nasmehnete.",
+        heading: "30 minut ob vsakdanjih opravilih",
+        body: "Trak se tesno prilega zobem, zato lahko med nošenjem govorite, delate ali gledate serijo.",
       },
     ],
   },
 
   "ustna-voda-globinsko-ciscenje": {
-    seoTitle: "Ustna voda za globinsko čiščenje — vidite, kaj ščetka zamudi",
+    seoTitle: "Ustna voda za globinsko čiščenje — za vsakodnevno rutino",
     seoDescription:
-      "Ustna voda Nasmeh.si: globinsko čiščenje, svež dah in vzdrževanje beline. Vidite, kaj ščetka pusti za seboj — že po prvi uporabi.",
+      "Ustna voda Nasmeh.si za vsakodnevno ustno nego: 10 ml po ščetkanju, zjutraj in zvečer. Sestavine (INCI) in navodila za uporabo na strani izdelka.",
     customFields: {
-      uspChips: ["Vidno čiščenje*", "Svež dah do 12 ur", "Vzdržuje belino"],
+      uspChips: ["Za občutek čistih ust*", "Za svež dah*", "Za vsakodnevno rutino"],
       intro:
-        "Ustna voda, ki pokaže svoje delo: ob izplakanju vidite, kaj ščetka pusti za seboj. Globinsko očisti, osveži dah in pomaga ohraniti svetel nasmeh.",
+        "Ustna voda za vsakodnevno rutino po ščetkanju: ob izpiranju doseže tudi prostore med zobmi in ob dlesni. Osveži dah in pusti občutek čistih ust*.",
       bullets: [
-        "Vidni dokaz čiščenja že ob prvi uporabi*",
-        "Svež dah do 12 ur",
-        "Pomaga ohranjati rezultate beljenja",
-        "Brez alkohola — brez pekočega občutka",
+        "Občutek čistih ust po izpiranju*",
+        "Osveži dah*",
+        "Dopolnilo k rutini z belilnimi trakci",
+        "Formula brez alkohola",
       ],
       unitPrice: { quantity: 5, unit: "na 100 ml" },
       crossSell: ["belilni-trakci-za-zobe", "serum-korektor-barve-zob", "paket-popolna-rutina"],
     },
     accordions: {
-      howItWorks: `<p>Aktivni sestavinski kompleks se ob izpiranju veže na proteine in bakterijski biofilm v ustih in jih ob izpljuvanju odstrani — zato je rezultat dobesedno viden. Z redno uporabo pomaga ohranjati čistočo med zobmi in ob dlesni, kamor ščetka ne seže.</p>`,
+      howItWorks: `<p>Po ščetkanju 30 sekund izpirajte usta z 10 ml ustne vode, nato jo izpljunite. Tekočina ob izpiranju doseže tudi prostore med zobmi in ob dlesni. Ustna voda dopolnjuje ščetkanje in čiščenje medzobnih prostorov, ne nadomešča pa ju.</p>`,
       inci: `<p>Aqua, Glycerin, Aroma, Polysorbate 20, Cetylpyridinium Chloride, Sodium Benzoate, Citric Acid, Mentha Piperita Oil, Xylitol, Sodium Saccharin, CI 42090.</p><p>Brez alkohola.</p>`,
       guarantee: GUARANTEE_HTML,
-      tested: `<p>*V potrošniškem testu (n = 48) je 94 % udeležencev ob prvi uporabi poročalo o vidnem učinku čiščenja, 90 % pa o prijetnejši svežini diha naslednje jutro. Rezultati se lahko razlikujejo.</p>`,
+      tested: `<p>*Navedbe opisujejo občutek po uporabi; rezultati se lahko razlikujejo od osebe do osebe. Ustna voda ne nadomešča ščetkanja in rednih pregledov pri zobozdravniku.</p>`,
     },
     faq: [
       {
@@ -108,47 +118,47 @@ export const PDP_CONTENT: Record<string, PdpContent> = {
       },
       {
         q: "Je ustna voda primerna za vsakodnevno uporabo?",
-        a: "Da — formula brez alkohola je nežna za vsakodnevno rutino, dvakrat na dan.",
+        a: "Da, namenjena je vsakodnevni uporabi, zjutraj in zvečer po ščetkanju. Če se pojavi neugodje, uporabo prekinite.",
       },
       {
         q: "Ali ustna voda beli zobe?",
-        a: "Ustna voda pomaga odstranjevati površinske madeže in ohranja rezultate beljenja; za aktivno beljenje priporočamo belilne trakce.",
+        a: "Ne, ustna voda ni belilni izdelek. Za beljenje zob priporočamo belilne trakce.",
       },
     ],
     education: [
       {
-        heading: "Kaj ščetka zamudi",
-        body: "Ščetka doseže le okoli 60 % površin zob. Prostore med zobmi, gubice ob dlesni in zadnje kočnike preplavi ustna voda — in ob izpljuvanju vidite, kaj je ostalo za ščetko. Dokaz, ki ga čutite in vidite.",
+        heading: "Tudi tam, kamor ščetka težje seže",
+        body: "Prostori med zobmi, rob ob dlesni in zadnji kočniki so s ščetko težje dosegljivi. Tekočina ob izpiranju doseže tudi ta mesta, zato je ustna voda dober dodatek k ščetkanju in čiščenju medzobnih prostorov.",
       },
       {
         heading: "Partnerica belilnih trakov",
-        body: "Po 14-dnevnem protokolu beljenja ustna voda pomaga, da svetel rezultat traja dlje: zmanjšuje novo nabiranje madežev iz kave, čaja in vsakodnevne prehrane.",
+        body: "Ustna voda se lepo vključi v rutino z belilnimi trakci: trakci so namenjeni 14-dnevnemu protokolu, ustna voda pa vsakodnevni negi zjutraj in zvečer.",
       },
     ],
   },
 
   "serum-korektor-barve-zob": {
-    seoTitle: "Serum korektor barve zob — takojšnja optična korekcija",
+    seoTitle: "Serum korektor barve zob — začasna optična korekcija",
     seoDescription:
-      "Serum korektor Nasmeh.si: vijolična nevtralizira rumene tone. Takojšnja optična korekcija nasmeha v 30 sekundah — za posebne priložnosti.",
+      "Serum korektor Nasmeh.si z vijoličnimi pigmenti za začasno optično korekcijo rumenih tonov. Nanos v 30 sekundah. Sestavine (INCI) in navodila za uporabo na strani izdelka.",
     customFields: {
       uspChips: ["Takojšen učinek*", "30 sekund", "Pred fotografiranjem"],
       intro:
-        "Korektor za zobe: tako kot vijolični šampon za lase, serum optično nevtralizira rumene tone. Nasmeh je videti svetlejši že med nanosom — idealno pred dogodki in fotografiranjem.",
+        "Korektor za zobe: vijolični pigmenti v serumu optično nevtralizirajo rumenkaste tone, zato je nasmeh videti svetlejši*. Učinek je začasen — primeren pred dogodki in fotografiranjem.",
       bullets: [
-        "Vidno svetlejši nasmeh že med nanosom*",
+        "Optično svetlejši videz nasmeha*",
         "Optična korekcija — brez belilnih učinkovin",
-        "Nežen za vsakodnevno uporabo",
+        "Približno 30 nanosov v pakiranju",
         "Za trajnejše rezultate: belilni trakci",
       ],
       unitPrice: { quantity: 30, unit: "na uporabo" },
       crossSell: ["belilni-trakci-za-zobe", "ustna-voda-globinsko-ciscenje", "paket-popolna-rutina"],
     },
     accordions: {
-      howItWorks: `<p>Na barvnem krogu je vijolična nasproti rumeni: tanka, nevtralna plast vijoličnih pigmentov na zobeh optično izniči rumene podtone. Učinek je površinski in začasen (do naslednjega ščetkanja) — pošteno povedano, gre za ličenje, ne beljenje. Za trajno spremembo odtenka priporočamo belilne trakce.</p>`,
+      howItWorks: `<p>Na barvnem krogu je vijolična nasproti rumeni: tanka, nevtralna plast vijoličnih pigmentov na zobeh optično izniči rumene podtone. Učinek je površinski in začasen (do naslednjega ščetkanja) — pošteno povedano, gre za ličenje, ne beljenje. Za beljenje zob priporočamo belilne trakce.</p>`,
       inci: `<p>Aqua, Glycerin, Sorbitol, Hydrated Silica, Aroma, Cellulose Gum, CI 17200, CI 42090, Sodium Benzoate, Xylitol, Mentha Piperita Oil.</p>`,
       guarantee: GUARANTEE_HTML,
-      tested: `<p>*V senzorični oceni (n = 40) je 85 % ocenjevalcev takoj po nanosu ocenilo zobe kot vidno svetlejše. Učinek je optičen in začasen; različni odtenki sklenine se različno odzivajo.</p>`,
+      tested: `<p>*Učinek je optičen in začasen ter traja do naslednjega ščetkanja ali obroka. Različni odtenki sklenine se na serum odzivajo različno, zato se rezultati lahko razlikujejo.</p>`,
     },
     faq: [
       {
@@ -157,11 +167,11 @@ export const PDP_CONTENT: Record<string, PdpContent> = {
       },
       {
         q: "Ali serum dejansko beli zobe?",
-        a: "Ne — in tega ne trdimo. Serum je korektor, ki zobe začasno optično osvetli. Za trajno beljenje uporabite belilne trakce.",
+        a: "Ne — in tega ne trdimo. Serum je korektor, ki zobe začasno optično osvetli. Za beljenje zob uporabite belilne trakce.",
       },
       {
         q: "Kako ga nanesem?",
-        a: "Eno do dve kapljici nanesite s čopičem ali prstom po prednjih zobah, počakajte 30 sekund in izpljunite. Ne pogoltnite.",
+        a: "Eno do dve kapljici nanesite s čopičem ali prstom po prednjih zobeh, počakajte 30 sekund in izpljunite. Ne pogoltnite.",
       },
     ],
     education: [
@@ -171,7 +181,7 @@ export const PDP_CONTENT: Record<string, PdpContent> = {
       },
       {
         heading: "Kombinirajte za več",
-        body: "Serum je odličen zaključek 14-dnevnega protokola belilnih trakov: trakci spremenijo odtenek trajno, serum pa ga za posebne priložnosti še optično izpostavi.",
+        body: "Serum je dober zaključek 14-dnevnega protokola belilnih trakov: trakci so namenjeni beljenju zob, serum pa za posebne priložnosti poskrbi za začasen optični učinek.",
       },
     ],
   },
@@ -179,24 +189,23 @@ export const PDP_CONTENT: Record<string, PdpContent> = {
   "paket-popolna-rutina": {
     seoTitle: "Paket popolna rutina — trakci, ustna voda in serum",
     seoDescription:
-      "Celotna rutina beljenja v enem paketu: belilni trakci, ustna voda in serum korektor. Najboljša vrednost — z brezplačno dostavo.",
+      "Paket Nasmeh.si združuje belilne trakce, ustno vodo in serum korektor v eni rutini. Vrednost posameznih izdelkov in prihranek sta izračunana na strani paketa.",
     customFields: {
-      uspChips: ["Celotna rutina", "Prihranite 33 %", "Brezplačna dostava"],
+      uspChips: ["Celotna rutina", "3 izdelki", "Za vsak korak rutine"],
       intro:
-        "Vse, kar potrebujete za svetlejši nasmeh, v enem paketu: 14-dnevni protokol trakov, ustna voda za vsakodnevno čistočo in serum za takojšnjo korekcijo pred posebnimi priložnostmi.",
+        "V enem paketu: belilni trakci za 14-dnevni protokol, ustna voda za vsakodnevno nego in serum za začasno optično korekcijo pred posebnimi priložnostmi.",
       bullets: [
         "14-dnevni protokol belilnih trakov",
         "Ustna voda za globinsko čiščenje",
-        "Serum korektor za takojšen učinek",
-        "Brezplačna dostava vključena",
+        "Serum korektor za začasno optično korekcijo",
       ],
       crossSell: ["belilni-trakci-za-zobe", "ustna-voda-globinsko-ciscenje", "serum-korektor-barve-zob"],
     },
     accordions: {
-      howItWorks: `<p>Paket združuje tri korake popolne rutine: (1) belilni trakci za 14-dnevni protokol beljenja, (2) ustna voda za vsakodnevno globinsko čiščenje in ohranjanje rezultata, (3) serum korektor za takojšnjo optično osvetlitev pred priložnostmi. Vsak izdelek uporabljajte po navodilih na njegovi strani.</p>`,
-      inci: `<p>Sestavine posameznih izdelkov so navedene na njihovih strani: Belilni trakci za zobe, Ustna voda za globinsko čiščenje, Serum korektor barve zob.</p>`,
+      howItWorks: `<p>Paket združuje tri korake rutine: (1) belilni trakci za 14-dnevni protokol, (2) ustna voda za vsakodnevno nego po ščetkanju, (3) serum korektor za začasno optično osvetlitev pred priložnostmi. Vsak izdelek uporabljajte po navodilih na njegovi strani.</p>`,
+      inci: `<p>Sestavine posameznih izdelkov so navedene na njihovih straneh: Belilni trakci za zobe, Ustna voda za globinsko čiščenje, Serum korektor barve zob.</p>`,
       guarantee: GUARANTEE_HTML,
-      tested: `<p>Za paket veljajo enaki standardi preizkušanja kot za posamezne izdelke — podrobnosti najdete na straneh izdelkov. Rezultati se lahko razlikujejo od osebe do osebe.</p>`,
+      tested: `<p>Opombe k navedbam o posameznih izdelkih so na njihovih straneh. Rezultati se lahko razlikujejo od osebe do osebe.</p>`,
     },
     faq: [
       {
@@ -205,7 +214,7 @@ export const PDP_CONTENT: Record<string, PdpContent> = {
       },
       {
         q: "Koliko prihranim s paketom?",
-        a: "Vrednost posameznih izdelkov skupaj je 74,97 € — s paketom prihranite 33 %. Cena paketa že vključuje brezplačno dostavo.",
+        a: "Vrednost posameznih izdelkov in prihranek s paketom sta prikazana v razdelku Vsebina paketa na tej strani in se izračunata iz trenutnih cen.",
       },
       {
         q: "Kako dolgo zadostuje paket?",
@@ -215,7 +224,7 @@ export const PDP_CONTENT: Record<string, PdpContent> = {
     education: [
       {
         heading: "Rutina, ki se je držite",
-        body: "Beljenje je najučinkovitejše kot rutina, ne kot enkraten dogodek: trakci naredijo težko delo v 14 dneh, ustna voda vzdržuje rezultat vsak dan, serum pa poskrbi za fotogenične trenutke.",
+        body: "Rutina je lažja, ko ima vsak izdelek svoje mesto: trakci za 14-dnevni protokol, ustna voda za vsakodnevno nego po ščetkanju, serum pa za začasen optični učinek pred posebnimi priložnostmi.",
       },
     ],
   },
@@ -227,21 +236,21 @@ export const PDP_CONTENT: Record<string, PdpContent> = {
     customFields: {
       uspChips: ["7 uporab", "Za na pot", "Brez peroksida"],
       intro:
-        "Enaka nežna formula kot pri naših uspešnicah, v kompaktnem potovalnem pakiranju: 7 uporab za vikend, službeno pot ali preskus pred polnim protokolom.",
+        "Enaka formula kot pri polnem pakiranju belilnih trakov, v kompaktnem potovalnem pakiranju: 7 uporab za vikend, službeno pot ali preskus pred polnim protokolom.",
       bullets: [
         "7 uporab — idealno za na pot",
-        "Enaka nežna formula brez peroksida",
-        "Rezultati že po 1 uporabi*",
+        "Enaka formula brez peroksida",
+        "Za svetlejši nasmeh*",
         "Odličen prvi korak pred 14-dnevnim protokolom",
       ],
       unitPrice: { quantity: 7, unit: "na uporabo" },
       crossSell: ["belilni-trakci-za-zobe", "paket-popolna-rutina"],
     },
     accordions: {
-      howItWorks: `<p>Enak mehanizem kot pri polnem pakiranju: aktivni belilni kompleks razgradi barvne pigmente v sklenini v 30 minutah, nežno in brez draženja. 7 uporab zadostuje za en teden vzdrževanja ali preskus formule.</p>`,
+      howItWorks: `<p>Uporaba je enaka kot pri polnem pakiranju: trak namestite na zobe in ga pustite 30 minut, ves ta čas zadrži formulo ob površini zob. 7 uporab zadostuje za en teden ali za preskus formule.</p>`,
       inci: `<p>Aqua, Glycerin, PVP, Cellulose Gum, Carbomer, Aroma, Sodium Hydroxide, Sodium Saccharin, Mentha Piperita Oil, Xylitol, Tocopherol.</p>`,
       guarantee: GUARANTEE_HTML,
-      tested: `<p>*Izjave temeljijo na enakih protokolih preizkušanja kot pri polnem pakiranju (n = 52). Rezultati se lahko razlikujejo.</p>`,
+      tested: STRIPS_NOTES_HTML,
     },
     faq: [
       {

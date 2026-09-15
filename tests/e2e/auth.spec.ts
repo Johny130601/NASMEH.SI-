@@ -20,6 +20,7 @@ async function registerViaUi(page: Page, email: string, password: string, market
   await page.getByLabel("E-pošta").fill(email);
   await page.getByLabel(/Geslo/).fill(password);
   await expect(page.locator("[data-marketing-optin]")).not.toBeChecked();
+  await expect(page.locator("[data-register-form] [data-privacy-notice] a")).toHaveAttribute("href", "/politika-zasebnosti");
   if (marketing) await page.locator("[data-marketing-optin]").check();
   await page.getByRole("button", { name: "Ustvari račun" }).click();
   await expect(page.locator("[data-register-success]")).toBeVisible({ timeout: 15_000 });

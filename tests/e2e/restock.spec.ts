@@ -80,11 +80,16 @@ test("restock arms only confirmed, un-notified subscribers, mails once with PDP 
     expect((await setVariantStock(variant.id, 2)).armedAlerts).toBe(1);
     await expect.poll(async () => (await messagesTo(emails.confirmed)).length).toBe(2);
 
-    // One-click unsubscribe: idempotent, logged, tamper-proof.
+    // Unsubscribe: the link is read-only (mail scanners), the button acts; idempotent, logged once, tamper-proof.
     await page.goto(unsubscribe);
     await dismissCmp(page);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Odjava od obvestila o zalogi");
+    expect((await prisma.backInStockSubscription.findUniqueOrThrow({ where: where(emails.confirmed) })).status).toBe("CONFIRMED");
+    await page.getByRole("button", { name: "Odjavi me" }).click();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Odjava je uspela");
     expect((await prisma.backInStockSubscription.findUniqueOrThrow({ where: where(emails.confirmed) })).status).toBe("UNSUBSCRIBED");
+    expect(await prisma.consentLog.findFirst({ where: { kind: "back-in-stock", choices: { path: ["productSlug"], equals: product.slug } } }))
+      .toMatchObject({ choices: expect.objectContaining({ unsubscribed: true, subscriptionId: row.id, source: "unsubscribe-link" }) });
     expect(await prisma.consentLog.count({ where: { kind: "back-in-stock", choices: { path: ["productSlug"], equals: product.slug } } })).toBe(1);
     await page.goto(unsubscribe);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Odjava je uspela");

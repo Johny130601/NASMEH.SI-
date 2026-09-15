@@ -5,7 +5,7 @@ import { useState, useTransition, type ReactNode } from "react";
 import {
   saveBundleBannerAction, saveHeroAction, saveHomeSectionsAction, saveRoutineBannerAction, type CmsActionResult,
 } from "@/app/admin/(shell)/vsebina/actions";
-import type { BundleBannerInput, HeroInput, RoutineBannerInput } from "@/lib/admin/cms-schemas";
+import { heroClaimLacksFootnote, type BundleBannerInput, type HeroInput, type RoutineBannerInput } from "@/lib/admin/cms-schemas";
 import type { HomeSectionSetting } from "@/lib/settings";
 import { admin as copy } from "@/lib/copy";
 import { UiButton } from "@/components/storefront/ui/UiButton";
@@ -97,6 +97,14 @@ export function HeroEditor({ initial, media }: { initial: HeroInput; media: Medi
           {c.hero.fields.subtitle}
           <textarea value={hero.subtitle} rows={3} maxLength={400} onChange={(event) => setHero({ ...hero, subtitle: event.target.value })} className={textareaClass} />
         </label>
+        <div className="flex flex-col gap-1.5">
+          <label className="flex flex-col gap-1.5 text-sm font-medium">
+            {c.hero.fields.footnote}
+            <textarea name="footnote" value={hero.footnote ?? ""} rows={2} maxLength={300} aria-describedby="hero-footnote-hint" onChange={(event) => setHero({ ...hero, footnote: event.target.value })} className={textareaClass} />
+          </label>
+          <p id="hero-footnote-hint" className="text-xs text-mid-2">{c.hero.footnoteHint}</p>
+          {heroClaimLacksFootnote(hero) ?<p role="alert" className="text-xs text-error" data-hero-footnote-missing>{c.hero.footnoteMissing}</p> : null}
+        </div>
         <div className="grid gap-4 md:grid-cols-2">
           <UiInput label={c.hero.fields.ctaLabel} name="ctaLabel" required maxLength={40} {...field("ctaLabel")} />
           <UiInput label={c.hero.fields.ctaHref} name="ctaHref" required maxLength={500} {...field("ctaHref")} />

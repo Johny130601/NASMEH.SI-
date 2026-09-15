@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import type { EcommerceEvent } from "@/lib/analytics";
+import { analyticsAllowed, type EcommerceEvent } from "@/lib/analytics";
 
 declare global {
   interface Window {
@@ -9,9 +9,14 @@ declare global {
   }
 }
 
-/** Push an ecommerce event to the GTM dataLayer (no-op without GTM/consent). */
+/**
+ * Push an ecommerce event to the GTM dataLayer — only with stored analytics
+ * consent (`window.__nasmehConsent`, set by the consent snippet and the CMP).
+ * Without it the event is dropped, not queued for GTM to replay after consent.
+ */
 export function pushEvent(event: EcommerceEvent): void {
   if (typeof window === "undefined") return;
+  if (!analyticsAllowed(window.__nasmehConsent)) return;
   window.dataLayer = window.dataLayer ?? [];
   window.dataLayer.push(event);
 }

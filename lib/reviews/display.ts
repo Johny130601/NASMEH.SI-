@@ -44,8 +44,29 @@ export function filterReviews<T extends DisplayReview>(reviews: T[], filters: Re
     return ratingDiff || b.createdAt.getTime() - a.createdAt.getTime() || a.id.localeCompare(b.id);
   });
 }
+/**
+ * Public byline (GDPR Art. 5(1)(c)): the first name and the initial of the
+ * last name ("Ana K."), a single name as it is, "Kupec" without a name. The
+ * review form says so before submission; the JSON-LD author uses the same value.
+ */
 export function reviewAuthor(review: DisplayReview) {
-  return review.user?.name?.trim() || copy.display.customer;
+  const parts = (review.user?.name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return copy.display.customer;
+  if (parts.length === 1) return parts[0];
+  const initial = Array.from(parts[parts.length - 1])[0].toLocaleUpperCase("sl-SI");
+  return `${parts[0]} ${initial}.`;
+}
+
+/**
+ * "How reviews are verified" (UCPD Art. 7(6)): each point states what the
+ * submission and moderation code does. The moderation line follows the
+ * `reviews.autoPublishMinStars` Setting, read with the same fail-closed rule
+ * as the submit action (only 4 or 5 publish without review).
+ */
+export function reviewVerificationPoints(autoPublishMinStars: unknown): string[] {
+  const v = copy.display.verification;
+  const moderation = autoPublishMinStars === 4 ? v.moderationAutoFour : autoPublishMinStars === 5 ? v.moderationAutoFive : v.moderationAll;
+  return [v.buyers, v.onePerItem, moderation, v.lowRatings, v.badge.replace("{label}", copy.display.verified), v.replies.replace("{label}", copy.display.merchantReply)];
 }
 export function reviewStructuredData(reviews: DisplayReview[]) {
   const published = publishedReviews(reviews);

@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { getSetting } from "@/lib/settings";
 import { reviewPhotoPaths, reviewPhotoSrcSet } from "@/lib/reviews/photos";
-import { parseReviewFilters, filterReviews, publishedReviews, reviewFilterHref, reviewAuthor, type DisplayReview } from "@/lib/reviews/display";
+import { parseReviewFilters, filterReviews, publishedReviews, reviewFilterHref, reviewAuthor, reviewVerificationPoints, type DisplayReview } from "@/lib/reviews/display";
 import { aggregateRatings } from "@/lib/reviews/aggregate";
 import { reviews as copy } from "@/lib/copy";
 import { RatingStars } from "../catalog/RatingStars";
@@ -16,13 +17,16 @@ interface ReviewsSectionProps {
   photos?: unknown;
 }
 
-/** PDP reviews (§10): summary + distribution, photo wall, cards, sort/filter SSR. */
-export function ReviewsSection({
+const VERIFICATION_ID = "preverjanje-mnenj";
+
+/** PDP reviews (§10): verification statement, summary + distribution, photo wall, cards, sort/filter SSR. */
+export async function ReviewsSection({
   reviews,
   sort = "newest",
   stars = "",
   photos = "",
 }: ReviewsSectionProps) {
+  const verification = reviewVerificationPoints(await getSetting<unknown>("reviews.autoPublishMinStars"));
   const published = publishedReviews(reviews);
   const filters = parseReviewFilters({ sort, stars, photos });
   const aggregate = aggregateRatings(published.map((review) => review.rating));
@@ -34,6 +38,14 @@ export function ReviewsSection({
   return (
     <section id="mnenja" data-reviews-section className="mt-20 max-w-(--container-narrow)">
       <h2 className="text-2xl md:text-[2rem]">{copy.display.title}</h2>
+
+      {/* Shown with or without reviews (UCPD Art. 7(6)); the badge links here. */}
+      <div id={VERIFICATION_ID} data-review-verification className="mt-3 text-xs leading-5 text-mid-2">
+        <p className="font-medium text-mid-1">{copy.display.verification.title}</p>
+        <ul className="mt-1 list-disc pl-4">
+          {verification.map((point) => <li key={point}>{point}</li>)}
+        </ul>
+      </div>
 
       {aggregate.count === 0 ? (
         <p className="mt-4 text-sm text-mid-2">{copy.display.empty}</p>
@@ -145,7 +157,9 @@ export function ReviewsSection({
                     <span className="text-sm font-medium text-dark-1">{review.title}</span>
                   ) : null}
                   {review.orderItemId ? (
-                    <UiPill variant="success">{copy.display.verified}</UiPill>
+                    <a href={`#${VERIFICATION_ID}`} className="rounded-btn" data-review-verified-link>
+                      <UiPill variant="success">{copy.display.verified}</UiPill>
+                    </a>
                   ) : null}
                 </div>
                 {review.text ? (

@@ -5,6 +5,7 @@ import { getAuthChallengeProps } from "@/lib/auth-challenge";
 import { db } from "@/lib/db";
 import { buildMetadata } from "@/lib/seo";
 import { adverse as copy } from "@/lib/copy/adverse";
+import { getLegalLinks } from "@/lib/settings";
 import { getContactSettings } from "@/lib/support/settings";
 import { AdverseEventForm } from "@/components/storefront/support/AdverseEventForm";
 
@@ -18,7 +19,7 @@ export const metadata: Metadata = buildMetadata({
 
 /** Adverse-event report page (§12.6): structured form routed to the compliance mailbox. */
 export default async function AdverseEventPage() {
-  const [session, settings, products] = await Promise.all([
+  const [session, settings, products, legalLinks] = await Promise.all([
     auth(),
     getContactSettings(),
     db.product.findMany({
@@ -26,6 +27,7 @@ export default async function AdverseEventPage() {
       select: { slug: true, title: true },
       orderBy: { title: "asc" },
     }),
+    getLegalLinks(),
   ]);
 
   return (
@@ -43,6 +45,7 @@ export default async function AdverseEventPage() {
           products={products}
           defaults={{ name: session?.user?.name ?? "", email: session?.user?.email ?? "" }}
           maxDate={new Date().toISOString().slice(0, 10)}
+          privacyHref={legalLinks.privacy}
         />
         <aside className="rounded-card bg-light-3 p-6" aria-labelledby="adverse-channel-title">
           <h2 id="adverse-channel-title" className="text-lg font-semibold">{copy.eyebrow}</h2>

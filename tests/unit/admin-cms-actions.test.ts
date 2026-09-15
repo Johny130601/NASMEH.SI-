@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(), revalidate: vi.fn(), sendMail: vi.fn(),
-  settingUpsert: vi.fn(), settingFindMany: vi.fn(), couponFindUnique: vi.fn(),
+  settingUpsert: vi.fn(), settingFindMany: vi.fn(), settingFindUnique: vi.fn(), couponFindUnique: vi.fn(),
   pageCreate: vi.fn(), pageUpdate: vi.fn(), pageFindUnique: vi.fn(), pageDelete: vi.fn(), pageFindMany: vi.fn(),
   menuUpsert: vi.fn(),
   assetFindUnique: vi.fn(), assetUpdateMany: vi.fn(), assetDelete: vi.fn(), assetDeleteMany: vi.fn(), assetCreate: vi.fn(),
@@ -22,7 +22,7 @@ vi.mock("@/lib/admin/media", () => ({
   prepareMediaImage: mocks.prepareMedia, saveMediaImage: mocks.saveMedia, removeMediaImage: mocks.removeMedia,
 }));
 vi.mock("@/lib/db", () => ({ db: {
-  setting: { upsert: mocks.settingUpsert, findMany: mocks.settingFindMany },
+  setting: { upsert: mocks.settingUpsert, findMany: mocks.settingFindMany, findUnique: mocks.settingFindUnique },
   coupon: { findUnique: mocks.couponFindUnique },
   contentPage: { create: mocks.pageCreate, update: mocks.pageUpdate, findUnique: mocks.pageFindUnique, delete: mocks.pageDelete, findMany: mocks.pageFindMany },
   menu: { upsert: mocks.menuUpsert },
@@ -77,6 +77,7 @@ beforeEach(() => {
   mocks.auth.mockResolvedValue(session("MANAGER"));
   mocks.settingUpsert.mockResolvedValue({});
   mocks.settingFindMany.mockResolvedValue([]);
+  mocks.settingFindUnique.mockResolvedValue(null);
   mocks.couponFindUnique.mockResolvedValue({ active: true });
   mocks.pageCreate.mockImplementation(async ({ data }) => ({ id: pageId, ...data }));
   mocks.pageUpdate.mockResolvedValue({});
@@ -123,6 +124,16 @@ describe("homepage, marquee and popup actions", () => {
     expect(mocks.settingUpsert.mock.calls[0][0]).toMatchObject({ where: { key: "home.hero" }, create: { key: "home.hero", value: { kicker: "NOVO", title: "Naslov", ctaHref: "/trgovina" } } });
     expect(mocks.settingUpsert.mock.calls[0][0].create.value).not.toHaveProperty("poster");
     expect(await saveHeroAction({ ...hero, ctaHref: "javascript:alert(1)" })).toEqual({ ok: false, error: "invalid" });
+    // A claim marker in the subtitle needs its footnote (§12.6); the footnote is stored with the hero.
+    expect(await saveHeroAction({ ...hero, subtitle: "Pod*", footnote: "" })).toEqual({ ok: false, error: "invalid" });
+    // The same holds for a marker in the heading, kicker or promo line, which the hero renders as live text too.
+    for (const starred of [{ title: "Belejši zobje v 14 dneh*" }, { kicker: "NOVO^" }, { promoOverlayText: "Dostava*" }]) {
+      expect(await saveHeroAction({ ...hero, ...starred, footnote: "" }), Object.keys(starred)[0]).toEqual({ ok: false, error: "invalid" });
+    }
+    expect(mocks.settingUpsert).toHaveBeenCalledTimes(1);
+    mocks.settingUpsert.mockClear();
+    expect(await saveHeroAction({ ...hero, subtitle: "Pod*", footnote: "*Rezultati se lahko razlikujejo." })).toEqual({ ok: true });
+    expect(mocks.settingUpsert.mock.calls[0][0].create.value).toMatchObject({ subtitle: "Pod*", footnote: "*Rezultati se lahko razlikujejo." });
     expect(await saveHomeSectionsAction([sections[0], sections[0], sections[1], sections[2]])).toEqual({ ok: false, error: "invalid" });
     expect(mocks.revalidate).toHaveBeenCalledWith("/");
   });
@@ -171,6 +182,93 @@ describe("page actions", () => {
     expect(await deletePageAction({ pageId })).toEqual({ ok: true });
     expect(mocks.pageDelete).toHaveBeenCalledWith({ where: { id: pageId } });
   });
+
+  // Phase 9 step 4: legal pages keep their slug and cannot be deleted, whichever route or setting links to them.
+  const legalPage = (slug: string, extra: Record<string, unknown> = {}) => ({ slug, title: "Pogoji", body: "<p>Besedilo</p>", template: "LEGAL", reviewed: false, ...extra });
+  const legalInput = (slug: string) => ({ ...page, slug, title: "Pogoji", body: "<p>Besedilo</p>", template: "LEGAL" as const });
+
+  it("refuses to rename a shadowed or fixed legal page, checking the stored slug rather than the new one", async () => {
+    for (const slug of ["reklamacije", "odstop-od-pogodbe", "politika-piskotkov", "pogoji-poslovanja", "politika-zasebnosti", "garancija-vracila-denarja"]) {
+      mocks.pageFindUnique.mockResolvedValueOnce(legalPage(slug));
+      expect(await savePageAction({ pageId, page: legalInput("nov-slug") }), slug).toEqual({ ok: false, error: "protected" });
+    }
+    expect(mocks.pageUpdate).not.toHaveBeenCalled();
+    // The same slug still saves: text edits on a legal page are allowed.
+    mocks.pageFindUnique.mockResolvedValueOnce(legalPage("pogoji-poslovanja"));
+    expect(await savePageAction({ pageId, page: { ...legalInput("pogoji-poslovanja"), body: "<p>Novo</p>" } })).toEqual({ ok: true });
+    expect(mocks.pageUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses to delete the fixed legal pages, and a refused rename leaves no way round the delete guard", async () => {
+    for (const slug of ["pogoji-poslovanja", "politika-zasebnosti", "garancija-vracila-denarja", "reklamacije"]) {
+      mocks.pageFindUnique.mockResolvedValueOnce({ slug });
+      expect(await deletePageAction({ pageId }), slug).toEqual({ ok: false, error: "protected" });
+    }
+    // Rename first, then delete: the rename is refused, so the stored slug stays protected.
+    mocks.pageFindUnique.mockResolvedValueOnce(legalPage("reklamacije"));
+    expect(await savePageAction({ pageId, page: legalInput("stara-reklamacija") })).toEqual({ ok: false, error: "protected" });
+    mocks.pageFindUnique.mockResolvedValueOnce({ slug: "reklamacije" });
+    expect(await deletePageAction({ pageId })).toEqual({ ok: false, error: "protected" });
+    expect(mocks.pageUpdate).not.toHaveBeenCalled();
+    expect(mocks.pageDelete).not.toHaveBeenCalled();
+  });
+
+  it("protects the page a legal.links value names at action time, ignoring its query string", async () => {
+    mocks.settingFindUnique.mockResolvedValue({ key: "legal.links", value: { terms: "/pogoji-2026?e2e=abc#top", privacy: "/politika-zasebnosti", cookies: "/politika-piskotkov", withdrawal: "/odstop-od-pogodbe", complaints: "/reklamacije" } });
+    mocks.pageFindUnique.mockResolvedValueOnce({ slug: "pogoji-2026" });
+    expect(await deletePageAction({ pageId })).toEqual({ ok: false, error: "protected" });
+    expect(mocks.settingFindUnique).toHaveBeenCalledWith({ where: { key: "legal.links" } });
+    mocks.pageFindUnique.mockResolvedValueOnce(legalPage("pogoji-2026", { template: "DEFAULT" }));
+    expect(await savePageAction({ pageId, page: { ...legalInput("pogoji-2025"), template: "DEFAULT" } })).toEqual({ ok: false, error: "protected" });
+    expect(mocks.pageUpdate).not.toHaveBeenCalled();
+    expect(mocks.pageDelete).not.toHaveBeenCalled();
+    // An ordinary page still renames and deletes.
+    mocks.pageFindUnique.mockResolvedValueOnce(legalPage("moja-stran", { template: "DEFAULT" }));
+    expect(await savePageAction({ pageId, page: { ...legalInput("druga-stran"), template: "DEFAULT" } })).toEqual({ ok: true });
+    mocks.pageFindUnique.mockResolvedValueOnce({ slug: "druga-stran" });
+    expect(await deletePageAction({ pageId })).toEqual({ ok: true });
+  });
+
+  it("keeps a protected LEGAL page on the LEGAL template but lets a protected page move onto it", async () => {
+    mocks.pageFindUnique.mockResolvedValueOnce(legalPage("reklamacije"));
+    expect(await savePageAction({ pageId, page: { ...legalInput("reklamacije"), template: "DEFAULT" } })).toEqual({ ok: false, error: "protected" });
+    expect(mocks.pageUpdate).not.toHaveBeenCalled();
+    mocks.pageFindUnique.mockResolvedValueOnce(legalPage("pogoji-poslovanja", { template: "DEFAULT" }));
+    expect(await savePageAction({ pageId, page: legalInput("pogoji-poslovanja") })).toEqual({ ok: true });
+    expect(mocks.pageUpdate.mock.calls[0][0].data).toMatchObject({ template: "LEGAL" });
+  });
+});
+
+describe("legal-review mark", () => {
+  const stored = { slug: "pogoji-poslovanja", title: "Pogoji", body: "<p>Pregledano</p>", template: "LEGAL", reviewed: true };
+  const input = { ...page, slug: "pogoji-poslovanja", title: "Pogoji", body: "<p>Pregledano</p>", template: "LEGAL" as const, reviewed: true };
+
+  it("stores reviewed=false when a save changes the title, body or template, even if the same save ticks it", async () => {
+    const changes = [{ body: "<p>Spremenjeno</p>" }, { title: "Pogoji poslovanja" }, { template: "LANDING" as const }];
+    for (const change of changes) {
+      // A template change on a protected LEGAL page is refused, so the template case uses an ordinary page.
+      const slug = change.template ? "moja-stran" : stored.slug;
+      mocks.pageFindUnique.mockResolvedValueOnce({ ...stored, slug });
+      expect(await savePageAction({ pageId, page: { ...input, slug, ...change } }), JSON.stringify(change)).toEqual({ ok: true, reviewCleared: true });
+      expect(mocks.pageUpdate.mock.lastCall?.[0].data).toMatchObject({ reviewed: false, ...change });
+    }
+    // A changed text that was not marked reviewed saves without the notice.
+    mocks.pageFindUnique.mockResolvedValueOnce(stored);
+    expect(await savePageAction({ pageId, page: { ...input, body: "<p>Osnutek</p>", reviewed: false } })).toEqual({ ok: true });
+    expect(mocks.pageUpdate.mock.lastCall?.[0].data).toMatchObject({ reviewed: false });
+  });
+
+  it("marks or keeps the review only on a save of the unchanged text, and SEO or publication edits keep it", async () => {
+    mocks.pageFindUnique.mockResolvedValueOnce({ ...stored, reviewed: false });
+    expect(await savePageAction({ pageId, page: input })).toEqual({ ok: true });
+    expect(mocks.pageUpdate.mock.lastCall?.[0].data).toMatchObject({ reviewed: true, body: "<p>Pregledano</p>" });
+    mocks.pageFindUnique.mockResolvedValueOnce(stored);
+    expect(await savePageAction({ pageId, page: { ...input, seoTitle: "Pogoji | Nasmeh.si", published: false } })).toEqual({ ok: true });
+    expect(mocks.pageUpdate.mock.lastCall?.[0].data).toMatchObject({ reviewed: true, seoTitle: "Pogoji | Nasmeh.si", published: false });
+    mocks.pageFindUnique.mockResolvedValueOnce(stored);
+    expect(await savePageAction({ pageId, page: { ...input, reviewed: false } })).toEqual({ ok: true });
+    expect(mocks.pageUpdate.mock.lastCall?.[0].data).toMatchObject({ reviewed: false });
+  });
 });
 
 describe("menu, media and e-mail template actions", () => {
@@ -215,7 +313,7 @@ describe("menu, media and e-mail template actions", () => {
     expect(await sendTestEmailAction({ key: "supportReceipt", subject: "Prejeto {{reference}}", bodyHtml: "<p>{{note}}</p>", to: "Test@Nasmeh.si" })).toEqual({ ok: true });
     expect(mocks.sendMail).toHaveBeenCalledTimes(1);
     expect(mocks.sendMail.mock.calls[0][0]).toMatchObject({ to: "test@nasmeh.si", subject: "[TEST] Prejeto POD-2026-00042" });
-    expect(mocks.sendMail.mock.calls[0][0].html).toContain("Odstop od pogodbe smo zabeležili");
+    expect(mocks.sendMail.mock.calls[0][0].html).toContain("Prejeli smo vaše obvestilo o odstopu od pogodbe");
     mocks.sendMail.mockRejectedValueOnce(new Error("ECONNREFUSED"));
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     expect(await sendTestEmailAction({ ...template, to: "test@nasmeh.si" })).toEqual({ ok: false, error: "send" });

@@ -3,14 +3,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { getCatalogProducts, parseBadges } from "@/lib/catalog";
-import { getOmnibusLowestCents } from "@/lib/omnibus";
+import { getPriceReductions } from "@/lib/omnibus";
 import {
   formatEUR,
   formatUnitPrice,
   klarnaInstallmentCents,
   bundleSavings,
+  standardShippingMethod,
 } from "@/lib/pricing";
-import { getFreeThresholdCents } from "@/lib/settings";
+import { getShippingSettings } from "@/lib/settings";
 import { isTestMode } from "@/lib/turnstile";
 import { getEnv } from "@/lib/env";
 import { buildMetadata, siteUrl } from "@/lib/seo";
@@ -106,19 +107,27 @@ export default async function ProductPage({
   const badges = parseBadges(product.badges);
   const soldOut = variant.stock <= 0 && !variant.allowBackorder;
   const backorder = variant.stock <= 0 && variant.allowBackorder;
-  const discounted =
-    variant.compareAtPriceCents !== null &&
-    variant.compareAtPriceCents > variant.priceCents;
 
-  const [omnibusLowest, thresholdCents, reviewAggregate, crossSellProducts] =
+  // Omnibus gate (lib/pricing priceReduction): strikethrough + 30-day line
+  // only with a history-backed prior price above the current price.
+  const [reductions, shipping, reviewAggregate, crossSellProducts] =
     await Promise.all([
-      discounted ? getOmnibusLowestCents(variant.id) : Promise.resolve(null),
-      getFreeThresholdCents(),
+      getPriceReductions([
+        { variantId: variant.id, priceCents: variant.priceCents, compareAtPriceCents: variant.compareAtPriceCents },
+      ]),
+      getShippingSettings(),
       Promise.resolve(aggregateRatings(product.reviews.map((review) => review.rating))),
       getCatalogProducts().then((all) =>
         all.filter((p) => p.slug !== product.slug),
       ),
     ]);
+
+  const reduction = reductions.get(variant.id) ?? null;
+  // Delivery accordion from the shipping Setting (the cart's standard method and threshold)
+  const deliveryShipping = copy.delivery.shipping({
+    estimate: standardShippingMethod(shipping.methods, shipping.standardCostCents)?.estimate.trim() || null,
+    freeThreshold: shipping.freeThresholdCents > 0 ? formatEUR(shipping.freeThresholdCents) : null,
+  });
 
   const rating =
     reviewAggregate.count > 0
@@ -314,7 +323,8 @@ export default async function ProductPage({
               </div>
             ) : null}
 
-            {/* Bundle components + savings (§6.6) */}
+            {/* Bundle components + savings (§6.6): bundle vs its components at today's prices,
+                not an Art. 6a reduction — no strikethrough, no Omnibus line */}
             {bundle && savings ? (
               <div className="mt-8 rounded-card border border-light-2 bg-white p-5">
                 <h2 className="text-lg">{copy.bundle.components}</h2>
@@ -342,19 +352,19 @@ export default async function ProductPage({
             ) : null}
 
             {/* 8. Buy box */}
-            <div className="mt-8 rounded-card border border-light-2 bg-white p-5">
+            <div className="mt-8 rounded-card border border-light-2 bg-white p-5" data-pdp-price-box>
               <p className="text-2xl text-dark-1">
-                {discounted ? (
+                {reduction ? (
                   <span className="mr-2 text-base text-mid-2 line-through">
-                    {formatEUR(variant.compareAtPriceCents!)}
+                    {formatEUR(reduction.priorPriceCents)}
                   </span>
                 ) : null}
                 {formatEUR(variant.priceCents)}{" "}
                 <span className="text-sm text-mid-2">{copy.buyBox.vatIncluded}</span>
               </p>
-              {discounted && omnibusLowest !== null ? (
-                <p className="mt-1 text-xs text-mid-2">
-                  {copy.buyBox.omnibusPrefix}: {formatEUR(omnibusLowest)}
+              {reduction ? (
+                <p className="mt-1 text-xs text-mid-2" data-omnibus-line>
+                  {copy.buyBox.omnibusPrefix}: {formatEUR(reduction.priorPriceCents)}
                 </p>
               ) : null}
               {cf.unitPrice ? (
@@ -400,11 +410,8 @@ export default async function ProductPage({
                   {
                     title: copy.accordions.delivery,
                     content: (
-                      <p>
-                        {copy.delivery.body.replace(
-                          "45 €",
-                          `${formatEUR(thresholdCents ?? 4500)}`,
-                        )}
+                      <p data-pdp-delivery>
+                        {deliveryShipping} {copy.delivery.body}
                       </p>
                     ),
                   },

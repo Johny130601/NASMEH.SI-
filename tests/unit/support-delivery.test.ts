@@ -123,6 +123,23 @@ describe("independent support ticket email deliveries", () => {
     ]);
   });
 
+  it("sends a RETURN/WITHDRAWAL ticket stored without details as a withdrawal to staff and the reporter (S8/U19)", async () => {
+    for (const value of rows.values()) value.ticket = { ...ticket, topic: "RETURN", reason: "WITHDRAWAL" } as unknown as typeof ticket;
+    expect(await deliverTicketEmails(ticket.id)).toEqual({ processed: 2, sent: 2, failed: 0, skipped: 0 });
+    const [staff, customer] = mocks.send.mock.calls.map(call => call[0] as { subject: string; text: string; html: string });
+    expect(staff.subject.startsWith("[ODSTOP] ")).toBe(true);
+    expect(staff.text).not.toContain("ne prekliče naročila");
+    expect(customer.html).toContain("Prejeli smo vaše obvestilo o odstopu od pogodbe");
+  });
+
+  it("sends the staff alert without Reply-To when the reporter address no longer parses", async () => {
+    rows.delete("delivery-customer");
+    rows.get("delivery-staff")!.ticket = { ...ticket, email: "[anonimizirano]" };
+    expect(await deliverTicketEmails(ticket.id)).toEqual({ processed: 1, sent: 1, failed: 0, skipped: 0 });
+    expect(mocks.send.mock.calls[0][0]).toMatchObject({ to: "support@example.test" });
+    expect(mocks.send.mock.calls[0][0]).not.toHaveProperty("replyTo");
+  });
+
   it("uses only valid persisted recipients and never falls back to reporter input", async () => {
     rows.delete("delivery-customer"); rows.get("delivery-staff")!.recipient = "bad\r\nBcc: victim@example.test";
     expect(await deliverTicketEmails(ticket.id)).toMatchObject({ sent: 0, failed: 1 });

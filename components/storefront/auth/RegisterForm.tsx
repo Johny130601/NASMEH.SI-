@@ -5,11 +5,15 @@ import { registerAction } from "@/app/(storefront)/actions/auth";
 import { auth as copy } from "@/lib/copy";
 import { UiButton } from "../ui/UiButton";
 import { UiInput } from "../ui/UiInput";
+import { PrivacyNotice } from "../PrivacyNotice";
 import { useAuthChallenge, type AuthChallengeProps } from "./AuthChallenge";
 
-/** Register form (§11.1) — marketing checkbox unchecked by default. */
-export function RegisterForm(props: AuthChallengeProps) {
-  const human = useAuthChallenge(props);
+/**
+ * Register form (§11.1) — marketing checkbox unchecked by default, with the
+ * privacy-policy notice (`legal.links.privacy`) next to it.
+ */
+export function RegisterForm({ privacyHref, ...challenge }: AuthChallengeProps & { privacyHref: string }) {
+  const human = useAuthChallenge(challenge);
   const [values, setValues] = useState({
     firstName: "",
     lastName: "",
@@ -98,6 +102,12 @@ export function RegisterForm(props: AuthChallengeProps) {
         />
         {copy.register.marketing}
       </label>
+      <PrivacyNotice
+        lead={copy.register.privacyLead}
+        link={copy.register.privacyLink}
+        href={privacyHref}
+        className="-mt-3 text-xs text-mid-2"
+      />
       {error ? (
         <p role="alert" className="text-sm text-error">
           {error}

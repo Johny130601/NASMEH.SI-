@@ -1,14 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ orderFindMany: vi.fn(), orderCount: vi.fn(), userFindMany: vi.fn() }));
-vi.mock("@/lib/db", () => ({ db: { order: { findMany: mocks.orderFindMany, count: mocks.orderCount }, user: { findMany: mocks.userFindMany } } }));
+const mocks = vi.hoisted(() => ({ orderFindMany: vi.fn(), orderCount: vi.fn(), userFindMany: vi.fn(), subscriberFindMany: vi.fn() }));
+vi.mock("@/lib/db", () => ({ db: {
+  order: { findMany: mocks.orderFindMany, count: mocks.orderCount }, user: { findMany: mocks.userFindMany },
+  subscriber: { findMany: mocks.subscriberFindMany },
+} }));
 vi.mock("@/lib/orders/refunds", () => ({ refundedQuantities: () => new Map() }));
 vi.mock("@/lib/support/photos", () => ({ removeSupportPhotos: vi.fn() }));
 
 import { ordersCsv, orderWhere, parseOrderFilters } from "@/lib/admin/orders";
 import { listCustomers, parseCustomerFilters } from "@/lib/admin/customers";
 
-beforeEach(() => { vi.resetAllMocks(); });
+beforeEach(() => { vi.resetAllMocks(); mocks.subscriberFindMany.mockResolvedValue([]); });
 
 describe("order filters", () => {
   it("parses and normalises the query", () => {
@@ -67,6 +70,25 @@ describe("customer list", () => {
     expect(withOrders.rows.map((row) => row.email)).toEqual(["gost@test.si", "ana@test.si"]);
     const marketing = await listCustomers(parseCustomerFilters({ enovice: "da" }));
     expect(marketing.rows.map((row) => row.email)).toEqual(["ana@test.si"]);
+  });
+
+  it("a guest's newsletter consent is a CONFIRMED subscriber, never the order's opt-in request (S4)", async () => {
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.orderFindMany.mockResolvedValue([
+      // ticked the checkout box but never confirmed the double opt-in
+      { email: "zahteva@test.si", status: "PAID", totalCents: 1000, refundedCents: 0, createdAt: new Date("2026-09-05"), shippingAddress: {}, marketingOptIn: true, anonymizedAt: null },
+      // left the box unticked, confirmed through the footer
+      { email: "potrjen@test.si", status: "PAID", totalCents: 1000, refundedCents: 0, createdAt: new Date("2026-09-04"), shippingAddress: {}, marketingOptIn: false, anonymizedAt: null },
+    ]);
+    mocks.subscriberFindMany.mockResolvedValue([{ email: "potrjen@test.si" }]);
+    const all = await listCustomers(parseCustomerFilters({}));
+    expect(mocks.subscriberFindMany).toHaveBeenCalledWith({
+      where: { email: { in: ["zahteva@test.si", "potrjen@test.si"] }, status: "CONFIRMED" }, select: { email: true },
+    });
+    expect(all.rows.map((row) => [row.email, row.marketingOptIn])).toEqual([["zahteva@test.si", false], ["potrjen@test.si", true]]);
+    expect(mocks.orderFindMany.mock.calls[0][0].select).not.toHaveProperty("marketingOptIn");
+    expect((await listCustomers(parseCustomerFilters({ enovice: "da" }))).rows.map((row) => row.email)).toEqual(["potrjen@test.si"]);
+    expect((await listCustomers(parseCustomerFilters({ enovice: "ne" }))).rows.map((row) => row.email)).toEqual(["zahteva@test.si"]);
   });
 
   it("paginates the merged list in pages of fifty", async () => {

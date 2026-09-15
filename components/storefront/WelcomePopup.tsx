@@ -4,8 +4,11 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState, useTransition, type FormEvent } from "react";
 import { subscribeNewsletterAction } from "@/app/(storefront)/actions/newsletter";
 import { applyKodaAction } from "@/app/(storefront)/actions/koda";
-import { common, footer, promo } from "@/lib/copy";
+import { common, footer, newsletter, promo } from "@/lib/copy";
 import type { WelcomePopupSetting } from "@/lib/settings-types";
+import { useConsent } from "./cmp/ConsentProvider";
+import { ChallengeStatus, useLazyChallenge } from "./chrome/useLazyChallenge";
+import { PrivacyNotice } from "./PrivacyNotice";
 import { UiButton } from "./ui/UiButton";
 import { UiInput } from "./ui/UiInput";
 import { UiIcon } from "./ui/UiIcon";
@@ -16,19 +19,29 @@ const SUPPRESSED_PATHS = ["/cart", "/checkout", "/racun"];
 /**
  * Welcome popup (§9.3): Setting-driven copy/timing/code/active. Suppressed on
  * /cart /checkout /racun, for known subscribers, and once-interacted-per-
- * session. Bottom sheet on mobile / centered on desktop. Thank-you state
- * auto-stores the code for checkout. Capture = Phase 1 double opt-in.
+ * session. It never opens (and hides) while the consent banner awaits a
+ * choice, so it cannot cover the banner's buttons. Bottom sheet on mobile /
+ * centered on desktop. Thank-you state auto-stores the code for checkout.
+ * Capture = Phase 1 double opt-in with source "welcome-popup": its own lazily
+ * mounted Turnstile widget, the fixed consent note and the privacy link under
+ * the operator copy.
  */
 export function WelcomePopup({
   setting,
   testToken,
+  siteKey,
+  privacyHref,
   knownSubscriber,
 }: {
   setting: WelcomePopupSetting;
   testToken: string | null;
+  siteKey: string | null;
+  privacyHref: string;
   knownSubscriber: boolean;
 }) {
   const pathname = usePathname();
+  const { bannerOpen } = useConsent();
+  const human = useLazyChallenge({ siteKey, testToken });
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState(false);
   const [email, setEmail] = useState("");
@@ -41,14 +54,14 @@ export function WelcomePopup({
     SUPPRESSED_PATHS.some((path) => pathname.startsWith(path));
 
   useEffect(() => {
-    if (suppressed) return;
+    if (suppressed || bannerOpen) return;
     if (sessionStorage.getItem(SESSION_FLAG)) return;
     const timer = setTimeout(
       () => setOpen(true),
       Math.max(1, setting.delaySeconds) * 1000,
     );
     return () => clearTimeout(timer);
-  }, [suppressed, setting.delaySeconds]);
+  }, [suppressed, bannerOpen, setting.delaySeconds]);
 
   const dismiss = () => {
     sessionStorage.setItem(SESSION_FLAG, "1");
@@ -58,21 +71,28 @@ export function WelcomePopup({
   const submit = (event: FormEvent) => {
     event.preventDefault();
     sessionStorage.setItem(SESSION_FLAG, "1");
-    startTransition(async () => {
-      const result = await subscribeNewsletterAction({
-        email,
-        turnstileToken: testToken ?? "",
+    setMessage(null);
+    // A submit made before the widget answered goes out as soon as it does.
+    human.submit((turnstileToken) => {
+      startTransition(async () => {
+        try {
+          const result = await subscribeNewsletterAction({ email, turnstileToken, source: "welcome-popup" });
+          if (result.ok) {
+            await applyKodaAction({ code: setting.couponCode });
+            setDone(true);
+          } else {
+            setMessage(result.message);
+          }
+        } catch {
+          setMessage(newsletter.genericError);
+        } finally {
+          human.reset();
+        }
       });
-      if (result.ok) {
-        await applyKodaAction({ code: setting.couponCode });
-        setDone(true);
-      } else {
-        setMessage(result.message);
-      }
     });
   };
 
-  if (!open) return null;
+  if (!open || bannerOpen) return null;
 
   return (
     <div
@@ -108,7 +128,13 @@ export function WelcomePopup({
         <>
           <h2 className="pr-10 text-2xl">{setting.title}</h2>
           <p className="mt-3 text-sm text-mid-1">{setting.body}</p>
-          <form onSubmit={submit} className="mt-5 flex flex-col gap-3" data-welcome-form>
+          <form
+            onSubmit={submit}
+            onFocusCapture={human.arm}
+            onPointerDownCapture={human.arm}
+            className="mt-5 flex flex-col gap-3"
+            data-welcome-form
+          >
             <UiInput
               id="welcome-email"
               label={footer.newsletter.emailLabel}
@@ -119,15 +145,24 @@ export function WelcomePopup({
               value={email}
               onChange={(event) => setEmail(event.target.value)}
             />
-            <input type="hidden" name="turnstileToken" value={testToken ?? ""} readOnly />
-            <UiButton type="submit" variant="primary" fullWidth disabled={pending}>
+            {human.field}
+            <UiButton type="submit" variant="primary" fullWidth disabled={pending || human.waiting}>
               {setting.cta}
             </UiButton>
+            <ChallengeStatus challenge={human} className="text-sm" />
             {message ? (
               <p role="alert" className="text-sm text-error">
                 {message}
               </p>
             ) : null}
+            <div className="flex flex-col gap-1" data-welcome-consent-note>
+              <p className="text-xs text-mid-2">{footer.newsletter.note}</p>
+              <PrivacyNotice
+                lead={footer.newsletter.privacyLead}
+                link={footer.newsletter.privacyLink}
+                href={privacyHref}
+              />
+            </div>
           </form>
         </>
       )}

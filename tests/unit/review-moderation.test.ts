@@ -25,7 +25,28 @@ describe("review moderation authority and persistence", () => {
   });
   it.each([["approve", "PUBLISHED"], ["reject", "REJECTED"]] as const)("%s persists %s with sanitized reply", async (decision, status) => {
     await moderateReviewAction({ reviewId: "review", decision, merchantReply: " Thank you " });
-    expect(mocks.update).toHaveBeenCalledWith({ where: { id: "review" }, data: { status, merchantReply: "Thank you" } });
+    expect(mocks.update).toHaveBeenCalledWith({ where: { id: "review" }, data: { status, merchantReply: "Thank you", ...(decision === "reject" ? { photos: [] } : {}) } });
+  });
+  it("removes a rejected review's photos after the DB write and keeps them on approval", async () => {
+    await moderateReviewAction({ reviewId: "review", decision: "approve" });
+    expect(mocks.remove).not.toHaveBeenCalled();
+    await moderateReviewAction({ reviewId: "review", decision: "reject" });
+    expect(mocks.update).toHaveBeenLastCalledWith({ where: { id: "review" }, data: { status: "REJECTED", photos: [] } });
+    expect(mocks.remove).toHaveBeenCalledWith([url, other]);
+    expect(mocks.update.mock.invocationCallOrder[1]).toBeLessThan(mocks.remove.mock.invocationCallOrder[0]);
+  });
+  it("still reports a rejection when the photo files cannot be unlinked, logging no path", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.remove.mockRejectedValueOnce(new Error(`EACCES ${url}`));
+    expect(await moderateReviewAction({ reviewId: "review", decision: "reject" })).toEqual({ ok: true });
+    expect(log).toHaveBeenCalledWith("Rejected review photos remain on disk");
+    log.mockRestore();
+  });
+  it("does not touch photos when the review has none", async () => {
+    mocks.find.mockResolvedValue({ product: { slug: "product" }, photos: null });
+    await moderateReviewAction({ reviewId: "review", decision: "reject" });
+    expect(mocks.update).toHaveBeenCalledWith({ where: { id: "review" }, data: { status: "REJECTED" } });
+    expect(mocks.remove).not.toHaveBeenCalled();
   });
   it("locks photo membership, removes only the selected path and cleans its generated files", async () => {
     expect((await deleteReviewPhotoAction({ reviewId: "review", photoUrl: url })).ok).toBe(true);

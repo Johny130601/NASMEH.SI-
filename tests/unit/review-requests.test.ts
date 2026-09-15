@@ -43,6 +43,14 @@ describe("durable review requests", () => {
     expect(where.items).toEqual({ some: { variantId: { not: null }, review: null } });
   });
 
+  it("never selects an anonymised order, neither as a new recipient nor as a retry", async () => {
+    mocks.findMany.mockResolvedValue([]);
+    await sendDueReviewRequests(now);
+    expect(mocks.findMany).toHaveBeenCalledTimes(2);
+    for (const [query] of mocks.findMany.mock.calls) expect(query.where.anonymizedAt).toBeNull();
+    expect(mocks.send).not.toHaveBeenCalled();
+  });
+
   it("skips when another worker already owns the send lease", async () => {
     mocks.updateRequests.mockResolvedValueOnce({ count: 0 });
     expect(await sendDueReviewRequests(now)).toMatchObject({ sent: 0, skipped: 1 });
@@ -69,7 +77,7 @@ describe("durable review requests", () => {
 
   it.each([
     { ...order, status: "REFUNDED" }, { ...order, refundRequired: true },
-    { ...order, deliveredAt: now }, { ...order, items: [] }, null,
+    { ...order, deliveredAt: now }, { ...order, items: [] }, { ...order, anonymizedAt: now }, null,
   ])("rechecks eligibility after claiming: %j", async changed => {
     mocks.findOrder.mockResolvedValue(changed);
     expect(await sendDueReviewRequests(now)).toMatchObject({ sent: 0, skipped: 1 });
@@ -92,7 +100,7 @@ describe("durable review requests", () => {
     expect(mocks.send.mock.calls[0][0].id).toBe("new-recipient");
     expect(mocks.findMany.mock.calls[1][0]).toEqual({
       where: {
-        status: "DELIVERED", deliveredAt: { lte: new Date(now.getTime() - 7 * 86_400_000) }, refundRequired: false,
+        status: "DELIVERED", deliveredAt: { lte: new Date(now.getTime() - 7 * 86_400_000) }, refundRequired: false, anonymizedAt: null,
         items: { some: { variantId: { not: null }, review: null } },
         id: { notIn: ["new-recipient"] },
         reviewRequest: { is: { sentAt: null, OR: [{ leaseUntil: null }, { leaseUntil: { lte: now } }] } },

@@ -10,7 +10,7 @@ export const adverse = {
     reporter: "1. Prijavitelj",
     product: "2. Izdelek",
     reaction: "3. Neželeni učinek",
-    consent: "4. Privolitve",
+    consent: "4. Obdelava podatkov",
   },
   reporter: {
     name: "Ime in priimek",
@@ -27,7 +27,8 @@ export const adverse = {
     select: "Izdelek",
     choose: "Izberite izdelek",
     batch: "Številka serije",
-    batchHint: "Natisnjena na embalaži (LOT/serija). Brez nje prijave ne moremo obravnavati.",
+    batchHint: "Natisnjena na embalaži (LOT/serija). Če jo imate, jo vpišite, saj nam močno pomaga pri oceni prijave.",
+    batchUnknown: "Številke serije ne poznam (na primer embalaže nimam več)",
     purchasePlace: "Kje ste izdelek kupili?",
     purchaseDate: "Datum nakupa (neobvezno)",
     orderNumber: "Številka naročila (neobvezno)",
@@ -48,7 +49,8 @@ export const adverse = {
     photosHint: "Fotografija učinka in embalaže s številko serije pomaga pri oceni. Največ 4 fotografije JPG, PNG ali WebP, vsaka do 2 MB.",
   },
   consent: {
-    privacy: "Seznanjen/-a sem, da se podatki obdelujejo za oceno varnosti izdelka in izpolnjevanje zakonskih obveznosti proizvajalca.",
+    /** Role-neutral until the responsible person under Reg. (EC) 1223/2009 is confirmed; wording changes the ticket's privacy version. */
+    privacy: "Seznanjen/-a sem, da se podatki iz prijave, tudi podatki o zdravju, obdelujejo za oceno varnosti izdelka in za izpolnjevanje zakonskih obveznosti glede varnosti kozmetičnih izdelkov.",
     privacyLink: "Preberite politiko zasebnosti",
     contact: "Ekipa za varnost izdelkov me lahko kontaktira z dodatnimi vprašanji (neobvezno).",
   },
@@ -60,7 +62,7 @@ export const adverse = {
     reference: "Oznaka zahtevka",
   },
   errors: {
-    invalid: "Preverite vnesene podatke: izdelek, številka serije, opis učinka in privolitev so obvezni.",
+    invalid: "Preverite vnesene podatke: obvezni so izdelek, številka serije ali potrditev, da je ne poznate, opis učinka in seznanjenost z obdelavo podatkov.",
     challenge: "Preverjanje ni uspelo. Potrdite, da niste robot, in poskusite znova.",
     orderNotFound: "Naročila s to številko in e-pošto ni mogoče povezati. Pustite polje prazno ali uporabite e-pošto ob naročilu.",
     photos: "Dodajte največ 4 fotografije JPG, PNG ali WebP. Vsaka je lahko velika največ 2 MB.",

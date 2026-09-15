@@ -100,12 +100,31 @@ test("full guest purchase: checkout → pay → confirmation → email+invoice �
   });
   expect(after.stock).toBe(stockBefore - 2);
 
-  // confirmation email + PDF invoice attachment in Mailpit
+  // Phase 9 step 4: the invoice is frozen as issued, and the abandoned-checkout capture is gone once paid.
+  const company = await prisma.setting.findUniqueOrThrow({ where: { key: "company" } });
+  const companyValue = company.value as { name: string; email: string };
+  expect(order.invoiceSnapshot).toMatchObject({
+    issuedAt: order.invoiceIssuedAt?.toISOString(),
+    seller: { name: companyValue.name, email: companyValue.email },
+    buyer: { name: "Test Kupec", email },
+  });
+  expect(await prisma.abandonedCheckout.count({ where: { recoveryToken: order.checkoutKey ?? "" } })).toBe(0);
+  await expect(page.locator("[data-delivery-estimate]")).toContainText("Predviden rok dostave:");
+
+  // confirmation email on a durable medium: legal block + invoice, model withdrawal form and legal texts in Mailpit
   const message = await waitForMailMessage(email);
   expect(message.Subject).toContain(number);
-  expect(
-    message.Attachments?.some((a) => a.FileName.endsWith(".pdf")),
-  ).toBe(true);
+  expect(message.Attachments?.map((a) => a.FileName)).toEqual([
+    `racun-${number}.pdf`, "obrazec-odstop-od-pogodbe-nasmeh.pdf", `pogoji-in-odstop-${number}.pdf`,
+  ]);
+  expect(message.HTML).toContain("data-order-legal");
+  expect(message.HTML).toContain(`mailto:${companyValue.email}`);
+  expect(message.HTML).toContain("Pravica do odstopa od pogodbe");
+  expect(message.HTML).toContain("/odstop-od-pogodbe");
+  // The delivery time is the standard method's estimate from the shipping Setting (seed: "2–4 delovne dni"),
+  // never the pre-step-4 hard-coded sentence.
+  expect(message.HTML).toContain("Predviden rok dostave: 2–4 delovne dni.");
+  expect(message.HTML).not.toContain("Predviden rok dostave je");
 
   // guest lookup finds the order (tracking page, e-mail + order-number mode)
   await page.goto(`/sledi?email=${encodeURIComponent(email)}&narocilo=${number}`);

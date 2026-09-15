@@ -65,7 +65,9 @@ export async function saveCompanyAction(input: CompanyInput): Promise<SettingsAc
   await requirePermission("settings:manage");
   const parsed = companySchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid" };
-  await saveSettingValue(SETTING_KEYS.company, parsed.data);
+  // An empty telephone is stored as absent, so every reader sees one "not set" shape.
+  const { phone, ...company } = parsed.data;
+  await saveSettingValue(SETTING_KEYS.company, phone ? { ...company, phone } : company);
   refreshStorefront("/admin/nastavitve/davki-racuni");
   return { ok: true };
 }

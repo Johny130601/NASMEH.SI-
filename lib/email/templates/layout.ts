@@ -21,8 +21,14 @@ export function emailLayout(content: string): string {
 </html>`;
 }
 
+/** Escapes text (operator Settings, order snapshots) for HTML content and attribute values. */
+export function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
+}
+
 export const emailStyles = {
   h1: "font-size:1.5rem;font-weight:300;",
+  h2: "font-size:1rem;font-weight:500;margin:1.25rem 0 0.25rem;",
   p: "font-size:1rem;line-height:1.5;",
   small: "font-size:0.75rem;line-height:1.5;color:rgb(99,99,102);",
   button:

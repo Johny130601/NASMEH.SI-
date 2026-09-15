@@ -5,6 +5,8 @@ import { useMemo, useState, useTransition } from "react";
 import { resetEmailTemplateAction, saveEmailTemplateAction, sendTestEmailAction, type EmailTemplateActionResult } from "@/app/admin/(shell)/e-posta/actions";
 import { EMAIL_TEMPLATE_DEFS, substitutePlaceholders, type EmailTemplateKey } from "@/lib/email/template-defs";
 import { emailLayout } from "@/lib/email/templates/layout";
+import { sanitizeEmailHtml } from "@/lib/email/sanitize";
+import { sampleRequiredHtml } from "@/lib/email/templates/required-samples";
 import { admin as copy } from "@/lib/copy";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiInput } from "@/components/storefront/ui/UiInput";
@@ -19,6 +21,21 @@ function errorText(result: Extract<EmailTemplateActionResult, { ok: false }>): s
   }
 }
 
+/**
+ * The live preview, built like renderTemplate with sample values: the
+ * sanitized body plus the block the mailer always appends (order legal block,
+ * newsletter unsubscribe), so the operator sees what a customer receives.
+ */
+export function buildEmailPreview(templateKey: EmailTemplateKey, subject: string, body: string) {
+  const sample = EMAIL_TEMPLATE_DEFS[templateKey].sample;
+  const rendered = sanitizeEmailHtml(substitutePlaceholders(templateKey, body, sample, "html"));
+  const required = sampleRequiredHtml(templateKey, sample);
+  return {
+    subject: substitutePlaceholders(templateKey, subject, sample, "text"),
+    html: emailLayout(rendered + (typeof required === "function" ? required(rendered) : required)),
+  };
+}
+
 export function EmailTemplateEditor({ templateKey, initialSubject, initialBody, overridden }: { templateKey: EmailTemplateKey; initialSubject: string; initialBody: string; overridden: boolean }) {
   const router = useRouter();
   const def = EMAIL_TEMPLATE_DEFS[templateKey];
@@ -27,10 +44,7 @@ export function EmailTemplateEditor({ templateKey, initialSubject, initialBody, 
   const [subject, setSubject] = useState(initialSubject);
   const [body, setBody] = useState(initialBody);
   const [testTo, setTestTo] = useState("");
-  const preview = useMemo(() => ({
-    subject: substitutePlaceholders(templateKey, subject, def.sample, "text"),
-    html: emailLayout(substitutePlaceholders(templateKey, body, def.sample, "html")),
-  }), [templateKey, subject, body, def.sample]);
+  const preview = useMemo(() => buildEmailPreview(templateKey, subject, body), [templateKey, subject, body]);
   const run = (task: () => Promise<EmailTemplateActionResult>, okText: string) => {
     setMessage(null);
     startTransition(async () => {

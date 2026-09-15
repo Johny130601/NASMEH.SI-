@@ -28,21 +28,24 @@ function YesNo({ name, label }: { name: "ongoing" | "medicalTreatment"; label: s
   );
 }
 
-/** Adverse-event report (§12.6): structured fields, batch number mandatory. */
+/** Adverse-event report (§12.6): structured fields; the batch number or an explicit "unknown". */
 export function AdverseEventForm({
-  challenge, requestKey: initialRequestKey, products, defaults, maxDate,
+  challenge, requestKey: initialRequestKey, products, defaults, maxDate, privacyHref,
 }: {
   challenge: AuthChallengeProps;
   requestKey: string;
   products: Array<{ slug: string; title: string }>;
   defaults: { name: string; email: string };
   maxDate: string;
+  /** `legal.links` privacy path. */
+  privacyHref: string;
 }) {
   const [requestKey] = useState(initialRequestKey);
   const human = useAuthChallenge(challenge);
   const [pending, startSubmit] = useTransition();
   const submitting = useRef(false);
   const photos = useRef<HTMLInputElement>(null);
+  const [batchUnknown, setBatchUnknown] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reference, setReference] = useState<string | null>(null);
 
@@ -102,7 +105,12 @@ export function AdverseEventForm({
             {products.map(product => <option key={product.slug} value={product.slug}>{product.title}</option>)}
           </select>
         </UiFormField>
-        <UiInput id="adverse-batch" label={copy.product.batch} hint={copy.product.batchHint} name="batchNumber" required minLength={3} maxLength={40} />
+        {/* A disabled input is not submitted, so "unknown" sends no stale batch number. */}
+        <UiInput id="adverse-batch" label={copy.product.batch} hint={copy.product.batchHint} name="batchNumber" required={!batchUnknown} disabled={batchUnknown} minLength={3} maxLength={40} />
+        <label className="flex items-start gap-3 text-sm leading-relaxed text-mid-1">
+          <input name="batchUnknown" type="checkbox" checked={batchUnknown} onChange={event => setBatchUnknown(event.target.checked)} className="mt-1 size-4 shrink-0 accent-brand" />
+          <span>{copy.product.batchUnknown}</span>
+        </label>
         <UiInput id="adverse-purchase-place" label={copy.product.purchasePlace} name="purchasePlace" required minLength={2} maxLength={120} />
         <UiInput id="adverse-purchase-date" label={copy.product.purchaseDate} name="purchaseDate" type="date" max={maxDate} />
         <UiInput id="adverse-order" label={copy.product.orderNumber} hint={copy.product.orderNumberHint} name="orderNumber" maxLength={20} />
@@ -138,7 +146,7 @@ export function AdverseEventForm({
           <input name="privacyAccepted" type="checkbox" required className="mt-1 size-4 shrink-0 accent-brand" />
           <span>{copy.consent.privacy}</span>
         </label>
-        <Link href="/politika-zasebnosti" className="ml-7 inline-block text-sm text-mid-1 underline underline-offset-4">{copy.consent.privacyLink}</Link>
+        <Link href={privacyHref} className="ml-7 inline-block text-sm text-mid-1 underline underline-offset-4">{copy.consent.privacyLink}</Link>
         <label className="flex items-start gap-3 text-sm leading-relaxed text-mid-1">
           <input name="contactPermission" type="checkbox" className="mt-1 size-4 shrink-0 accent-brand" />
           <span>{copy.consent.contact}</span>

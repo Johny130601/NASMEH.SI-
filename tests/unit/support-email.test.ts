@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/seo", () => ({ siteUrl: () => "https://nasmeh.example" }));
-import { renderSupportCustomerEmail, renderSupportStaffEmail, ticketDetailsKind } from "@/lib/email/templates/support-ticket";
+import { renderSupportCustomerEmail, renderSupportStaffEmail, ticketDetailsKind, ticketKind } from "@/lib/email/templates/support-ticket";
 
 const base = {
   reference: "NP-TEST", topic: "ADVERSE" as const, reason: "REACTION", name: "Živa Ščuk", email: "ziva@example.test",
@@ -36,6 +36,48 @@ describe("support ticket staff mail", () => {
     expect(mail.text).not.toContain("never");
   });
 
+  it("flags withdrawal tickets for triage and tells staff that a timely withdrawal takes effect on notice", () => {
+    const withdrawal = renderSupportStaffEmail({ ...base, topic: "RETURN", reason: "WITHDRAWAL", details: {
+      kind: "withdrawal", statutoryBasis: "ZVPot-1", claimedOrderNumber: "NS-2026-00042", goodsReceived: false, receivedAt: "", items: "1 × trakci",
+    } });
+    expect(withdrawal.subject.startsWith("[ODSTOP] ")).toBe(true);
+    for (const body of [withdrawal.text, withdrawal.html]) {
+      expect(body).toContain("učinkuje z obvestilom potrošnika");
+      expect(body).toContain("14 dneh od prejema tega obvestila");
+      expect(body).not.toContain("ne prekliče naročila");
+    }
+    expect(withdrawal.text).toContain("ni samodejno povezana z naročilom): NS-2026-00042");
+    expect(withdrawal.text).toContain("Potrošnik je blago že prejel: Ne");
+    expect(withdrawal.text).not.toContain("Blago prejeto dne");
+    const other = renderSupportStaffEmail({ ...base, details: { kind: "adverse", batchNumber: "", batchUnknown: true } });
+    expect(other.subject.startsWith("[ODSTOP]")).toBe(false);
+    expect(other.text).toContain("ne prekliče naročila");
+    expect(other.text).toContain("Prijavitelj številke serije ne pozna (npr. embalaže nima več): Da");
+  });
+
+  it("treats a RETURN/WITHDRAWAL ticket from the contact form as a withdrawal, with or without stored details (S8/U19)", () => {
+    for (const details of [null, undefined, { kind: "withdrawal", statutoryBasis: "ZVPot-1", viaContactForm: true }]) {
+      const mail = renderSupportStaffEmail({ ...base, topic: "RETURN", reason: "WITHDRAWAL", attachments: [], details });
+      expect(mail.subject.startsWith("[ODSTOP] "), String(details)).toBe(true);
+      for (const body of [mail.text, mail.html]) {
+        expect(body).toContain("učinkuje z obvestilom potrošnika");
+        expect(body).toContain("14 dneh od prejema tega obvestila");
+        expect(body).not.toContain("ne prekliče naročila");
+      }
+    }
+    const structured = renderSupportStaffEmail({ ...base, topic: "RETURN", reason: "WITHDRAWAL", attachments: [], details: { kind: "withdrawal", statutoryBasis: "ZVPot-1", viaContactForm: true } });
+    expect(structured.text).toContain("Pravna podlaga: ZVPot-1");
+    expect(structured.text).toContain("Poslano prek splošnega kontaktnega obrazca (brez podatkov vzorčnega obrazca; blago in naslov preverite v sporočilu): Da");
+    // Other return reasons stay ordinary tickets.
+    const changedMind = renderSupportStaffEmail({ ...base, topic: "RETURN", reason: "CHANGED_MIND", details: null });
+    expect(changedMind.subject.startsWith("[ODSTOP]")).toBe(false);
+    expect(changedMind.text).toContain("ne prekliče naročila");
+    expect(ticketKind({ topic: "RETURN", reason: "WITHDRAWAL", details: null })).toBe("withdrawal");
+    expect(ticketKind({ topic: "RETURN", reason: "UNSUITABLE", details: null })).toBeNull();
+    expect(ticketKind({ topic: "ADVERSE", reason: "REACTION", details: { kind: "adverse" } })).toBe("adverse");
+    expect(ticketKind({ topic: "OTHER", reason: "OTHER", details: { kind: "other" } })).toBeNull();
+  });
+
   it("omits the details section without a recognised kind", () => {
     for (const details of [undefined, null, "text", { kind: "other" }, { items: "x" }]) {
       expect(renderSupportStaffEmail({ ...base, details }).html).not.toContain("Strukturirani podatki obrazca");
@@ -51,6 +93,10 @@ describe("support ticket customer receipt", () => {
     const withdrawal = renderSupportCustomerEmail({ reference: "NP-1", kind: "withdrawal" });
     expect(withdrawal.text).toContain("NP-1");
     expect(withdrawal.text).toContain("14 dneh");
+    // Directive 2011/83/EU Art. 13: counted from the withdrawal notice, withheld only until goods or proof arrive.
+    expect(withdrawal.text).toContain("brez nepotrebnega odlašanja, najpozneje pa v 14 dneh od prejema vašega obvestila o odstopu");
+    expect(withdrawal.text).toContain("kar nastopi prej");
+    expect(withdrawal.text).not.toContain("od prejema vrnjenega blaga");
     const adverse = renderSupportCustomerEmail({ reference: "NP-2", kind: "adverse" });
     expect(adverse.text).toContain("varnost izdelkov");
     const plain = renderSupportCustomerEmail({ reference: "NP-3" });

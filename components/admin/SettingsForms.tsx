@@ -6,7 +6,7 @@ import {
   saveAnalyticsAction, saveCompanyAction, saveContactSettingsAction, saveGoogleVerificationAction, saveInvoiceFooterAction, saveLegalLinksAction,
   saveMaintenanceAction, saveSeoDefaultsAction, saveVatRateAction, type SettingsActionResult,
 } from "@/app/admin/(shell)/nastavitve/actions";
-import { LEGAL_LINK_KEYS, type AnalyticsInput, type CompanyInput, type LegalLinksInput, type MaintenanceInput, type SeoDefaultsInput } from "@/lib/settings-schemas";
+import { companyPlaceholderFields, LEGAL_LINK_KEYS, type AnalyticsInput, type CompanyInput, type LegalLinksInput, type MaintenanceInput, type SeoDefaultsInput } from "@/lib/settings-schemas";
 import type { ContactSettingsInput } from "@/lib/support/settings-schema";
 import { admin as copy } from "@/lib/copy";
 import { UiButton } from "@/components/storefront/ui/UiButton";
@@ -71,16 +71,24 @@ export function VatForm({ initial }: { initial: number }) {
 export function CompanyForm({ initial }: { initial: CompanyInput }) {
   const [company, setCompany] = useState(initial);
   const { pending, run, status } = useSettingsSave();
-  const field = (key: keyof CompanyInput) => ({ value: company[key], onChange: (event: React.ChangeEvent<HTMLInputElement>) => setCompany({ ...company, [key]: event.target.value }) });
+  const field = (key: keyof CompanyInput) => ({ value: company[key] ?? "", onChange: (event: React.ChangeEvent<HTMLInputElement>) => setCompany({ ...company, [key]: event.target.value }) });
+  // Reflects the saved Setting, not keystrokes: the warning clears once real data is stored.
+  const placeholders = companyPlaceholderFields(initial);
   return (
     <form data-settings-form="company" onSubmit={(event) => { event.preventDefault(); run(() => saveCompanyAction(company)); }}>
       <SettingsSection id="company" title={c.tax.company.title}>
+        {placeholders.length > 0 ? (
+          <p role="alert" className="rounded-card border border-warning bg-white p-4 text-sm text-dark-1" data-company-placeholders={placeholders.join(" ")}>
+            {c.tax.company.placeholderWarning} ({placeholders.map((key) => c.tax.company.placeholderFields[key]).join(", ")})
+          </p>
+        ) : null}
         <div className="grid gap-4 md:grid-cols-2">
           <UiInput label={c.tax.company.fields.name} name="companyName" required maxLength={120} {...field("name")} />
           <UiInput label={c.tax.company.fields.email} name="companyEmail" type="email" required maxLength={254} {...field("email")} />
           <UiInput label={c.tax.company.fields.address} name="companyAddress" required maxLength={300} className="md:col-span-2" {...field("address")} />
           <UiInput label={c.tax.company.fields.registrationNumber} name="companyRegistration" required maxLength={40} {...field("registrationNumber")} />
           <UiInput label={c.tax.company.fields.vatId} name="companyVatId" required maxLength={14} {...field("vatId")} />
+          <UiInput label={c.tax.company.fields.phone} name="companyPhone" type="tel" maxLength={40} hint={c.tax.company.phoneHint} {...field("phone")} />
         </div>
         <SaveRow pending={pending} status={status} />
       </SettingsSection>

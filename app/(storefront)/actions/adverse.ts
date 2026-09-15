@@ -14,7 +14,8 @@ export async function submitAdverseEventAction(form: FormData): Promise<{ ok: bo
   const parsed = adverseInputSchema.safeParse({
     requestKey: form.get("requestKey"), name: form.get("name"), email: form.get("email"),
     phone: form.get("phone") ?? "", reporterType: form.get("reporterType"), reason: form.get("reason") ?? "REACTION",
-    productSlug: form.get("productSlug"), batchNumber: form.get("batchNumber"),
+    productSlug: form.get("productSlug"), batchNumber: form.get("batchNumber") ?? "",
+    batchUnknown: form.get("batchUnknown") === "on",
     purchasePlace: form.get("purchasePlace"), purchaseDate: form.get("purchaseDate") ?? "",
     orderNumber: form.get("orderNumber") ?? "", description: form.get("description"),
     onsetDate: form.get("onsetDate") ?? "", ongoing: form.get("ongoing"), medicalTreatment: form.get("medicalTreatment"),

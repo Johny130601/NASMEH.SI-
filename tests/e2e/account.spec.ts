@@ -189,14 +189,29 @@ test("address create/edit/default/delete and marketing withdrawal keep an audit 
   await expect(work).toHaveCount(0);
   await expect(home).toContainText("Privzeti");
 
+  // A footer subscription on the account's address is withdrawn with the account switch (Phase 9 step 4).
+  const subscriber = await prisma.subscriber.upsert({
+    where: { email: fixture.owner.email.toLowerCase() },
+    update: { status: "CONFIRMED", confirmedAt: new Date(), source: "footer" },
+    create: { email: fixture.owner.email.toLowerCase(), status: "CONFIRMED", confirmedAt: new Date(), source: "footer", confirmToken: `acct-${Date.now()}` },
+  });
   await page.locator("[data-marketing-toggle]").check();
   await expect(page.getByRole("status")).toHaveText("Nastavitve shranjene.");
   await expect.poll(async () => (await prisma.user.findUniqueOrThrow({ where: { id: fixture.owner.id } })).marketingOptIn).toBe(true);
   await expect(page.locator("[data-marketing-toggle]")).toBeChecked();
+  expect((await prisma.subscriber.findUniqueOrThrow({ where: { id: subscriber.id } })).status).toBe("CONFIRMED");
   await page.locator("[data-marketing-toggle]").uncheck();
   await expect.poll(async () => (await prisma.user.findUniqueOrThrow({ where: { id: fixture.owner.id } })).marketingOptIn).toBe(false);
   const log = await prisma.consentLog.findMany({ where: { userId: fixture.owner.id, kind: "marketing-preference" }, orderBy: { createdAt: "asc" } });
-  expect(log.map(row => row.choices)).toEqual([{ marketing: true, previous: false }, { marketing: false, previous: true }]);
+  expect(log.map(row => row.choices)).toEqual([
+    { marketing: true, previous: false, source: "account" }, { marketing: false, previous: true, source: "account" },
+  ]);
+  expect((await prisma.subscriber.findUniqueOrThrow({ where: { id: subscriber.id } })).status).toBe("UNSUBSCRIBED");
+  const withdrawal = await prisma.consentLog.findMany({ where: { userId: fixture.owner.id, kind: "marketing-email" } });
+  expect(withdrawal.map(row => row.choices)).toEqual([
+    { marketing: false, withdrawn: true, previousStatus: "CONFIRMED", source: "account-preference", subscriberId: subscriber.id },
+  ]);
+  await prisma.subscriber.delete({ where: { id: subscriber.id } });
   await page.reload();
   await expect(page.locator("[data-marketing-toggle]")).not.toBeChecked();
   // Updating the address book did not rewrite the purchased order's address.

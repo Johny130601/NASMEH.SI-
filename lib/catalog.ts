@@ -1,4 +1,6 @@
 import { db } from "@/lib/db";
+import { getPriceReductions } from "@/lib/omnibus";
+import type { PriceReduction } from "@/lib/pricing";
 
 /** Shared catalog product shape for cards across all surfaces. */
 export interface CatalogProduct {
@@ -7,7 +9,12 @@ export interface CatalogProduct {
   variantId: string;
   sku: string;
   priceCents: number;
-  compareAtPriceCents: number | null;
+  /**
+   * Omnibus-backed reduction from `getPriceReductions` — the only source of a
+   * card's strikethrough; null renders the plain price. The raw compare-at is
+   * deliberately not on the card shape.
+   */
+  reduction: PriceReduction | null;
   stock: number;
   /** Sold out for display: no stock and no backorder allowed (§14.2). */
   soldOut: boolean;
@@ -103,6 +110,7 @@ async function fetchRatings(productIds: string[]) {
 export function toCatalogProduct(
   product: ProductRow,
   ratings: Map<string, { average: number; count: number }>,
+  reductions: Map<string, PriceReduction>,
 ): CatalogProduct | null {
   const variant = product.variants[0];
   if (!variant) return null;
@@ -113,7 +121,7 @@ export function toCatalogProduct(
     variantId: variant.id,
     sku: variant.sku,
     priceCents: variant.priceCents,
-    compareAtPriceCents: variant.compareAtPriceCents,
+    reduction: reductions.get(variant.id) ?? null,
     stock: variant.stock,
     soldOut: variant.stock <= 0 && !variant.allowBackorder,
     backorderNote: variant.stock <= 0 && variant.allowBackorder ? variant.backorderNote : null,
@@ -144,12 +152,22 @@ export async function getCatalogProducts(options?: {
       : {}),
   };
   const rows = await fetchProducts(where, { createdAt: "asc" });
-  const ratings = await fetchRatings(rows.map((row) => row.id));
+  const [ratings, reductions] = await Promise.all([
+    fetchRatings(rows.map((row) => row.id)),
+    // card variant = cheapest (variants are ordered by price) — one batched history query
+    getPriceReductions(
+      rows.flatMap((row) =>
+        row.variants[0]
+          ? [{ variantId: row.variants[0].id, priceCents: row.variants[0].priceCents, compareAtPriceCents: row.variants[0].compareAtPriceCents }]
+          : [],
+      ),
+    ),
+  ]);
 
   let products = rows
     // HIDE (§14.2): a fully sold-out product without backorders leaves the lists.
     .filter((row) => row.soldOutBehavior !== "HIDE" || row.variants.some((variant) => variant.stock > 0 || variant.allowBackorder))
-    .map((row) => toCatalogProduct(row, ratings))
+    .map((row) => toCatalogProduct(row, ratings, reductions))
     .filter((row): row is CatalogProduct => row !== null);
 
   if (options?.collectionSlug) {

@@ -218,10 +218,19 @@ test("welcome popup: delay → suppressions → dismiss session → thank-you st
     const fresh = await page.context().browser()!.newContext();
     const page2 = await fresh.newPage();
     await page2.goto("/");
+    // The popup never opens over the unanswered consent banner (Phase 9 step 4).
+    await expect(page2.getByRole("dialog", { name: /piškotki/i })).toBeVisible();
+    await page2.waitForTimeout(2500);
+    await expect(page2.locator("[data-welcome-popup]")).toHaveCount(0);
     await dismissCmp(page2); // CMP returns on a fresh context — dismiss first
     await expect(page2.locator("[data-welcome-popup]")).toBeVisible({
       timeout: 10_000,
     });
+    // Fixed consent note and privacy link under the operator copy; no Turnstile script without a site key or interaction.
+    const note = page2.locator("[data-welcome-form] [data-welcome-consent-note]");
+    await expect(note).toContainText("Odjava je mogoča kadar koli.");
+    await expect(note.getByRole("link", { name: "politika zasebnosti" })).toHaveAttribute("href", "/politika-zasebnosti");
+    await expect(page2.locator("script#cf-turnstile-script")).toHaveCount(0);
     const email = `popup-${Date.now()}@test.si`;
     await page2
       .locator("[data-welcome-form] input[name='email']")
@@ -250,6 +259,9 @@ test("welcome popup: delay → suppressions → dismiss session → thank-you st
     // double opt-in email arrived
     const body = await waitForMailTo(email);
     expect(body).toMatch(/\/potrdi\/[a-f0-9]{48}/);
+    expect(body).toMatch(/\/odjava-novice\/[A-Za-z0-9_-]+/);
+    // The consent record names the surface the sign-up came from.
+    expect((await prisma.subscriber.findUniqueOrThrow({ where: { email } })).source).toBe("welcome-popup");
   } finally {
     await prisma.setting.update({
       where: { key },

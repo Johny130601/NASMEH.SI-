@@ -72,8 +72,13 @@ export const contact = {
     text: "Kako vam lahko pomagamo?",
     hint: "Opišite vprašanje v 10 do 5.000 znakih. Ne vpisujte gesel ali podatkov plačilne kartice.",
     adverse: "Sporočilo bomo posredovali ekipi za varnost izdelkov. Ta obrazec ni namenjen nujni medicinski pomoči.",
+    adverseForm: "Za prijavo z vsemi podatki, ki jih potrebujemo za oceno (izdelek, številka serije, potek učinka), uporabite obrazec za prijavo neželenega učinka.",
+    adverseFormLink: "Odpri obrazec za prijavo neželenega učinka",
+    withdrawalForm: "Spletni obrazec za odstop od pogodbe vas vodi skozi podatke iz vzorčnega obrazca. Odstop nam lahko sporočite tudi s tem sporočilom.",
+    withdrawalFormLink: "Odpri obrazec za odstop od pogodbe",
     photos: "Fotografije (neobvezno)",
     photosHint: "Dodajte fotografijo vseh prejetih izdelkov in zunanje embalaže; pri poškodbi tudi fotografijo poškodovanega dela. Največ 4 fotografije JPG, PNG ali WebP, vsaka do 2 MB.",
+    /** Changing this wording changes the ticket's recorded privacy version (PRIVACY_NOTICE_VERSIONS, lib/support/validation.ts). */
     privacy: "Seznanjen/-a sem z obdelavo osebnih podatkov za obravnavo tega sporočila.",
     privacyLink: "Preberite politiko zasebnosti",
     submit: "Pošlji sporočilo",

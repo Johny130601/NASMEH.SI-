@@ -3,15 +3,16 @@ import { db } from "@/lib/db";
 import { authEmailSchema } from "@/lib/auth-validation";
 import { sendMail } from "@/lib/email/mailer";
 import { resolveMail } from "@/lib/email/templates/render";
-import { renderSupportStaffEmail, renderSupportCustomerEmail, ticketDetailsKind } from "@/lib/email/templates/support-ticket";
+import { renderSupportStaffEmail, renderSupportCustomerEmail, ticketKind } from "@/lib/email/templates/support-ticket";
 import { supportEmail } from "@/lib/copy/support-email";
 
 const LEASE_MS = 5 * 60_000;
 export interface TicketDeliveryCounters { processed: number; sent: number; failed: number; skipped: number }
 
 /** The receipt is the one support mail an operator may override (§14.11 "withdrawal received"). */
-async function customerReceipt(reference: string, details: unknown) {
-  const kind = ticketDetailsKind(details);
+async function customerReceipt(ticket: { reference: string; topic: string; reason: string | null; details: unknown }) {
+  const { reference } = ticket;
+  const kind = ticketKind(ticket);
   return resolveMail("supportReceipt", { reference, note: kind ? supportEmail.customer.notes[kind] : "" },
     () => renderSupportCustomerEmail({ reference, kind }));
 }
@@ -32,12 +33,15 @@ async function deliverOne(id: string): Promise<"sent" | "failed" | "skipped"> {
     });
     if (!delivery || delivery.sentAt || delivery.leaseToken !== leaseToken) return "skipped";
     const recipient = authEmailSchema.parse(delivery.recipient);
+    // Reply-To is a convenience: a reporter address that no longer parses (an anonymised ticket left a
+    // STAFF row behind) leaves it out instead of failing the staff alert on every daily run.
+    const replyTo = delivery.kind === "STAFF" ? authEmailSchema.safeParse(delivery.ticket.email) : null;
     const content = delivery.kind === "STAFF"
       ? renderSupportStaffEmail(delivery.ticket)
-      : await customerReceipt(delivery.ticket.reference, delivery.ticket.details);
+      : await customerReceipt(delivery.ticket);
     await sendMail({
       ...content, to: recipient,
-      ...(delivery.kind === "STAFF" ? { replyTo: authEmailSchema.parse(delivery.ticket.email) } : {}),
+      ...(replyTo?.success ? { replyTo: replyTo.data } : {}),
       messageId: `<support-ticket.${delivery.id}@nasmeh.si>`,
     });
     const acknowledged = await db.ticketEmailDelivery.updateMany({

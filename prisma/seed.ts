@@ -36,7 +36,7 @@ const PRODUCTS = [
     title: "Belilni trakci za zobe (14 uporab)",
     slug: "belilni-trakci-za-zobe",
     description:
-      "Naš vodilni izdelek: belilni trakci za vidno svetlejši nasmeh v 14 dneh. Nežni do sklenine, brez peroksida.",
+      "Naš vodilni izdelek: belilni trakci s formulo brez peroksida za 14-dnevni protokol, 30 minut na dan.",
     sku: "NAS-TRK-14",
     priceCents: 3499,
     compareAtPriceCents: null as number | null,
@@ -48,7 +48,7 @@ const PRODUCTS = [
     title: "Ustna voda za globinsko čiščenje",
     slug: "ustna-voda-globinsko-ciscenje",
     description:
-      "Ustna voda za vsakodnevno rutino — odstrani nečistoče in osveži dih. Vidni rezultat že po prvi uporabi.",
+      "Ustna voda za vsakodnevno ustno nego po ščetkanju, zjutraj in zvečer.",
     sku: "NAS-UST-500",
     priceCents: 1999,
     compareAtPriceCents: null as number | null,
@@ -60,7 +60,7 @@ const PRODUCTS = [
     title: "Serum korektor barve zob",
     slug: "serum-korektor-barve-zob",
     description:
-      "Korektor za zobe: serum takoj optično nevtralizira rumene tone. Za posebne priložnosti in vsakdan.",
+      "Korektor za zobe: serum z vijoličnimi pigmenti za začasno optično korekcijo rumenih tonov. Za posebne priložnosti.",
     sku: "NAS-SER-30",
     priceCents: 1999,
     compareAtPriceCents: 2499 as number | null, // Omnibus demo (scripted history below)
@@ -72,7 +72,7 @@ const PRODUCTS = [
     title: "Paket popolna rutina",
     slug: "paket-popolna-rutina",
     description:
-      "Celotna rutina v enem paketu: trakci, ustna voda in serum. Najboljša vrednost — brezplačna dostava vključena.",
+      "Celotna rutina v enem paketu: belilni trakci, ustna voda in serum korektor.",
     sku: "NAS-PAK-RUTINA",
     priceCents: 4999,
     compareAtPriceCents: null as number | null,
@@ -183,8 +183,11 @@ async function seedCatalog() {
 
 /**
  * Omnibus demo (§9.2): scripted history for the serum so the
- * "Najnižja cena v zadnjih 30 dneh: 24,99 €" line has real data.
- * Rebuilds only when no 2499 row exists → idempotent.
+ * "Najnižja cena v 30 dneh pred znižanjem: 24,99 €" line has real data —
+ * 24,99 € in force for 40 days, then reduced to 19,99 € with the compare-at
+ * in the same row (announced with the price cut, as lib/pricing requires).
+ * The prior price is anchored at the reduction (lib/pricing), so the demo
+ * does not expire. Rebuilds only when no 2499 row exists → idempotent.
  */
 async function seedOmnibusDemoHistory(serumVariantId: string | undefined) {
   if (!serumVariantId) return;
@@ -204,11 +207,6 @@ async function seedOmnibusDemoHistory(serumVariantId: string | undefined) {
         variantId: serumVariantId,
         priceCents: 2499,
         createdAt: new Date(now - 40 * DAY),
-      },
-      {
-        variantId: serumVariantId,
-        priceCents: 2499,
-        createdAt: new Date(now - 10 * DAY),
       },
       {
         variantId: serumVariantId,
@@ -409,7 +407,8 @@ async function seedSettings() {
           carrier: "Pošta Slovenije",
           label: "Pošta Slovenije — standard",
           priceCents: 390,
-          estimate: "2–4 delovna dneva",
+          // 20260913120000_phase9_claims_copy corrects the old "2–4 delovna dneva" on unedited rows.
+          estimate: "2–4 delovne dni",
         },
         {
           id: "ps-express",
@@ -445,7 +444,7 @@ async function seedSettings() {
     { key: "consent.banner", value: { title: "", body: "" } },
     {
       key: "legal.links",
-      value: { terms: "/pogoji-poslovanja", privacy: "/politika-zasebnosti", cookies: "/politika-piskotkov", withdrawal: "/odstop-od-pogodbe", complaints: "/reklamacije" },
+      value: { terms: "/pogoji-poslovanja", privacy: "/politika-zasebnosti", cookies: "/politika-piskotkov", withdrawal: "/odstop-od-pogodbe" },
     },
     {
       // Homepage section order and visibility (§14.10)
@@ -461,14 +460,17 @@ async function seedSettings() {
     {
       key: "home.routineBanner",
       value: {
-        title: "Vaša vsakodnevna rutina beljenja — urejena.",
+        // Phase 9 step 4: original title (no translated competitor lines); the banner carries no claim marker,
+        // so the footnote is a plain qualifier. 20260913120000_phase9_claims_copy updates unedited rows.
+        title: "Trakci, ustna voda in serum v enem paketu.",
         href: "/izdelek/paket-popolna-rutina",
         image: "/uploads/placeholder-rutina-wide.svg",
         imageAlt: "Paket popolna rutina — trakci, ustna voda in serum",
-        footnote: "*Rezultati se lahko razlikujejo od osebe do osebe. Izdelki niso nadomestilo ustne higiene pri zobozdravniku.",
+        footnote: "Rezultati se lahko razlikujejo od osebe do osebe. Izdelki niso nadomestilo ustne higiene pri zobozdravniku.",
       },
     },
     {
+      // Placeholders until gate G4 (companyPlaceholderFields in lib/settings-schemas.ts flags them in the admin).
       key: "company",
       value: {
         name: "Nasmeh.si, d.o.o.",
@@ -484,8 +486,11 @@ async function seedSettings() {
       value: {
         kicker: "NOVO",
         title: "Nasmeh, ki ga opazite",
+        // The subtitle claim carries a marker that the footnote resolves as live text (§12.6).
         subtitle:
-          "Belilni trakci z nežno formulo brez peroksida — vidno svetlejši nasmeh že v 14 dneh, nežno do sklenine.",
+          "Belilni trakci s formulo brez peroksida za svetlejši nasmeh* — 30 minut na dan, 14 zaporednih dni.",
+        footnote:
+          "*Rezultati se lahko razlikujejo od osebe do osebe. Izdelki niso nadomestilo ustne higiene pri zobozdravniku.",
         ctaLabel: "Nakupuj zdaj",
         ctaHref: "/izdelek/belilni-trakci-za-zobe",
         poster: "/uploads/placeholder-hero.svg",
@@ -534,10 +539,13 @@ async function seedSettings() {
     },
   ];
 
+  // Operator-owned identity data: the company row is created once and never
+  // overwritten by a re-seed, so real data entered for gate G4 survives.
+  const CREATE_ONLY_KEYS = new Set(["company"]);
   for (const { key, value } of settings) {
     await prisma.setting.upsert({
       where: { key },
-      update: { value: value as object },
+      update: CREATE_ONLY_KEYS.has(key) ? {} : { value: value as object },
       create: { key, value: value as object },
     });
   }
@@ -680,7 +688,12 @@ async function seedCoupons() {
   }
 }
 
-async function seedContentPages() {  for (const page of LEGAL_PAGES) {
+async function seedContentPages() {
+  for (const page of LEGAL_PAGES) {
+    // A page an operator marked legally reviewed keeps its text: the seed refreshes only unreviewed drafts,
+    // the same `reviewed = false` guard the data migrations use.
+    const existing = await prisma.contentPage.findUnique({ where: { slug: page.slug }, select: { reviewed: true } });
+    if (existing?.reviewed) continue;
     await prisma.contentPage.upsert({
       where: { slug: page.slug },
       update: {

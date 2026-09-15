@@ -30,9 +30,9 @@ export const catalog = {
   seoBlock: {
     title: "Beljenje zob, pošteno povedano",
     teaser:
-      "Nasmeh.si je slovenska trgovina za domačo nego nasmeha: belilni trakci brez peroksida, ustna voda za globinsko čiščenje in serum korektor za takojšnjo korekcijo.",
+      "Nasmeh.si je slovenska trgovina za domačo nego nasmeha: belilni trakci brez peroksida, ustna voda za globinsko čiščenje in serum korektor za začasno optično korekcijo.",
     more:
-      "Verjamemo v kozmetiko brez pretiravanja: jasne sestavine (INCI na vsaki strani izdelka), izjave, ki jih podkrepimo s preizkusi, in cene, ki vedno vključujejo DDV. Vsi izdelki so zasnovani za občutljive zobe in vsakodnevno rutino — pošteno o tem, kaj izdelek naredi in česa ne. Z nakupom ni tveganja: 30-dnevno jamstvo vračila denarja in brezplačna dostava pri naročilih nad 45 €.",
+      "Verjamemo v kozmetiko brez pretiravanja: jasne sestavine (INCI na vsaki strani izdelka), navedbe z opombami, ki pojasnijo, na kaj se nanašajo, in cene, ki vedno vključujejo DDV. Pošteno povemo, kaj izdelek naredi in česa ne. Za izdelke velja 30-dnevno jamstvo vračila denarja pod pogoji, objavljenimi na strani Jamstvo vračila denarja.",
     expand: "Preberi več +",
     collapse: "Preberi manj −",
   },

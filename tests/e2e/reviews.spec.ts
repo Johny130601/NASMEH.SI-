@@ -70,6 +70,8 @@ test("request email → signed five-star link → two photos → moderation → 
     expect(unauthenticated.status()).toBe(404); expect(await unauthenticated.text()).not.toContain("data-review-form");
     await page.goto(`/oceni/hitro/${token}`); await dismissCmp(page);
     await expect(page.locator('[data-star="5"]')).toBeChecked();
+    // Phase 9 step 4: the reviewer is told how the name appears before submitting.
+    await expect(page.locator("[data-review-name-note]")).toContainText("začetnico priimka");
     await page.getByLabel("Naslov mnenja (neobvezno)").fill(`Photo review ${f.id}`);
     await page.getByLabel("Vaše mnenje").fill(`Verified product feedback ${f.id}`);
     await page.locator("[data-photos-input]").setInputFiles({ name: "pretend.png", mimeType: "image/png", buffer: Buffer.from("<script>not an image</script>") });
@@ -108,6 +110,12 @@ test("request email → signed five-star link → two photos → moderation → 
     await page.goto(`/izdelek/${f.product.slug}`);
     await expect(page.locator(`[data-review-id="${review.id}"]`)).toContainText(`Merchant response ${f.id}`);
     await expect(page.locator(`[data-review-id="${review.id}"]`)).toContainText("Preverjen kupec");
+    // A guest order carries no account name; the verification statement follows the 4-star auto-publish setting saved above.
+    await expect(page.locator(`[data-review-id="${review.id}"]`)).toContainText("Kupec ·");
+    await expect(page.locator(`[data-review-id="${review.id}"] [data-review-verified-link]`)).toHaveAttribute("href", "#preverjanje-mnenj");
+    await expect(page.locator("#preverjanje-mnenj")).toContainText("Kako preverjamo mnenja");
+    await expect(page.locator("#preverjanje-mnenj")).toContainText("Mnenja s 4 ali 5 zvezdicami objavimo takoj");
+    await expect(page.locator("#preverjanje-mnenj")).toContainText("nizke ocene");
     const image = page.locator(`[data-review-id="${review.id}"] img`); await expect(image).toHaveAttribute("srcset", /320w.*960w/);
     expect((await request.get(photos[1])).status()).toBe(200);
     expect((await request.get(photos[1].replace(/\.webp$/, "-320.webp"))).status()).toBe(200);
@@ -120,6 +128,8 @@ test("request email → signed five-star link → two photos → moderation → 
     await published.getByLabel("Odgovor trgovca").fill(""); await published.locator("[data-save-reply]").click();
     await expect.poll(async () => (await prisma.review.findUnique({ where: { id: review.id } }))?.merchantReply).toBeNull();
     await published.locator("[data-reject]").click(); await expect(published).toHaveCount(0);
+    // Rejection removes the remaining photo from the row and the disk.
+    await expect.poll(async () => (await prisma.review.findUniqueOrThrow({ where: { id: review.id } })).photos).toEqual([]);
     const rejectedHtml = await (await request.get(`/izdelek/${f.product.slug}`)).text();
     expect(rejectedHtml).not.toContain(`Photo review ${f.id}`); expect(productSchema(rejectedHtml).aggregateRating).toBeUndefined(); expect((await request.get(photos[1])).status()).toBe(404);
     await adminPage.goto("/admin/ocene?status=REJECTED"); await expect(adminPage.locator(`[data-mod-card="${review.id}"]`)).toBeVisible();

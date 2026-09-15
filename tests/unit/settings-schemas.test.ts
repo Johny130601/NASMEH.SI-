@@ -89,8 +89,10 @@ describe("marketing, SEO, consent, legal, maintenance, support", () => {
     expect(consentBannerSchema.parse({ title: "", body: " " })).toEqual({ title: "", body: "" });
   });
 
-  it("legal links are same-site paths for all five keys", () => {
+  it("legal links are same-site paths for all four keys; a stored row with the retired complaints key still parses", () => {
     expect(legalLinksSchema.parse(DEFAULT_LEGAL_LINKS)).toEqual(DEFAULT_LEGAL_LINKS);
+    expect(Object.keys(DEFAULT_LEGAL_LINKS)).toEqual(["terms", "privacy", "cookies", "withdrawal"]);
+    expect(legalLinksSchema.parse({ ...DEFAULT_LEGAL_LINKS, complaints: "/reklamacije" })).toEqual(DEFAULT_LEGAL_LINKS);
     expect(legalLinksSchema.safeParse({ ...DEFAULT_LEGAL_LINKS, terms: "https://x.si/pogoji" }).success).toBe(false);
     expect(legalLinksSchema.safeParse({ ...DEFAULT_LEGAL_LINKS, terms: "//x" }).success).toBe(false);
     expect(legalLinksSchema.safeParse({ terms: "/a", privacy: "/b" }).success).toBe(false);

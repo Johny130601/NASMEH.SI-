@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { buildMetadata } from "@/lib/seo";
 import { legal } from "@/lib/copy";
 import { returns } from "@/lib/copy/returns";
+import { getLegalLinks } from "@/lib/settings";
 import { WithdrawalForm } from "@/components/storefront/support/WithdrawalForm";
 
 export const dynamic = "force-dynamic";
@@ -25,9 +26,10 @@ export async function generateMetadata(): Promise<Metadata> {
 
 /** Withdrawal page (§12.4): CMS legal body + online model form + downloadable PDF. */
 export default async function WithdrawalPage() {
-  const [page, session] = await Promise.all([
+  const [page, session, legalLinks] = await Promise.all([
     db.contentPage.findFirst({ where: { slug: SLUG, published: true } }),
     auth(),
+    getLegalLinks(),
   ]);
   if (!page) notFound();
   const copy = returns.withdrawal;
@@ -57,6 +59,7 @@ export default async function WithdrawalPage() {
             requestKey={randomUUID()}
             defaults={{ name: session?.user?.name ?? "", email: session?.user?.email ?? "" }}
             maxDate={new Date().toISOString().slice(0, 10)}
+            privacyHref={legalLinks.privacy}
           />
         </div>
         <p className="mt-8 text-sm text-mid-1">

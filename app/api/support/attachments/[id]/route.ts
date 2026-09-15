@@ -1,4 +1,4 @@
-import { isStaffRole } from "@/lib/admin/permissions";
+import { can } from "@/lib/admin/permissions";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -13,7 +13,10 @@ const privateHeaders = { "Cache-Control": "private, no-store", "X-Content-Type-O
 const missing = () => new Response(null, { status: 404, headers: privateHeaders });
 
 /** Uploaded evidence belongs to the reporter, independently of any order owner.
- * Guests have no download capability; authenticated staff can inspect their files. */
+ * Guests have no download capability. Staff see the files only with the ticket
+ * permission and an enrolled second factor — the rule requireStaff enforces —
+ * because adverse-event photos can be health data (Art. 9 GDPR). The route
+ * answers 404 rather than redirecting, so a refusal never confirms a file exists. */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const id = idSchema.safeParse((await params).id);
   if (!id.success) return missing();
@@ -25,7 +28,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   });
   if (!attachment || !SUPPORT_PHOTO_FILENAME.test(attachment.filename)) return missing();
   const isReporter = Boolean(user.id) && attachment.ticket.userId === user.id;
-  if (!isStaffRole(user.role) && !isReporter) return missing();
+  const staffAllowed = can(user.role, "tickets:view") && user.mfaEnrolled === true;
+  if (!staffAllowed && !isReporter) return missing();
   try {
     const bytes = await readFile(path.join(SUPPORT_UPLOAD_DIR, attachment.filename));
     return new Response(new Uint8Array(bytes), { headers: {

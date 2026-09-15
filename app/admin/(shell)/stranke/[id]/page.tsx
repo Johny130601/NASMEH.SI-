@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import type { SubscriberStatus } from "@prisma/client";
 import { requirePagePermission } from "@/lib/admin/access";
 import { can } from "@/lib/admin/permissions";
-import { loadCustomer, loadGuest } from "@/lib/admin/customers";
+import { findCustomerAccountId, loadCustomer, loadGuest } from "@/lib/admin/customers";
 import { formatEUR } from "@/lib/pricing";
 import { admin as copy } from "@/lib/copy";
 import { contact } from "@/lib/copy/contact";
@@ -40,15 +41,65 @@ function TicketsList({ tickets }: { tickets: Array<{ id: string; reference: stri
   );
 }
 
-/** /admin/stranke/[id] — account detail; /admin/stranke/gost?email= — guest purchaser (§14.8). */
-export default async function AdminCustomerPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ email?: string }> }) {
+function ConsentsList({ consents }: { consents: Array<{ id: string; kind: string; version: string; choices: unknown; createdAt: Date }> }) {
+  if (consents.length === 0) return <p className="mt-3 text-sm text-mid-2">{d.noConsents}</p>;
+  return (
+    <ul className="mt-3 flex flex-col gap-1 text-xs" data-customer-consents>
+      {consents.map((entry) => (
+        <li key={entry.id} className="flex flex-wrap gap-x-2">
+          <span className="text-mid-2" style={{ fontVariantNumeric: "tabular-nums" }}>{entry.createdAt.toLocaleString("sl-SI")}</span>
+          <span>{entry.kind} v{entry.version}</span>
+          <span className="break-all text-mid-1">{JSON.stringify(entry.choices)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Newsletter, restock alerts and abandoned checkouts: rows keyed by e-mail alone. */
+function OtherRecords({ subscriber, backInStock, abandonedCheckouts }: {
+  subscriber: { status: SubscriberStatus } | null;
+  backInStock: Array<{ id: string; status: SubscriberStatus; createdAt: Date; product: { title: string } }>;
+  abandonedCheckouts: Array<{ id: string; updatedAt: Date }>;
+}) {
+  return (
+    <section className="rounded-card border border-light-2 bg-white p-5" data-customer-other-records>
+      <h2 className="text-base font-medium">{d.otherRecords}</h2>
+      <dl className="mt-3 grid grid-cols-[9rem_1fr] gap-y-1 text-sm">
+        <dt className="text-mid-1">{d.newsletter}</dt>
+        <dd data-customer-newsletter>{subscriber ? d.subscriberStatuses[subscriber.status] : copy.common.none}</dd>
+        <dt className="text-mid-1">{d.backInStock}</dt>
+        <dd>
+          {backInStock.length === 0 ? copy.common.none : (
+            <ul className="flex flex-col gap-0.5">
+              {backInStock.map((row) => <li key={row.id}>{row.product.title} · {d.subscriberStatuses[row.status]} · {row.createdAt.toLocaleDateString("sl-SI")}</li>)}
+            </ul>
+          )}
+        </dd>
+        <dt className="text-mid-1">{d.abandonedCheckouts}</dt>
+        <dd>
+          {abandonedCheckouts.length === 0 ? copy.common.none
+            : d.abandonedCheckoutsSummary.replace("{n}", String(abandonedCheckouts.length)).replace("{date}", abandonedCheckouts[0].updatedAt.toLocaleDateString("sl-SI"))}
+        </dd>
+      </dl>
+    </section>
+  );
+}
+
+/** /admin/stranke/[id] — account detail; /admin/stranke/gost?email= — a person without an account (§14.8). */
+export default async function AdminCustomerPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ email?: string | string[] }> }) {
   const staff = await requirePagePermission("customers:view");
   const { id } = await params;
   const permissions = { gdpr: can(staff.role, "customers:gdpr") };
 
   if (id === "gost") {
-    const { email } = await searchParams;
-    const guest = email ? await loadGuest(email) : null;
+    const { email: raw } = await searchParams;
+    const email = (Array.isArray(raw) ? raw[0] : raw ?? "").trim().toLowerCase().slice(0, 254);
+    if (!email) notFound();
+    // An address with an account is one person: the account page covers its guest rows too.
+    const accountId = await findCustomerAccountId(email);
+    if (accountId) redirect(`/admin/stranke/${accountId}`);
+    const guest = await loadGuest(email);
     if (!guest) notFound();
     return (
       <section className="mx-auto max-w-(--container-wide)" data-admin-customer={guest.email}>
@@ -58,14 +109,19 @@ export default async function AdminCustomerPage({ params, searchParams }: { para
         <p className="mt-1 text-xs text-mid-2">{d.guestNote}</p>
         {guest.anonymizedAt ? <p className="mt-2 text-sm text-mid-2" data-customer-anonymised>{d.anonymised.replace("{date}", guest.anonymizedAt.toLocaleDateString("sl-SI"))}</p> : null}
         <div className="mt-6 grid gap-4 xl:grid-cols-2">
-          <section className="rounded-card border border-light-2 bg-white p-5">
+          <section className="rounded-card border border-light-2 bg-white p-5" data-customer-orders>
             <h2 className="text-base font-medium">{d.orders}</h2>
             <p className="mt-1 text-xs text-mid-2">{d.orderCount}: {guest.orders.length} · {d.ltv}: {formatEUR(guest.ltvCents)}</p>
             <OrdersTable orders={guest.orders} />
           </section>
-          <section className="rounded-card border border-light-2 bg-white p-5">
+          <section className="rounded-card border border-light-2 bg-white p-5" data-customer-tickets>
             <h2 className="text-base font-medium">{d.tickets}</h2>
             <TicketsList tickets={guest.tickets} />
+          </section>
+          <OtherRecords subscriber={guest.subscriber} backInStock={guest.backInStock} abandonedCheckouts={guest.abandonedCheckouts} />
+          <section className="rounded-card border border-light-2 bg-white p-5">
+            <h2 className="text-base font-medium">{d.consents}</h2>
+            <ConsentsList consents={guest.consents} />
           </section>
         </div>
         <div className="mt-4">
@@ -91,7 +147,7 @@ export default async function AdminCustomerPage({ params, searchParams }: { para
             <dt className="text-mid-1">{d.role}</dt><dd>{copy.roles[customer.role]}</dd>
             <dt className="text-mid-1">{d.registered}</dt><dd>{customer.createdAt.toLocaleDateString("sl-SI")}</dd>
             <dt className="text-mid-1">{d.verified}</dt><dd>{customer.emailVerified ? copy.common.yes : copy.common.no}</dd>
-            <dt className="text-mid-1">{d.marketingOptIn}</dt><dd>{customer.marketingOptIn ? copy.common.yes : copy.common.no}{customer.subscriber ? ` · ${customer.subscriber.status}` : ""}</dd>
+            <dt className="text-mid-1">{d.marketingOptIn}</dt><dd>{customer.marketingOptIn ? copy.common.yes : copy.common.no}</dd>
             <dt className="text-mid-1">{d.orderCount}</dt><dd>{customer.orders.length}</dd>
             <dt className="text-mid-1">{d.ltv}</dt><dd style={{ fontVariantNumeric: "tabular-nums" }}>{formatEUR(customer.ltvCents)}</dd>
             <dt className="text-mid-1">{copy.shell.nav.reviews}</dt><dd>{customer._count.reviews}</dd>
@@ -116,29 +172,20 @@ export default async function AdminCustomerPage({ params, searchParams }: { para
 
         <section className="rounded-card border border-light-2 bg-white p-5">
           <h2 className="text-base font-medium">{d.consents}</h2>
-          {customer.marketingOptIns.length === 0 ? <p className="mt-3 text-sm text-mid-2">{d.noConsents}</p> : (
-            <ul className="mt-3 flex flex-col gap-1 text-xs">
-              {customer.marketingOptIns.map((entry) => (
-                <li key={entry.id} className="flex flex-wrap gap-x-2">
-                  <span className="text-mid-2" style={{ fontVariantNumeric: "tabular-nums" }}>{entry.createdAt.toLocaleString("sl-SI")}</span>
-                  <span>{entry.kind} v{entry.version}</span>
-                  <span className="break-all text-mid-1">{JSON.stringify(entry.choices)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+          <ConsentsList consents={customer.consents} />
         </section>
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+      <div className="mt-4 grid gap-4 xl:grid-cols-3">
         <section className="rounded-card border border-light-2 bg-white p-5" data-customer-orders>
           <h2 className="text-base font-medium">{d.orders}</h2>
           <OrdersTable orders={customer.orders} />
         </section>
-        <section className="rounded-card border border-light-2 bg-white p-5">
+        <section className="rounded-card border border-light-2 bg-white p-5" data-customer-tickets>
           <h2 className="text-base font-medium">{d.tickets}</h2>
-          <TicketsList tickets={customer.supportTickets} />
+          <TicketsList tickets={customer.tickets} />
         </section>
+        <OtherRecords subscriber={customer.subscriber} backInStock={customer.backInStock} abandonedCheckouts={customer.abandonedCheckouts} />
       </div>
 
       <div className="mt-4">

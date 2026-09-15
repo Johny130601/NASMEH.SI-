@@ -1,3 +1,5 @@
+import { legal } from "./legal";
+
 /** PDP copy (product content itself lives in DB seed). */
 export const pdp = {
   breadcrumbs: {
@@ -8,12 +10,13 @@ export const pdp = {
     howItWorks: "Kako deluje",
     inci: "Sestavine (INCI)",
     guarantee: "^Jamstvo vračila denarja",
-    tested: "*Testirano za rezultate",
+    tested: "*Opombe k navedbam",
     delivery: "Dostava in vračila",
   },
   buyBox: {
     backorder: "Trenutno ni na zalogi — naročite zdaj, pošljemo takoj, ko izdelek prispe.",
-    omnibusPrefix: "Najnižja cena v zadnjih 30 dneh",
+    /** Statutory framing (PID Art. 6a): the reference stays fixed while a reduction runs, so never "v zadnjih 30 dneh". */
+    omnibusPrefix: "Najnižja cena v 30 dneh pred znižanjem",
     klarnaPrefix: "ali 3 obroka po",
     klarnaSuffix: "s Klarna",
     quantity: "Količina",
@@ -26,7 +29,21 @@ export const pdp = {
     vatIncluded: "DDV vključen",
   },
   delivery: {
-    body: "Dostava v 2–4 delovnih dneh po Sloveniji. Brezplačna dostava pri naročilih nad 45 €. 14-dnevna pravica do odstopa za neodprte izdelke — podrobnosti na strani Odstop od pogodbe.",
+    /**
+     * Shipping part of the accordion, rendered from the shipping Setting: the
+     * standard method's configured estimate (null = none configured) and the
+     * formatted free-shipping threshold (null = every order ships free). The
+     * cart grants free shipping AT the threshold, hence "od".
+     */
+    shipping: ({ estimate, freeThreshold }: { estimate: string | null; freeThreshold: string | null }) =>
+      [
+        estimate ? `Predviden rok dostave po Sloveniji: ${estimate}.` : "Dostavljamo po Sloveniji.",
+        freeThreshold === null
+          ? "Dostava je brezplačna pri vseh naročilih."
+          : `Brezplačna dostava pri naročilih od ${freeThreshold}.`,
+      ].join(" "),
+    /** Returns part, after the shipping part. The sealed-goods exception is worded like the Odstop od pogodbe page and the checkout notice (Phase 9 step 4). */
+    body: `14-dnevna pravica do odstopa od pogodbe; odstop ni mogoč za ${legal.sealedGoodsException}. Podrobnosti na strani Odstop od pogodbe.`,
   },
   crossSell: "Dopolni svojo rutino",
   faq: {

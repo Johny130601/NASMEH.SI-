@@ -50,19 +50,21 @@ ${FOOTER}`,
 export const EMAIL_TEMPLATE_DEFS: Record<EmailTemplateKey, EmailTemplateDef> = {
   orderConfirmation: {
     label: "Potrditev naročila",
-    description: "Po uspešnem plačilu; račun (PDF) je vedno priložen.",
+    description: "Po uspešnem plačilu. Rok dostave (če ga predloga ne prikaže z {{deliveryNote}}), podatki o prodajalcu, povzetek pravice do odstopa, povezave na pravna besedila in priloge (račun, vzorčni obrazec za odstop, pogoji poslovanja in odstop v PDF) se dodajo samodejno pod predlogo; predloga jih ne more odstraniti ali skriti. Komentarji, slogi (<style>), skripte in skrivajoči slogi se ob shranjevanju odstranijo.",
     placeholders: [
       orderNumber,
       { name: "items", description: "Tabela postavk, dostave in skupnega zneska (pripravljen HTML)", html: true },
       { name: "total", description: "Skupni znesek z DDV" },
       { name: "shippingMethod", description: "Način dostave" },
+      { name: "estimate", description: "Predviden rok dostave izbranega načina (lahko prazno)" },
+      { name: "deliveryNote", description: "Stavek o roku dostave in obvestilu ob odpošiljanju (brez roka, če ga način dostave nima); če ga predloga ne vsebuje, se doda v obvezni del pod predlogo" },
     ],
-    sample: { orderNumber: "NS-2026-00042", total: "69,98 €", shippingMethod: "GLS — paketna dostava", items: `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:1rem 0;border-top:1px solid rgb(229,229,234);"><tr><td style="padding:0.4rem 0;font-size:0.9rem;">2 × Belilni trakci za zobe (14 uporab)</td><td style="padding:0.4rem 0;font-size:0.9rem;text-align:right;">69,98 €</td></tr><tr><td style="padding:0.4rem 0;font-size:0.9rem;border-top:1px solid rgb(229,229,234);">Dostava (GLS — paketna dostava)</td><td style="padding:0.4rem 0;font-size:0.9rem;text-align:right;border-top:1px solid rgb(229,229,234);">0,00 €</td></tr><tr><td style="padding:0.4rem 0;font-size:1rem;font-weight:500;">Skupaj</td><td style="padding:0.4rem 0;font-size:1rem;font-weight:500;text-align:right;">69,98 €</td></tr></table>` },
+    sample: { orderNumber: "NS-2026-00042", total: "69,98 €", shippingMethod: "GLS — paketna dostava", estimate: "2–3 delovni dnevi", deliveryNote: "Predviden rok dostave: 2–3 delovni dnevi. Ob odpošiljanju prejmete sporočilo s številko sledenja.", items: `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:1rem 0;border-top:1px solid rgb(229,229,234);"><tr><td style="padding:0.4rem 0;font-size:0.9rem;">2 × Belilni trakci za zobe (14 uporab)</td><td style="padding:0.4rem 0;font-size:0.9rem;text-align:right;">69,98 €</td></tr><tr><td style="padding:0.4rem 0;font-size:0.9rem;border-top:1px solid rgb(229,229,234);">Dostava (GLS — paketna dostava)</td><td style="padding:0.4rem 0;font-size:0.9rem;text-align:right;border-top:1px solid rgb(229,229,234);">0,00 €</td></tr><tr><td style="padding:0.4rem 0;font-size:1rem;font-weight:500;">Skupaj</td><td style="padding:0.4rem 0;font-size:1rem;font-weight:500;text-align:right;">69,98 €</td></tr></table>` },
     defaultSubject: "Potrditev naročila {{orderNumber}} — Nasmeh.si",
     defaultBody: `<h1 ${H1}>Hvala za vaše naročilo!</h1>
 <p ${P}>Vaše naročilo je bilo uspešno prejeto in plačano. Račun je priložen v prilogi (PDF).<br /><strong>{{orderNumber}}</strong></p>
 {{items}}
-<p ${P}>Predviden rok dostave je 2–4 delovne dni. Ob odpošiljanju prejmete sporočilo s številko sledenja.</p>
+<p ${P}>{{deliveryNote}}</p>
 ${FOOTER}`,
   },
   orderShipped: {
@@ -139,7 +141,7 @@ ${FOOTER}`,
   },
   verifySubscription: {
     label: "Potrditev prijave na e-novice",
-    description: "Dvojna potrditev prijave (tudi iz pozdravnega okna s kodo).",
+    description: "Dvojna potrditev prijave (tudi iz pozdravnega okna s kodo). Povezavo za odjavo od e-novic sistem vedno doda na konec sporočila.",
     placeholders: [{ name: "confirmUrl", description: "Potrditvena povezava" }],
     sample: { confirmUrl: "https://nasmeh.si/potrdi/primer" },
     defaultSubject: "Potrdite prijavo na e-novice — Nasmeh.si",

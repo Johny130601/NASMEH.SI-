@@ -69,14 +69,33 @@ export type TrackingTemplatesInput = z.input<typeof trackingTemplatesSchema>;
 /** Whole percents only: lib/pricing.ts refuses fractional rates (RangeError), so the form must too. */
 export const vatRateSchema = z.number().int().min(0).max(100);
 
+/** Light shape check only: digits, spaces, + ( ) / -, and at least six digits. */
+const companyPhoneSchema = z.string().max(40).regex(/^[+0-9 ()/-]+$/)
+  .refine((value) => (value.match(/[0-9]/g)?.length ?? 0) >= 6, { message: "phone" });
+
 export const companySchema = z.object({
   name: required(120),
   address: required(300),
   registrationNumber: required(40),
   vatId: z.string().trim().toUpperCase().regex(/^[A-Z]{2}[A-Z0-9]{2,12}$/),
   email: z.string().trim().toLowerCase().max(254).pipe(z.email()),
+  /** Trader telephone (CRD Art. 6(1)(c)); optional until the owner decides the number, "" = not set. */
+  phone: z.string().trim().pipe(z.union([z.literal(""), companyPhoneSchema])).optional(),
 });
 export type CompanyInput = z.input<typeof companySchema>;
+
+/** Seed placeholder values (prisma/seed.ts) that must never reach an invoice or the footer at launch (gate G4). */
+export const COMPANY_SEED_PLACEHOLDERS = { registrationNumber: "0000000000", vatId: "SI00000000", address: "Trg nasmeha" } as const;
+
+/** Company fields that still hold a seed placeholder; empty when the data has been replaced. */
+export function companyPlaceholderFields(company: Pick<CompanyInput, "registrationNumber" | "vatId" | "address"> | null | undefined): Array<keyof typeof COMPANY_SEED_PLACEHOLDERS> {
+  if (!company) return [];
+  const fields: Array<keyof typeof COMPANY_SEED_PLACEHOLDERS> = [];
+  if (/^0+$/.test(company.registrationNumber.trim())) fields.push("registrationNumber");
+  if (/^[A-Z]{2}0+$/i.test(company.vatId.trim())) fields.push("vatId");
+  if (company.address.toLowerCase().includes(COMPANY_SEED_PLACEHOLDERS.address.toLowerCase())) fields.push("address");
+  return fields;
+}
 
 export const invoiceFooterSchema = text(600);
 
@@ -111,15 +130,22 @@ export const cookieRowSchema = z.object({
   duration: required(40),
   category: z.enum(CONSENT_CATEGORIES),
 });
-export const consentCookiesSchema = z.array(cookieRowSchema).max(50);
+/** Names are unique: the policy table keys and the admin editor address rows by name. */
+export const consentCookiesSchema = z.array(cookieRowSchema).max(50)
+  .refine((rows) => new Set(rows.map((row) => row.name)).size === rows.length, { message: "duplicate name" });
 export const consentBannerSchema = z.object({ title: text(120), body: text(600) });
 export const consentVersionSchema = z.number().int().min(1).max(1_000_000);
 export type CookieRowInput = z.input<typeof cookieRowSchema>;
 export type ConsentBannerInput = z.input<typeof consentBannerSchema>;
 
-export const LEGAL_LINK_KEYS = ["terms", "privacy", "cookies", "withdrawal", "complaints"] as const;
+/**
+ * Paths read by checkout (terms, withdrawal, privacy), the cookie banner (cookies) and the support
+ * forms' privacy notices. The former `complaints` key is gone: /reklamacije is a static route that
+ * nothing looked up. Stored rows that still carry it parse unchanged (unknown keys are stripped).
+ */
+export const LEGAL_LINK_KEYS = ["terms", "privacy", "cookies", "withdrawal"] as const;
 export const legalLinksSchema = z.object({
-  terms: sitePathSchema, privacy: sitePathSchema, cookies: sitePathSchema, withdrawal: sitePathSchema, complaints: sitePathSchema,
+  terms: sitePathSchema, privacy: sitePathSchema, cookies: sitePathSchema, withdrawal: sitePathSchema,
 });
 export type LegalLinksInput = z.input<typeof legalLinksSchema>;
 
@@ -142,6 +168,6 @@ export const DEFAULT_STANDARD_COST_CENTS = 390;
 export const DEFAULT_SEO_DEFAULTS: z.output<typeof seoDefaultsSchema> = { titleTemplate: "%s | Nasmeh.si", description: "", indexable: true };
 export const DEFAULT_CONSENT_VERSION = 1;
 export const DEFAULT_LEGAL_LINKS: z.output<typeof legalLinksSchema> = {
-  terms: "/pogoji-poslovanja", privacy: "/politika-zasebnosti", cookies: "/politika-piskotkov", withdrawal: "/odstop-od-pogodbe", complaints: "/reklamacije",
+  terms: "/pogoji-poslovanja", privacy: "/politika-zasebnosti", cookies: "/politika-piskotkov", withdrawal: "/odstop-od-pogodbe",
 };
 export const DEFAULT_MAINTENANCE: z.output<typeof maintenanceSchema> = { enabled: false, password: "", message: "" };

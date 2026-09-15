@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { prisma } from "./helpers";
 
@@ -5,6 +7,55 @@ import { prisma } from "./helpers";
 test.describe.configure({ mode: "serial" });
 
 const CUSTOMER = { email: "customer@nasmeh.si", password: "Customer123!" };
+
+const ATC_EXPORT = "addToCartAction";
+const ATC_MODULE = "app/(storefront)/actions/cart.ts";
+
+interface ServerReferenceManifest {
+  node?: Record<string, { exportedName?: string; filename?: string }>;
+}
+
+/**
+ * Next-Action id candidates for addToCartAction, read from the build the server runs (.next in
+ * the repo root, where `npm run build` writes). Most specific source first:
+ * 1. .next/server/server-reference-manifest.json — what the server routes Next-Action ids by:
+ *    node[id] = { workers, layer, filename, exportedName }; matched by export name AND module
+ *    (filename is project-relative, with backslashes and a leading "../C:\…" on Windows builds).
+ * 2. Client chunks anywhere under .next/static/chunks (page or shared — step 4 moved the action
+ *    stubs out of the trgovina page chunk): an id followed by its name in the
+ *    createServerReference(id, callServer, void 0, findSourceMapURL, "addToCartAction") call.
+ * 3. Only when neither names it: every action-shaped id in those chunks (the old blind probe).
+ * The caller still requires ok:true for an ACTIVE variant, so a wrong id can never pass silently.
+ */
+function addToCartActionCandidates(): { source: string; ids: string[] } {
+  const nextDir = path.join(process.cwd(), ".next");
+  const manifestPath = path.join(nextDir, "server", "server-reference-manifest.json");
+  if (fs.existsSync(manifestPath)) {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as ServerReferenceManifest;
+    const named = Object.entries(manifest.node ?? {})
+      .filter(
+        ([, entry]) =>
+          entry.exportedName === ATC_EXPORT &&
+          (entry.filename ?? "").replace(/\\/g, "/").endsWith(ATC_MODULE),
+      )
+      .map(([id]) => id);
+    if (named.length > 0) return { source: `manifest ${manifestPath}`, ids: named };
+  }
+
+  const chunkRoot = path.join(nextDir, "static", "chunks");
+  const sources = fs.existsSync(chunkRoot)
+    ? fs
+        .readdirSync(chunkRoot, { recursive: true, encoding: "utf8" })
+        .filter((file) => file.endsWith(".js"))
+        .map((file) => fs.readFileSync(path.join(chunkRoot, file), "utf8"))
+    : [];
+  const unique = (ids: string[]) => [...new Set(ids)];
+  const byName = new RegExp(`\\\\?"([0-9a-f]{40,})\\\\?"[^"]{0,300}?\\\\?"${ATC_EXPORT}\\\\?"`, "g");
+  const namedInChunks = unique(sources.flatMap((js) => [...js.matchAll(byName)].map((m) => m[1])));
+  if (namedInChunks.length > 0) return { source: `named in client chunks under ${chunkRoot}`, ids: namedInChunks };
+  const anyId = unique(sources.flatMap((js) => [...js.matchAll(/\\?"([0-9a-f]{40,})\\?"/g)].map((m) => m[1])));
+  return { source: `all ids in client chunks under ${chunkRoot}`, ids: anyId };
+}
 
 async function dismissCmp(page: Page) {
   const banner = page.getByRole("dialog", { name: /piškotki/i });
@@ -129,6 +180,35 @@ test("cross-sell quick ATC from cart page", async ({ page }) => {
   await clearCartUi(page);
 });
 
+test("discounted line: per-unit figures together, line total separate (qty 2)", async ({ page }) => {
+  await page.goto("/trgovina");
+  await dismissCmp(page);
+  await page.locator("[data-product-card='serum-korektor-barve-zob']").getByRole("button", { name: "Dodaj v košarico" }).click();
+  await expect(page.locator("[data-cart-badge]")).toHaveText("1");
+
+  await page.goto("/cart");
+  const line = page.locator("[data-cart-line='NAS-SER-30']");
+  await line.getByLabel("Povečaj količino").click();
+  await expect(line.locator("[data-line-total]")).toContainText("39,98");
+
+  // struck prior price sits next to the unit price, never next to the line total
+  const unit = line.locator("[data-unit-price]");
+  await expect(unit.locator("span.line-through")).toContainText("24,99");
+  await expect(unit).toContainText("19,99");
+  await expect(unit).toContainText("na kos");
+  await expect(line.locator("[data-line-total] span.line-through")).toHaveCount(0);
+  await expect(line.locator("[data-omnibus-line]")).toContainText("24,99");
+
+  // a struck figure is never lower than the price it is struck against
+  const euros = (text: string | null) => Number((text ?? "").replace(/[^\d,]/g, "").replace(",", "."));
+  const struck = euros(await unit.locator("span.line-through").textContent());
+  const unitText = (await unit.textContent()) ?? "";
+  const current = euros(unitText.slice(unitText.lastIndexOf("24,99") + "24,99".length));
+  expect(struck).toBeGreaterThan(current);
+
+  await clearCartUi(page);
+});
+
 test("/koda scaffold: stores code, shows pill, remove works", async ({ page }) => {
   // summary (with the code pill) renders only with items — seed one
   await page.goto("/trgovina");
@@ -230,34 +310,17 @@ test("tamper test: forged guest cookie is rejected (never trusted)", async ({
 test("visibility: DRAFT/hiddenDeal variants are rejected server-side + leave the catalog", async ({
   request,
 }) => {
-  const fs = await import("node:fs");
-  const path = await import("node:path");
   const mouthwash = await prisma.product.findUniqueOrThrow({
     where: { slug: "ustna-voda-globinsko-ciscenje" },
     include: { variants: { take: 1 } },
   });
   const variantId = mouthwash.variants[0].id;
 
-  // find addToCartAction's id: the one returning ok:true for an ACTIVE variant
-  const chunkDir = path.join(
-    process.cwd(),
-    ".next/static/chunks/app/(storefront)/trgovina",
-  );
-  const chunkFile = fs
-    .readdirSync(chunkDir)
-    .find((f) => f.startsWith("page-") && f.endsWith(".js"))!;
-  const ids = [
-    ...new Set(
-      [
-        ...fs
-          .readFileSync(path.join(chunkDir, chunkFile), "utf8")
-          .matchAll(/"([0-9a-f]{40,})"/g),
-      ].map((m) => m[1]),
-    ),
-  ];
-
+  // find addToCartAction's id by name, then prove it: it must return ok:true for the ACTIVE variant
+  const candidates = addToCartActionCandidates();
+  expect(candidates.ids.length, `no Server Action ids found (${candidates.source})`).toBeGreaterThan(0);
   let atcId: string | null = null;
-  for (const id of ids) {
+  for (const id of candidates.ids) {
     const res = await request.post("/trgovina", {
       headers: { "Next-Action": id, "content-type": "text/plain;charset=UTF-8" },
       data: `[{"variantId":"${variantId}","quantity":1}]`,
@@ -268,7 +331,7 @@ test("visibility: DRAFT/hiddenDeal variants are rejected server-side + leave the
       break;
     }
   }
-  expect(atcId).toBeTruthy();
+  expect(atcId, `no ${ATC_EXPORT} id added the ACTIVE variant (${candidates.source})`).toBeTruthy();
 
   // DRAFT → button gone from catalog + action rejects
   await prisma.product.update({

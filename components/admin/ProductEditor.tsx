@@ -156,7 +156,8 @@ export function ProductEditor({ productId, basics: initialBasics, content: initi
         {(["howItWorks", "inci", "guarantee", "tested"] as const).map((key) => (
           <label key={key} className="flex flex-col gap-1.5 text-sm font-medium">
             {c.content.accordions[key]}
-            <textarea value={content.accordions[key]} rows={4} maxLength={8000} onChange={(event) => setContent({ ...content, accordions: { ...content.accordions, [key]: event.target.value } })} className={textareaClass} />
+            <textarea value={content.accordions[key]} rows={4} maxLength={8000} aria-describedby={key === "tested" ? "product-tested-hint" : undefined} onChange={(event) => setContent({ ...content, accordions: { ...content.accordions, [key]: event.target.value } })} className={textareaClass} />
+            {key === "tested" ? <span id="product-tested-hint" className="text-xs font-normal text-mid-2" data-tested-hint>{c.content.testedHint}</span> : null}
           </label>
         ))}
         <fieldset className="flex flex-col gap-3">

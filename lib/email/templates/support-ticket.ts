@@ -29,6 +29,15 @@ export function ticketDetailsKind(details: unknown): DetailsKind | null {
   return kind === "withdrawal" || kind === "adverse" ? kind : null;
 }
 
+/**
+ * The kind the mails treat a ticket as. A RETURN/WITHDRAWAL message from the general contact
+ * form is a withdrawal notice too (Directive 2011/83/EU Art. 11(1): any unequivocal statement),
+ * also when it was stored without details (tickets created before the contact path set them).
+ */
+export function ticketKind(ticket: { topic: string; reason: string | null; details?: unknown }): DetailsKind | null {
+  return ticketDetailsKind(ticket.details) ?? (ticket.topic === "RETURN" && ticket.reason === "WITHDRAWAL" ? "withdrawal" : null);
+}
+
 function formatDetail(key: string, value: unknown): string | null {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "boolean") return value ? copy.staff.yes : copy.staff.no;
@@ -67,12 +76,14 @@ export function renderSupportStaffEmail(ticket: StaffTicket) {
     ...(ticket.orderNumber ? [[copy.staff.order, ticket.orderNumber], [copy.staff.orderProof, proof]] : []),
   ];
   const details = ticketDetailRows(ticket.details);
+  const withdrawal = ticketKind(ticket) === "withdrawal";
+  const footer = withdrawal ? copy.staff.footerWithdrawal : copy.staff.footer;
   const photos = ticket.attachments.map((attachment, index) => ({
     label: `${copy.staff.photo} ${index + 1}`,
     url: `${siteUrl()}/api/support/attachments/${encodeURIComponent(attachment.id)}`,
   }));
   return {
-    subject: `${copy.staff.subjectPrefix} ${subjectReference(ticket.reference)} — Nasmeh.si`,
+    subject: `${withdrawal ? `${copy.staff.withdrawalSubjectTag} ` : ""}${copy.staff.subjectPrefix} ${subjectReference(ticket.reference)} — Nasmeh.si`,
     html: emailLayout(`
       <h1 style="${emailStyles.h1}">${copy.staff.heading}</h1>
       ${fields.map(([label, value]) => `<p style="${emailStyles.p}"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</p>`).join("")}
@@ -83,12 +94,12 @@ export function renderSupportStaffEmail(ticket: StaffTicket) {
       ${photos.length ? `<h2 style="${emailStyles.h1}">${copy.staff.photos}</h2>
         <p style="${emailStyles.small}">${copy.staff.photoAccess}</p>
         <ul>${photos.map(photo => `<li><a style="${emailStyles.link}" href="${escapeHtml(photo.url)}">${photo.label}</a></li>`).join("")}</ul>` : ""}
-      <p style="${emailStyles.small}">${copy.staff.footer}</p>
+      <p style="${emailStyles.small}">${footer}</p>
     `),
     text: [copy.staff.heading, ...fields.map(([label, value]) => `${label}: ${value}`),
       ...(details.length ? [`${copy.staff.details}:\n${details.map(([label, value]) => `${label}: ${value}`).join("\n")}`] : []),
       `${copy.staff.message}:\n${ticket.message}`,
-      ...(photos.length ? [copy.staff.photoAccess, ...photos.map(photo => `${photo.label}: ${photo.url}`)] : []), copy.staff.footer].join("\n\n"),
+      ...(photos.length ? [copy.staff.photoAccess, ...photos.map(photo => `${photo.label}: ${photo.url}`)] : []), footer].join("\n\n"),
   };
 }
 

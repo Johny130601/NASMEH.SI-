@@ -4,9 +4,15 @@ import { getEnv } from "@/lib/env";
 import { email as copy } from "@/lib/copy";
 import { siteUrl } from "@/lib/seo";
 import { renderProofEmail } from "./templates/proof";
-import { renderVerifySubscriptionEmail } from "./templates/verify-subscription";
+import { renderSubscriptionUnsubscribeBlock, renderVerifySubscriptionEmail } from "./templates/verify-subscription";
+import { escapeHtml } from "./templates/layout";
+import { newsletterUnsubscribePath } from "@/lib/newsletter/unsubscribe-token";
 import { renderBackInStockEmail } from "./templates/back-in-stock";
-import { renderOrderConfirmationEmail } from "./templates/order-confirmation";
+import {
+  orderConfirmationDeliveryNote, orderConfirmationRequiredHtml, renderOrderConfirmationEmail, type OrderConfirmationDetails,
+} from "./templates/order-confirmation";
+import { returns } from "@/lib/copy/returns";
+import { legalTexts } from "@/lib/copy/invoice";
 import { renderVerifyAccountEmail } from "./templates/verify-account";
 import { renderResetPasswordEmail } from "./templates/reset-password";
 import { renderReviewRequestEmail, type ReviewRequestItem } from "./templates/review-request";
@@ -68,13 +74,19 @@ export async function sendProofEmail(to: string) {
   });
 }
 
-/** Double opt-in verification email (spec §13.1). */
-export async function sendSubscriptionVerification(to: string, token: string) {
-  const confirmUrl = `${siteUrl()}/potrdi/${token}`;
+/**
+ * Double opt-in verification email (spec §13.1). The signed newsletter
+ * withdrawal link (GDPR Art. 7(3)) is a required block: an operator override
+ * gets it appended and cannot remove it; the code template renders it itself.
+ */
+export async function sendSubscriptionVerification(to: string, token: string, subscriberId: string) {
+  const base = siteUrl();
+  const confirmUrl = `${base}/potrdi/${token}`;
+  const unsubscribeUrl = `${base}${newsletterUnsubscribePath(subscriberId, getEnv().AUTH_SECRET)}`;
   const mail = await resolveMail("verifySubscription", { confirmUrl }, () => ({
     subject: copy.verifySubscription.subject,
-    html: renderVerifySubscriptionEmail(confirmUrl),
-  }));
+    html: renderVerifySubscriptionEmail(confirmUrl, unsubscribeUrl),
+  }), renderSubscriptionUnsubscribeBlock(unsubscribeUrl));
   return sendMail({ to, ...mail });
 }
 
@@ -109,28 +121,45 @@ export async function sendBackInStockAlertEmail(
   });
 }
 
-/** Order confirmation + PDF invoice attachment (§8.4). */
+export interface OrderConfirmationContent extends OrderConfirmationDetails {
+  invoicePdf: Buffer;
+  /** Model withdrawal form (CRD Annex I(B)) with the seller block. */
+  withdrawalFormPdf: Buffer;
+  /** Terms and withdrawal page texts as the customer's durable copy. */
+  legalTextsPdf: Buffer;
+}
+
+/**
+ * Order confirmation on a durable medium (§8.4, CRD Art. 8(7)): the body from
+ * the override or the code template, the legal block appended in either case
+ * (with the delivery sentence unless the body shows {{deliveryNote}}), and the
+ * invoice, the model withdrawal form and the legal texts as PDFs.
+ */
 export async function sendOrderConfirmationEmail(
   order: Order & { items: OrderItem[] },
-  invoicePdf: Buffer,
+  content: OrderConfirmationContent,
 ) {
+  const details: OrderConfirmationDetails = { estimate: content.estimate, legal: content.legal };
   const mail = await resolveMail("orderConfirmation", {
     orderNumber: order.number, total: formatEUR(order.totalCents), shippingMethod: order.shippingMethod ?? "", items: renderOrderItemsBlock(order),
+    estimate: content.estimate ?? "", deliveryNote: orderConfirmationDeliveryNote(content.estimate),
   }, () => ({
     subject: `${copy.orderConfirmation.subjectPrefix} ${order.number} — Nasmeh.si`,
-    html: renderOrderConfirmationEmail(order),
-  }));
+    html: renderOrderConfirmationEmail(order, details),
+  }), orderConfirmationRequiredHtml(details));
   return sendMailWithAttachments({
     to: order.email,
     messageId: `<order-confirmation.${order.id}@nasmeh.si>`,
     ...mail,
     attachments: [
-      { filename: `racun-${order.number}.pdf`, content: invoicePdf },
+      { filename: `racun-${order.number}.pdf`, content: content.invoicePdf },
+      { filename: returns.withdrawalPdf.filename, content: content.withdrawalFormPdf },
+      { filename: legalTexts.filename(order.number), content: content.legalTextsPdf },
     ],
   });
 }
 
-const escapeText = (value: string) => value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
+const escapeText = escapeHtml;
 
 /** Items, shipping and total as the block an override inserts through {{items}}. */
 function renderOrderItemsBlock(order: Order & { items: OrderItem[] }): string {

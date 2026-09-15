@@ -39,7 +39,7 @@ beforeEach(() => {
   mocks.createUser.mockResolvedValue({ id: "new-user" });
   mocks.issueToken.mockResolvedValue("verification-token");
   mocks.tx.mockImplementation(async (operation) => operation({
-    order: { updateMany: mocks.claimOrder }, user: { create: mocks.createUser },
+    order: { updateMany: mocks.claimOrder }, user: { create: mocks.createUser }, subscriber: { findUnique: async () => null },
     consentLog: { create: mocks.consent }, cart: { findUnique: mocks.findCart, update: mocks.updateCart },
     cartItem: { deleteMany: mocks.deleteCart },
   }));

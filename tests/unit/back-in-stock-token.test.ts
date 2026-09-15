@@ -1,20 +1,56 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { signUnsubscribeToken, verifyUnsubscribeToken } from "@/lib/back-in-stock/unsubscribe-token";
 
 const id = "cmf0restocksubscription01";
 const secret = "unit-restock-secret";
 
+/** A link mailed before the separator change: `<id>.<hmac>`. */
+function legacyToken(subscriptionId: string) {
+  return `${subscriptionId}.${createHmac("sha256", secret).update(`back-in-stock-unsubscribe:${subscriptionId}`).digest("base64url")}`;
+}
+
+/** The page matcher of middleware.ts, as Next.js applies it to a pathname. */
+function middlewareMatches(pathname: string): boolean {
+  const source = readFileSync(join(__dirname, "..", "..", "middleware.ts"), "utf8");
+  const pattern = /matcher:\s*\["([^"]+)"\]/.exec(source)![1].replace(/\\\\/g, "\\");
+  return new RegExp(`^${pattern}$`).test(pathname);
+}
+
 describe("restock unsubscribe tokens", () => {
-  it("round-trips a subscription id", () => {
-    expect(verifyUnsubscribeToken(signUnsubscribeToken(id, secret), secret)).toBe(id);
+  it("round-trips a subscription id under a hyphen-joined, dot-free token", () => {
+    const token = signUnsubscribeToken(id, secret);
+    expect(token.startsWith(`${id}-`)).toBe(true);
+    expect(token).not.toContain(".");
+    expect(verifyUnsubscribeToken(token, secret)).toBe(id);
+  });
+
+  it("keeps verifying dotted links mailed before the change", () => {
+    const legacy = legacyToken(id);
+    expect(verifyUnsubscribeToken(legacy, secret)).toBe(id);
+    expect(verifyUnsubscribeToken(legacy.replace(".", "-"), secret)).toBe(id);
+    expect(verifyUnsubscribeToken(legacy, "other-secret")).toBeNull();
+  });
+
+  it("puts new links on a path the middleware matcher covers (CSP nonce), unlike the old dotted form", () => {
+    expect(middlewareMatches(`/odjava-zaloga/${signUnsubscribeToken(id, secret)}`)).toBe(true);
+    expect(middlewareMatches(`/odjava-zaloga/${legacyToken(id)}`)).toBe(false);
+    expect(middlewareMatches("/_next/static/chunk.js")).toBe(false);
   });
 
   it("rejects tampering, foreign secrets and malformed input", () => {
     const token = signUnsubscribeToken(id, secret);
-    expect(verifyUnsubscribeToken(`${token.slice(0, -1)}x`, secret)).toBeNull();
+    const signature = token.slice(id.length + 1);
+    const flipped = signature.endsWith("A") ? `${signature.slice(0, -1)}B` : `${signature.slice(0, -1)}A`;
+    expect(verifyUnsubscribeToken(`${id}-${flipped}`, secret)).toBeNull();
     expect(verifyUnsubscribeToken(token, "other-secret")).toBeNull();
-    expect(verifyUnsubscribeToken(`${id}2.${token.split(".")[1]}`, secret)).toBeNull();
-    for (const bad of ["", "nodot", ".sig", `${id}.`, `${id}.short`, `${"x".repeat(200)}.${token.split(".")[1]}`, null, undefined]) {
+    expect(verifyUnsubscribeToken(`${id}2-${signature}`, secret)).toBeNull();
+    for (const bad of [
+      "", "nodot", ".sig", "-sig", `${id}.`, `${id}-`, `${id}-short`, `${id}_${signature}`, `${id}.-${signature}`,
+      `${"x".repeat(200)}-${signature}`, null, undefined,
+    ]) {
       expect(verifyUnsubscribeToken(bad, secret)).toBeNull();
     }
   });

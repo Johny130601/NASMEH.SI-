@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   human: vi.fn(), hash: vi.fn(), find: vi.fn(), transaction: vi.fn(), create: vi.fn(), consent: vi.fn(),
   issue: vi.fn(), apply: vi.fn(), verifyMail: vi.fn(), resetMail: vi.fn(), update: vi.fn(),
+  txUser: vi.fn(), subscriber: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ db: { user: { findUnique: mocks.find }, $transaction: mocks.transaction } }));
 vi.mock("@/lib/turnstile", () => ({ verifyTurnstile: mocks.human }));
@@ -10,23 +11,32 @@ vi.mock("@/lib/auth-tokens", () => ({ issueAuthToken: mocks.issue, applyAuthToke
 vi.mock("@/lib/email/mailer", () => ({ sendVerifyAccountEmail: mocks.verifyMail, sendResetPasswordEmail: mocks.resetMail }));
 import { registerAction, forgotPasswordAction, verifyEmailAction, resetPasswordAction } from "@/app/(storefront)/actions/auth";
 import { auth as copy } from "@/lib/copy";
+import { marketingVersion } from "@/lib/consent-log";
 const passwordHash = "$2b$10$" + "a".repeat(53);
 const activation = { passwordHash, name: "Own Name", marketingOptIn: false };
 const input = { firstName: "Own", lastName: "Name", email: " Owner@TEST.SI ", password: "StrongPassword!", turnstileToken: "human" };
 const raw = "a".repeat(64);
-const tx = { user: { create: mocks.create, updateMany: mocks.update }, consentLog: { create: mocks.consent } };
+const tx = {
+  user: { create: mocks.create, updateMany: mocks.update, findUnique: mocks.txUser },
+  subscriber: { findUnique: mocks.subscriber }, consentLog: { create: mocks.consent },
+};
+const issuedAt = new Date("2026-09-14T08:00:00Z");
 beforeEach(() => {
   vi.resetAllMocks(); mocks.human.mockResolvedValue(true); mocks.hash.mockResolvedValue(passwordHash);
   mocks.find.mockResolvedValue(null); mocks.create.mockResolvedValue({ id: "u", email: "owner@test.si", emailVerified: null });
   mocks.transaction.mockImplementation(async fn => fn(tx)); mocks.issue.mockResolvedValue(raw);
-  mocks.update.mockResolvedValue({ count: 1 }); mocks.apply.mockImplementation(async (_raw, _kind, change) => { await change(tx, "u", activation); return true; });
+  mocks.update.mockResolvedValue({ count: 1 }); mocks.apply.mockImplementation(async (_raw, _kind, change) => { await change(tx, "u", activation, issuedAt); return true; });
+  mocks.txUser.mockResolvedValue({ email: "owner@test.si" }); mocks.subscriber.mockResolvedValue(null);
 });
 describe("auth actions", () => {
   it("records pending registration consent with the new account in one transaction", async () => {
     expect(await registerAction(input)).toEqual({ ok: true });
     expect(mocks.transaction).toHaveBeenCalledOnce();
     expect(mocks.create).toHaveBeenCalledWith({ data: expect.objectContaining({ email: "owner@test.si", marketingOptIn: false }) });
-    expect(mocks.consent).toHaveBeenCalledWith({ data: expect.objectContaining({ userId: "u", choices: { marketing: false, pendingVerification: true } }) });
+    expect(mocks.consent).toHaveBeenCalledWith({ data: expect.objectContaining({
+      userId: "u", kind: "marketing-register", version: marketingVersion("marketing-register"),
+      choices: { marketing: false, pendingVerification: true, source: "register" },
+    }) });
     expect(mocks.issue).toHaveBeenCalledWith("u", "VERIFY_EMAIL", activation);
   });
   it("keeps opted-in marketing pending until email proof", async () => {
@@ -49,7 +59,42 @@ describe("auth actions", () => {
     expect(await verifyEmailAction({ token: raw, turnstileToken: "human" })).toEqual({ ok: true });
     expect(mocks.apply).toHaveBeenCalledWith(raw, "VERIFY_EMAIL", expect.any(Function));
     expect(mocks.update).toHaveBeenCalledWith({ where: { id: "u", emailVerified: null }, data: { ...activation, emailVerified: expect.any(Date), sessionVersion: { increment: 1 } } });
-    expect(mocks.consent).toHaveBeenCalledWith({ data: { userId: "u", kind: "marketing-activation", version: "1", choices: { marketing: false, verified: true } } });
+    expect(mocks.consent).toHaveBeenCalledWith({ data: {
+      userId: "u", kind: "marketing-activation", version: marketingVersion("marketing-activation"),
+      choices: { marketing: false, verified: true, source: "register" }, visitorId: null,
+    } });
+  });
+  describe("a newsletter withdrawal after the link was issued wins over the snapshot's opt-in (S4)", () => {
+    const optedIn = { ...activation, marketingOptIn: true };
+    const activate = () => {
+      mocks.apply.mockImplementation(async (_raw, _kind, change) => { await change(tx, "u", optedIn, issuedAt); return true; });
+      return verifyEmailAction({ token: raw, turnstileToken: "human" });
+    };
+    it("unsubscribed after issue: activates with marketing off and logs why", async () => {
+      mocks.subscriber.mockResolvedValue({ id: "sub-1", status: "UNSUBSCRIBED", updatedAt: new Date(issuedAt.getTime() + 60_000) });
+      expect(await activate()).toEqual({ ok: true });
+      expect(mocks.subscriber).toHaveBeenCalledWith({ where: { email: "owner@test.si" }, select: { id: true, status: true, updatedAt: true } });
+      expect(mocks.update).toHaveBeenCalledWith({ where: { id: "u", emailVerified: null }, data: { ...optedIn, marketingOptIn: false, emailVerified: expect.any(Date), sessionVersion: { increment: 1 } } });
+      expect(mocks.consent).toHaveBeenCalledWith({ data: expect.objectContaining({
+        userId: "u", kind: "marketing-activation",
+        choices: { marketing: false, verified: true, source: "register", requested: true, withdrawnAfterIssue: true, subscriberId: "sub-1" },
+      }) });
+    });
+    it.each([
+      ["no subscriber", null],
+      ["unsubscribed before the link (a fresh registration consent)", { id: "sub-1", status: "UNSUBSCRIBED", updatedAt: new Date(issuedAt.getTime() - 60_000) }],
+      ["still confirmed", { id: "sub-1", status: "CONFIRMED", updatedAt: new Date(issuedAt.getTime() + 60_000) }],
+      ["pending", { id: "sub-1", status: "PENDING", updatedAt: new Date(issuedAt.getTime() + 60_000) }],
+    ])("keeps the snapshot's opt-in: %s", async (_label, subscriber) => {
+      mocks.subscriber.mockResolvedValue(subscriber);
+      expect(await activate()).toEqual({ ok: true });
+      expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ marketingOptIn: true }) }));
+      expect(mocks.consent).toHaveBeenCalledWith({ data: expect.objectContaining({ choices: { marketing: true, verified: true, source: "register" } }) });
+    });
+    it("an opted-out snapshot needs no subscriber lookup", async () => {
+      expect(await verifyEmailAction({ token: raw, turnstileToken: "human" })).toEqual({ ok: true });
+      expect(mocks.subscriber).not.toHaveBeenCalled();
+    });
   });
   it("cannot use activation to change an already verified account", async () => {
     mocks.update.mockResolvedValue({ count: 0 });

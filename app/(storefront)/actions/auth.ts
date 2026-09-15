@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { marketingVersion, recordConsent } from "@/lib/consent-log";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { issueAuthToken, applyAuthToken } from "@/lib/auth-tokens";
 import { authActivationSchema, authEmailSchema, authTokenSchema, humanTokenSchema, newPasswordSchema } from "@/lib/auth-validation";
@@ -37,10 +38,10 @@ export async function registerAction(input: unknown): Promise<AuthFormResult> {
           const created = await tx.user.create({ data: {
             email, name: activation.name, role: "CUSTOMER", passwordHash, marketingOptIn: false,
           } });
-          await tx.consentLog.create({ data: {
-            userId: created.id, kind: "marketing-register", version: "1",
-            choices: { marketing: marketingOptIn, pendingVerification: true },
-          } });
+          await recordConsent(tx, {
+            userId: created.id, kind: "marketing-register", version: marketingVersion("marketing-register"),
+            choices: { marketing: marketingOptIn, pendingVerification: true, source: "register" },
+          });
           return created;
         });
       } catch (error) {
@@ -61,27 +62,47 @@ export async function registerAction(input: unknown): Promise<AuthFormResult> {
 }
 
 const verifySchema = z.object({ token: authTokenSchema, turnstileToken: humanTokenSchema });
-/** Explicit POST activation: link previews and SSR never mutate the account. */
+/**
+ * Explicit POST activation: link previews and SSR never mutate the account.
+ * The link's snapshot carries the opt-in as it stood when the link was sent; a
+ * newsletter withdrawal for the address made after that (/odjava-novice before
+ * the click) wins, so activation never switches marketing back on.
+ */
 export async function verifyEmailAction(input: unknown): Promise<AuthFormResult> {
   const parsed = verifySchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: copy.verify.bodyInvalid };
   if (!await verifyTurnstile(parsed.data.turnstileToken)) return { ok: false, error: copy.botCheck };
   try {
-    const ok = await applyAuthToken(parsed.data.token, "VERIFY_EMAIL", async (tx, userId, activationData) => {
-      const activation = authActivationSchema.parse(activationData);
+    const ok = await applyAuthToken(parsed.data.token, "VERIFY_EMAIL", async (tx, userId, activationData, issuedAt) => {
+      const snapshot = authActivationSchema.parse(activationData);
+      const withdrawn = snapshot.marketingOptIn ? await withdrawnSince(tx, userId, issuedAt) : null;
+      const activation = withdrawn ? { ...snapshot, marketingOptIn: false } : snapshot;
       const result = await tx.user.updateMany({ where: { id: userId, emailVerified: null }, data: {
         ...activation, emailVerified: new Date(), sessionVersion: { increment: 1 },
       } });
       if (result.count !== 1) throw new Error("Account already activated");
-      await tx.consentLog.create({ data: {
-        userId, kind: "marketing-activation", version: "1",
-        choices: { marketing: activation.marketingOptIn, verified: true },
-      } });
+      await recordConsent(tx, {
+        userId, kind: "marketing-activation", version: marketingVersion("marketing-activation"),
+        choices: {
+          marketing: activation.marketingOptIn, verified: true, source: "register",
+          ...(withdrawn ? { requested: true, withdrawnAfterIssue: true, subscriberId: withdrawn.id } : {}),
+        },
+      });
     });
     return ok ? { ok: true } : { ok: false, error: copy.verify.bodyInvalid };
   } catch {
     return { ok: false, error: copy.verify.genericError };
   }
+}
+
+/** The address's Subscriber when it was unsubscribed after the activation link was issued. */
+async function withdrawnSince(tx: Prisma.TransactionClient, userId: string, issuedAt: Date) {
+  const user = await tx.user.findUnique({ where: { id: userId }, select: { email: true } });
+  if (!user) return null;
+  const subscriber = await tx.subscriber.findUnique({
+    where: { email: user.email.toLowerCase() }, select: { id: true, status: true, updatedAt: true },
+  });
+  return subscriber?.status === "UNSUBSCRIBED" && subscriber.updatedAt > issuedAt ? subscriber : null;
 }
 
 const emailOnlySchema = z.object({ email: authEmailSchema, turnstileToken: humanTokenSchema });

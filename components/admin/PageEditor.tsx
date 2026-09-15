@@ -11,11 +11,11 @@ import { UiFormField, UiInput } from "@/components/storefront/ui/UiInput";
 const c = copy.content.pages;
 const selectClass = "min-h-[3.25rem] w-full rounded-input border border-light-1 bg-white px-4 text-base outline-none focus:border-brand";
 
-function errorText(result: Extract<PageActionResult, { ok: false }>): string {
+function errorText(result: Extract<PageActionResult, { ok: false }>, action: "save" | "delete" = "save"): string {
   switch (result.error) {
     case "slugTaken": return c.editor.slugTaken;
     case "slugReserved": return c.editor.slugReserved;
-    case "protected": return c.editor.deleteProtected;
+    case "protected": return action === "delete" ? c.editor.deleteProtected : c.editor.slugLocked;
     case "not_found": return copy.common.error;
     default: return c.editor.invalid;
   }
@@ -58,24 +58,33 @@ export function PageCreateForm() {
   );
 }
 
-export function PageEditor({ pageId, initial }: { pageId: string; initial: ContentPageInput }) {
+/** `locked`: a legal page (static-route, fixed or `legal.links` slug) — slug read-only, no delete; the actions enforce the same rule. */
+export function PageEditor({ pageId, initial, locked = false }: { pageId: string; initial: ContentPageInput; locked?: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [page, setPage] = useState(initial);
   const set = <K extends keyof ContentPageInput>(key: K, value: ContentPageInput[K]) => setPage({ ...page, [key]: value });
+  const templateLocked = locked && initial.template === "LEGAL";
+  const slugHint = [SHADOWED_SLUGS.has(page.slug) ? c.editor.shadowedHint : null, locked ? c.editor.lockedHint : null].filter(Boolean).join(" ") || undefined;
   return (
     <form
       className="flex flex-col gap-4 rounded-card border border-light-2 bg-white p-5"
       data-page-editor
+      data-page-locked={locked || undefined}
       onSubmit={(event) => {
         event.preventDefault();
+        if (locked && initial.published && !page.published && !window.confirm(c.editor.confirmUnpublishLegal)) return;
         setMessage(null);
         startTransition(async () => {
           try {
             const result = await savePageAction({ pageId, page });
-            if (result.ok) { setMessage({ ok: true, text: c.editor.saved }); router.refresh(); }
-            else setMessage({ ok: false, text: errorText(result) });
+            if (result.ok) {
+              // The server did not store the review mark for changed text; untick it so a later save cannot re-mark it unseen.
+              if (result.reviewCleared) setPage((current) => ({ ...current, reviewed: false }));
+              setMessage({ ok: true, text: result.reviewCleared ? c.editor.savedReviewCleared : c.editor.saved });
+              router.refresh();
+            } else setMessage({ ok: false, text: errorText(result) });
           } catch {
             setMessage({ ok: false, text: copy.common.error });
           }
@@ -84,9 +93,9 @@ export function PageEditor({ pageId, initial }: { pageId: string; initial: Conte
     >
       <div className="grid gap-4 md:grid-cols-2">
         <UiInput label={c.editor.fields.title} name="title" required maxLength={160} value={page.title} onChange={(event) => set("title", event.target.value)} />
-        <UiInput label={c.editor.fields.slug} name="slug" required maxLength={80} value={page.slug} onChange={(event) => set("slug", event.target.value)} hint={SHADOWED_SLUGS.has(page.slug) ? c.editor.shadowedHint : undefined} />
-        <UiFormField label={c.editor.fields.template} htmlFor="page-template">
-          <select id="page-template" value={page.template} onChange={(event) => set("template", event.target.value as ContentPageInput["template"])} className={selectClass}>
+        <UiInput label={c.editor.fields.slug} name="slug" required maxLength={80} value={page.slug} readOnly={locked} onChange={(event) => set("slug", event.target.value)} hint={slugHint} />
+        <UiFormField label={c.editor.fields.template} htmlFor="page-template" hint={templateLocked ? c.editor.templateLockedHint : undefined}>
+          <select id="page-template" value={page.template} disabled={templateLocked} onChange={(event) => set("template", event.target.value as ContentPageInput["template"])} className={`${selectClass} disabled:bg-light-3 disabled:text-mid-1`}>
             {CONTENT_TEMPLATES.map((template) => <option key={template} value={template}>{c.templates[template]}</option>)}
           </select>
         </UiFormField>
@@ -112,7 +121,7 @@ export function PageEditor({ pageId, initial }: { pageId: string; initial: Conte
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <UiButton type="submit" variant="primary" disabled={pending} data-page-save>{c.editor.save}</UiButton>
-        {SHADOWED_SLUGS.has(initial.slug) ? null : <button
+        {locked ? null : <button
           type="button"
           className="rounded-btn border border-error px-4 py-2 text-sm text-error"
           disabled={pending}
@@ -123,7 +132,7 @@ export function PageEditor({ pageId, initial }: { pageId: string; initial: Conte
               try {
                 const result = await deletePageAction({ pageId });
                 if (result.ok) router.push("/admin/strani");
-                else setMessage({ ok: false, text: errorText(result) });
+                else setMessage({ ok: false, text: errorText(result, "delete") });
               } catch {
                 setMessage({ ok: false, text: copy.common.error });
               }

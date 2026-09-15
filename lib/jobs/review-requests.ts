@@ -14,8 +14,9 @@ const delaySchema = z.number().int().min(7).max(10);
 export async function sendDueReviewRequests(now = new Date()) {
   const configured = delaySchema.safeParse(await getSetting<unknown>("reviews.requestDelayDays"));
   const cutoff = new Date(now.getTime() - (configured.success ? configured.data : 7) * DAY_MS);
+  // An anonymised order (erasure request) is never mailed again, like status mail.
   const eligible = {
-    status: "DELIVERED" as const, deliveredAt: { lte: cutoff }, refundRequired: false,
+    status: "DELIVERED" as const, deliveredAt: { lte: cutoff }, refundRequired: false, anonymizedAt: null,
     items: { some: { variantId: { not: null }, review: null } },
   };
   // A permanently failing oldest batch must not hide new recipients. Reserve
@@ -50,7 +51,7 @@ export async function sendDueReviewRequests(now = new Date()) {
       if (claimed.count !== 1) { result.skipped += 1; continue; }
       const order = await db.order.findUnique({ where: { id: candidate.id },
         include: { items: { where: { variantId: { not: null }, review: null } } } });
-      if (!order || order.status !== "DELIVERED" || order.refundRequired || !order.deliveredAt || order.deliveredAt > cutoff || order.items.length === 0) {
+      if (!order || order.anonymizedAt || order.status !== "DELIVERED" || order.refundRequired || !order.deliveredAt || order.deliveredAt > cutoff || order.items.length === 0) {
         await db.reviewRequest.updateMany({ where: { orderId: candidate.id, leaseToken }, data: { leaseToken: null, leaseUntil: null } });
         result.skipped += 1;
         continue;

@@ -85,7 +85,16 @@ test("sold-out capture: submit → Mailpit → confirm → CONFIRMED + ConsentLo
   const tokenMatch = body.match(/\/potrdi-zalogo\/([a-f0-9]{48})/);
   expect(tokenMatch).toBeTruthy();
 
+  // The link is read-only (mail scanners): only the button confirms (Phase 9 step 4).
   await page.goto(`/potrdi-zalogo/${tokenMatch![1]}`);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Potrdite obvestilo o zalogi");
+  expect((await prisma.backInStockSubscription.findUniqueOrThrow({ where: { id: subscription!.id } })).status).toBe("PENDING");
+  const cmp = page.getByRole("dialog", { name: /piškotki/i });
+  if (await cmp.isVisible().catch(() => false)) {
+    await cmp.getByRole("button", { name: "Zavrni" }).click();
+    await cmp.waitFor({ state: "hidden" });
+  }
+  await page.getByRole("button", { name: "Aktiviraj obvestilo" }).click();
   await expect(page.getByText("Obvestilo je aktivno")).toBeVisible();
 
   const confirmed = await prisma.backInStockSubscription.findUnique({
@@ -95,10 +104,12 @@ test("sold-out capture: submit → Mailpit → confirm → CONFIRMED + ConsentLo
   expect(confirmed!.confirmedAt).not.toBeNull();
 
   const consentRow = await prisma.consentLog.findFirst({
-    where: { kind: "back-in-stock" },
-    orderBy: { createdAt: "desc" },
+    where: { kind: "back-in-stock", choices: { path: ["subscriptionId"], equals: subscription!.id } },
   });
   expect(consentRow).toBeTruthy();
+  expect(await prisma.consentLog.count({
+    where: { kind: "back-in-stock", choices: { path: ["subscriptionId"], equals: subscription!.id } },
+  })).toBe(1);
   // transactional alert only — marketing must be false
   expect(JSON.stringify(consentRow!.choices)).toContain('"marketing":false');
   expect(JSON.stringify(consentRow!.choices)).toContain(

@@ -7,7 +7,7 @@ import { UiPill } from "../ui/UiPill";
 /**
  * Hero product-launch slot (§4.1): split layout, Setting-driven content.
  * Video (mobile/desktop crops via <source media>) when D2 assets exist,
- * poster/image fallback otherwise. Optional promo overlay banner.
+ * poster/image fallback otherwise. Optional claim footnote and promo overlay banner.
  */
 export function HeroSection({ hero }: { hero: HeroSlotSetting | null }) {
   const content = hero ?? {
@@ -29,6 +29,12 @@ export function HeroSection({ hero }: { hero: HeroSlotSetting | null }) {
           ) : null}
           <h1 className="text-[2rem] md:text-[3rem]">{content.title}</h1>
           <p className="mt-4 max-w-md text-base text-mid-1">{content.subtitle}</p>
+          {content.footnote ? (
+            // Claim qualifier as LIVE text next to the claim, like the routine banner footnote (§4.4, §12.6).
+            <p className="mt-3 max-w-md text-xs leading-5 text-mid-2" data-hero-footnote>
+              {content.footnote}
+            </p>
+          ) : null}
           <div className="mt-8">
             <UiButton variant="primary" href={content.ctaHref}>
               {content.ctaLabel}

@@ -19,9 +19,21 @@ test("PDP SSR: H1, price, accordion bodies, FAQ, breadcrumbs, JSON-LD in initial
   expect(html).toContain("Domov");
   expect(html).toContain("Trgovina");
   // accordion bodies server-rendered
-  expect(html).toContain("aktivni belilni kompleks");
+  expect(html).toContain("zadrži formulo ob površini zob"); // Kako deluje
   expect(html).toContain("Cellulose Gum"); // INCI
   expect(html).toContain("Jamstvo vračila denarja");
+  // delivery accordion reads the shipping Setting (standard SI method estimate + free threshold), no hard-coded figures
+  expect(html).toContain("Predviden rok dostave po Sloveniji: 2–4 delovne dni.");
+  expect(html).toMatch(/Brezplačna dostava pri naročilih od 45,00/);
+  // Phase 9 step 4 claims discipline: the guarantee accordion summarises and links the terms page,
+  // the claim notes carry a qualifier and no unsubstantiated figures or absolute promises.
+  expect(html).toContain('<a href="/garancija-vracila-denarja" class="underline underline-offset-2">Jamstvo vračila denarja</a>');
+  expect(html).toContain("Jamstvo ne vpliva na vaše zakonske pravice");
+  expect(html).toContain("Opombe k navedbam");
+  expect(html).toContain("Rezultati se lahko razlikujejo");
+  for (const removed of ["ni nobenega tveganja", "aktivni belilni kompleks", "n = 52", "ne čutijo", "parabenov", "Prevladujočih dokazov"]) {
+    expect(html, removed).not.toContain(removed);
+  }
   // FAQ + education
   expect(html).toContain("Imate vprašanja? Imamo odgovore");
   expect(html).toContain("Protokol v 3 korakih");
@@ -48,12 +60,29 @@ test("PDP Omnibus 30-day-low line + compare-at on discounted serum", async ({
   const html = await (
     await request.get("/izdelek/serum-korektor-barve-zob")
   ).text();
-  expect(html).toContain("Najnižja cena v zadnjih 30 dneh");
+  // the label names the rule's anchor (30 days before the reduction), not a rolling "last 30 days"
+  expect(html).toContain("Najnižja cena v 30 dneh pred znižanjem");
+  expect(html).not.toContain("Najnižja cena v zadnjih 30 dneh");
   expect(html).toContain("line-through");
+  // buy box: struck figure = history-backed prior price = the 30-day line
+  const buyBoxStrike = html.match(/text-base text-mid-2 line-through">([^<]*)</);
+  expect(buyBoxStrike?.[1]).toContain("24,99");
+  expect(html).toMatch(/data-omnibus-line="true">Najnižja cena v 30 dneh pred znižanjem(?:<!-- -->)?: (?:<!-- -->)?24,99/);
+});
+
+test("PDP without an announced reduction shows the plain price only", async ({
+  request,
+}) => {
+  const html = await (
+    await request.get("/izdelek/ustna-voda-globinsko-ciscenje")
+  ).text();
+  // the buy box price has no strikethrough (rails may still show the serum's)
+  expect(html).not.toMatch(/text-base text-mid-2 line-through/);
 });
 
 test("bundle PDP: components + savings math vs summed prices", async ({
   request,
+  page,
 }) => {
   const html = await (
     await request.get("/izdelek/paket-popolna-rutina")
@@ -62,9 +91,41 @@ test("bundle PDP: components + savings math vs summed prices", async ({
   expect(html).toContain("Belilni trakci za zobe (14 uporab)");
   expect(html).toContain("Ustna voda za globinsko čiščenje");
   expect(html).toContain("Serum korektor barve zob");
-  // 3499+1999+1999 = 74,97 € value — save 33 %
   expect(html).toContain("74,97");
-  expect(html).toContain("prihranite 33 %");
+
+  // The savings line is asserted on its rendered text: in the raw HTML React separates the
+  // adjacent text nodes with <!-- --> markers, so "prihranite 33 %" never appears contiguously.
+  // 3499+1999+1999 = 74,97 € value, bundle 49,99 € → save 33 %
+  const normalise = (text: string | null) => (text ?? "").replace(/\s+/g, " ").trim();
+  const cents = (text: string | null) => Math.round(Number(normalise(text).replace(/[^\d,]/g, "").replace(",", ".")) * 100);
+  await page.goto("/izdelek/paket-popolna-rutina");
+  const bundleCard = page.getByRole("heading", { name: "Vsebina paketa", exact: true, level: 2 }).locator("xpath=..");
+  const savingsLine = normalise(await bundleCard.locator(":scope > p").textContent());
+  expect(savingsLine).toContain("vrednost 74,97 €");
+  expect(savingsLine).toContain("prihranite 33 %");
+  // the line is computed from the listed components (price × quantity) against the price the bundle
+  // sells at (the JSON-LD offer = variant price, which the admin bundle save keeps equal to Bundle.priceCents)
+  const rows = bundleCard.locator("li");
+  await expect(rows).toHaveCount(3);
+  let valueCents = 0;
+  for (const row of await rows.all()) {
+    const quantity = Number(normalise(await row.locator("span.text-mid-2").textContent()).replace(/\D/g, ""));
+    valueCents += cents(await row.locator(":scope > span").last().textContent()) * quantity;
+  }
+  expect(valueCents).toBe(7497);
+  expect(cents(savingsLine.slice(0, savingsLine.indexOf("€")))).toBe(valueCents);
+  const product = [...html.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/gs)]
+    .map((m) => JSON.parse(m[1]) as Record<string, unknown>)
+    .find((t) => t["@type"] === "Product");
+  const bundleCents = Math.round(Number((product?.offers as Record<string, unknown> | undefined)?.price) * 100);
+  expect(bundleCents).toBe(4999);
+  const percent = Math.round(((valueCents - bundleCents) / valueCents) * 100);
+  expect(savingsLine).toMatch(new RegExp(`prihranite ${percent} %$`));
+
+  // savings and delivery terms come only from the computed line, never from stored chips or FAQ text
+  expect(html).not.toContain("Prihranite 33 %");
+  expect(html).not.toContain("Brezplačna dostava vključena");
+  expect(html).not.toContain("že vključuje brezplačno dostavo");
 });
 
 test("PDP accordions toggle + buy box stepper + disabled ATC", async ({

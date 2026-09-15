@@ -56,6 +56,25 @@ describe("changeVariantPriceInTx (Omnibus price-history path)", () => {
     });
   });
 
+  it("records a compare-at-only change (announcement switch) with the unchanged price", async () => {
+    const tx = makeTx({ priceCents: 1999, compareAtPriceCents: null });
+
+    const result = await changeVariantPriceInTx(tx as never, {
+      variantId: "v1",
+      priceCents: 1999,
+      compareAtPriceCents: 2499,
+    });
+
+    expect(result.priceRecorded).toBe(true);
+    expect(tx.priceHistory.create).toHaveBeenCalledExactlyOnceWith({
+      data: { variantId: "v1", priceCents: 1999, compareAtPriceCents: 2499 },
+    });
+    expect(tx.variant.update).toHaveBeenCalledExactlyOnceWith({
+      where: { id: "v1" },
+      data: { priceCents: 1999, compareAtPriceCents: 2499 },
+    });
+  });
+
   it("is a no-op when the price is unchanged — no history row", async () => {
     const tx = makeTx({ priceCents: 3499, compareAtPriceCents: null });
 

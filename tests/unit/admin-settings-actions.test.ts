@@ -100,6 +100,15 @@ describe("settings actions: validation and stored shapes", () => {
     expect(mocks.revalidate).toHaveBeenCalledWith("/robots.txt");
   });
 
+  it("company telephone: validated, trimmed, and an empty value is stored as absent", async () => {
+    expect(await saveCompanyAction({ ...company, phone: "pokličite" })).toEqual({ ok: false, error: "invalid" });
+    expect(mocks.upsert).not.toHaveBeenCalled();
+    expect(await saveCompanyAction({ ...company, phone: " +386 1 234 56 78 " })).toEqual({ ok: true });
+    expect(written().company).toEqual({ name: "Nasmeh d.o.o.", address: "Trg 1, Ljubljana", registrationNumber: "123", vatId: "SI12345678", email: "info@nasmeh.si", phone: "+386 1 234 56 78" });
+    expect(await saveCompanyAction({ ...company, phone: "" })).toEqual({ ok: true });
+    expect(written().company).not.toHaveProperty("phone");
+  });
+
   it("consent config, version bump, legal links, maintenance and contact settings", async () => {
     expect(await saveConsentConfigAction({ cookies: [{ ...cookie, category: "ads" as never }], banner: { title: "", body: "" } })).toEqual({ ok: false, error: "invalid" });
     expect(await saveConsentConfigAction({ cookies: [cookie], banner: { title: "Piškotki", body: "" } })).toEqual({ ok: true });

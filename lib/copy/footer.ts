@@ -7,6 +7,9 @@ export const footer = {
     emailPlaceholder: "ime@primer.si",
     submit: "Prijavi se",
     note: "Z oddajo se strinjate s prejemanjem e-novic. Odjava je mogoča kadar koli.",
+    // Rendered as "<privacyLead> <link>privacyLink</link>." next to the form.
+    privacyLead: "Kako ravnamo z vašimi osebnimi podatki, pojasnjuje",
+    privacyLink: "politika zasebnosti",
   },
   columns: {
     shop: "Trgovina",
@@ -18,6 +21,7 @@ export const footer = {
     registration: "Matična številka",
     vat: "ID za DDV",
     email: "E-pošta",
+    phone: "Telefon",
   },
   payments: "Sprejemamo",
   cookieSettings: "Nastavitve piškotkov",

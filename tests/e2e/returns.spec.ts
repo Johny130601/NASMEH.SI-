@@ -4,6 +4,7 @@ import path from "node:path";
 import sharp from "sharp";
 import { Prisma } from "@prisma/client";
 import { expect, test as base, type Page } from "@playwright/test";
+import { PRIVACY_NOTICE_VERSIONS } from "@/lib/support/validation";
 import { prisma, waitForMailMessage } from "./helpers";
 
 /** Phase 6 step 4 (§12.4, §12.6): withdrawal, PDF, guarantee, complaints CTAs, adverse events. */
@@ -54,7 +55,25 @@ async function paidOrder(fixture: Fixture, email: string) {
   return order;
 }
 
-test("online withdrawal needs the order e-mail as proof, files a RETURN/WITHDRAWAL ticket and mails statutory content only to staff", async ({ page, fixture }) => {
+async function fillWithdrawal(page: Page, input: { email: string; orderNumber: string; received: string | null }) {
+  const form = page.locator("[data-withdrawal-form]");
+  await form.getByLabel("Ime in priimek", { exact: true }).fill("Živa Ščuk");
+  await form.getByLabel("E-pošta ob naročilu", { exact: true }).fill(input.email);
+  await form.getByLabel("Naslov potrošnika", { exact: true }).fill("Testna ulica 1, 1000 Ljubljana");
+  await form.getByLabel("Številka naročila", { exact: true }).fill(input.orderNumber);
+  // The receipt date is asked only once the consumer says the goods have arrived.
+  await expect(form.locator('[name="receivedAt"]')).toHaveCount(0);
+  await form.locator(`input[name="deliveryStatus"][value="${input.received ? "received" : "not_received"}"]`).check();
+  if (input.received) await form.locator('[name="receivedAt"]').fill(input.received);
+  else await expect(form.locator('[name="receivedAt"]')).toHaveCount(0);
+  await form.getByLabel("Blago, od katerega odstopate", { exact: true }).fill("1 × Belilni trakci za zobe");
+  await form.locator('[name="privacyAccepted"]').check();
+  await form.getByRole("button", { name: "Pošlji odstop od pogodbe" }).click();
+  await expect(page.locator("[data-withdrawal-success]")).toBeVisible();
+  return (await page.locator("[data-withdrawal-reference]").textContent())!;
+}
+
+test("online withdrawal links the order by its e-mail, files a RETURN/WITHDRAWAL ticket and mails statutory content only to staff", async ({ page, fixture }) => {
   const email = `withdraw-${fixture.id}@test.si`;
   fixture.emails.add(email);
   const order = await paidOrder(fixture, email);
@@ -64,42 +83,65 @@ test("online withdrawal needs the order e-mail as proof, files a RETURN/WITHDRAW
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Odstop od pogodbe");
   await expect(page.locator("[data-withdrawal-pdf]")).toHaveAttribute("href", "/odstop-od-pogodbe/obrazec.pdf");
   await expect(page.locator("[data-withdrawal-section] [data-guarantee-link]")).toHaveAttribute("href", "/garancija-vracila-denarja");
+  // Phase 9 step 4 draft fixes: ZVPot-1, refund counted from the notice, §4 only points to the guarantee page.
+  const body = page.locator(".content-prose");
+  await expect(body).toContainText("(ZVPot-1)");
+  await expect(body).toContainText("najpozneje pa v 14 dneh od dne, ko prejmemo vaše obvestilo o odstopu od pogodbe");
+  await expect(body).not.toContainText("od prejema vrnjenega blaga");
+  await expect(body).not.toContainText("Podrobnosti posredujemo ob prijavi");
+  await expect(body.locator('a[href="/garancija-vracila-denarja"]')).toHaveCount(1);
+  await expect(page.locator("[data-withdrawal-form]").getByRole("link", { name: "Preberite politiko zasebnosti" })).toHaveAttribute("href", "/politika-zasebnosti");
 
-  const form = page.locator("[data-withdrawal-form]");
-  await form.getByLabel("Ime in priimek", { exact: true }).fill("Živa Ščuk");
-  await form.getByLabel("E-pošta ob naročilu", { exact: true }).fill("wrong@test.si");
-  await form.getByLabel("Naslov potrošnika", { exact: true }).fill("Testna ulica 1, 1000 Ljubljana");
-  await form.getByLabel("Številka naročila", { exact: true }).fill(order.number.toLowerCase());
-  await form.locator('[name="receivedAt"]').fill("2026-09-01");
-  await form.getByLabel("Blago, od katerega odstopate", { exact: true }).fill("1 × Belilni trakci za zobe");
-  await form.locator('[name="privacyAccepted"]').check();
-  await form.getByRole("button", { name: "Pošlji odstop od pogodbe" }).click();
-  await expect(form.getByRole("alert")).toContainText("ni mogoče najti");
-  expect(await prisma.ticket.count({ where: { email: "wrong@test.si" } })).toBe(0);
-
-  await form.getByLabel("E-pošta ob naročilu", { exact: true }).fill(email);
-  await form.getByRole("button", { name: "Pošlji odstop od pogodbe" }).click();
-  await expect(page.locator("[data-withdrawal-success]")).toBeVisible();
-  await expect(page.locator("[data-withdrawal-success]")).toContainText("14 dneh");
-  const reference = (await page.locator("[data-withdrawal-reference]").textContent())!;
+  const reference = await fillWithdrawal(page, { email, orderNumber: order.number.toLowerCase(), received: "2026-09-01" });
+  await expect(page.locator("[data-withdrawal-success]")).toContainText("14 dneh od prejema vašega obvestila o odstopu");
+  await expect(page.locator("[data-withdrawal-unlinked]")).toHaveCount(0);
 
   const ticket = await prisma.ticket.findUniqueOrThrow({ where: { reference } });
-  expect(ticket).toMatchObject({ topic: "RETURN", reason: "WITHDRAWAL", orderId: order.id, orderProof: "EMAIL_NUMBER", email });
-  expect(ticket.details).toMatchObject({ kind: "withdrawal", items: "1 × Belilni trakci za zobe", receivedAt: "2026-09-01", address: "Testna ulica 1, 1000 Ljubljana" });
+  expect(ticket).toMatchObject({ topic: "RETURN", reason: "WITHDRAWAL", orderId: order.id, orderProof: "EMAIL_NUMBER", email, privacyVersion: PRIVACY_NOTICE_VERSIONS.withdrawal });
+  expect(ticket.details).toMatchObject({ kind: "withdrawal", items: "1 × Belilni trakci za zobe", goodsReceived: true, receivedAt: "2026-09-01", address: "Testna ulica 1, 1000 Ljubljana" });
+  expect(ticket.details).not.toHaveProperty("claimedOrderNumber");
   expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe("PAID");
 
   const staff = await waitForMailMessage(fixture.supportEmail);
   const staffBody = `${staff.Text ?? ""}\n${staff.HTML ?? ""}`;
   expect(staff.Subject).toContain(reference);
+  expect(staff.Subject.startsWith("[ODSTOP]")).toBe(true);
   expect(staffBody).toContain("ZVPot-1");
   expect(staffBody).toContain("Odstop od pogodbe (14 dni)");
   expect(staffBody).toContain("Testna ulica 1, 1000 Ljubljana");
   expect(staffBody).toContain(order.number);
+  expect(staffBody).toContain("učinkuje z obvestilom potrošnika");
+  expect(staffBody).not.toContain("ne prekliče naročila");
   const customer = await waitForMailMessage(email);
   const customerBody = `${customer.Text ?? ""}\n${customer.HTML ?? ""}`;
   expect(customerBody).toContain(reference);
-  expect(customerBody).toContain("14 dneh");
+  expect(customerBody).toContain("14 dneh od prejema vašega obvestila o odstopu");
   expect(customerBody).not.toContain("Testna ulica");
+});
+
+test("a withdrawal that matches no order, sent before delivery, is still recorded without an order link", async ({ page, fixture }) => {
+  const email = `withdraw-unmatched-${fixture.id}@test.si`;
+  fixture.emails.add(email);
+  const order = await paidOrder(fixture, `buyer-${fixture.id}@test.si`);
+
+  await page.goto("/odstop-od-pogodbe");
+  await dismissCmp(page);
+  const reference = await fillWithdrawal(page, { email, orderNumber: order.number, received: null });
+  await expect(page.locator("[data-withdrawal-unlinked]")).toBeVisible();
+
+  const ticket = await prisma.ticket.findUniqueOrThrow({ where: { reference } });
+  expect(ticket).toMatchObject({ topic: "RETURN", reason: "WITHDRAWAL", orderId: null, orderNumber: null, orderProof: null, email });
+  expect(ticket.details).toMatchObject({ kind: "withdrawal", goodsReceived: false, receivedAt: "", claimedOrderNumber: order.number });
+  expect(ticket.message).toContain("Blago še ni prejeto");
+
+  const staff = await waitForMailMessage(fixture.supportEmail);
+  const staffBody = `${staff.Text ?? ""}\n${staff.HTML ?? ""}`;
+  expect(staff.Subject).toContain(reference);
+  expect(staffBody).toContain(order.number);
+  expect(staffBody).toContain("ni samodejno povezana z naročilom");
+  expect(staffBody).toContain("Potrošnik je blago že prejel: Ne");
+  const customer = await waitForMailMessage(email);
+  expect(`${customer.Text ?? ""}\n${customer.HTML ?? ""}`).toContain(reference);
 });
 
 test("model form PDF downloads; guarantee page is linked from PDP and footer; complaint CTAs prefill the contact topic", async ({ page, request }) => {
@@ -114,6 +156,14 @@ test("model form PDF downloads; guarantee page is linked from PDP and footer; co
   const guaranteeHtml = await guarantee.text();
   expect(guaranteeHtml).toContain("Jamstvo vračila denarja");
   expect(guaranteeHtml).toContain("Osnutek dokumenta");
+  expect(guaranteeHtml).toContain("ne vpliva na zakonske pravice potrošnika");
+  // Phase 9 step 4: the EU ODR platform closed on 20 July 2025; the terms list no fixed payment methods.
+  const complaintsHtml = await (await request.get("/reklamacije")).text();
+  expect(complaintsHtml).toContain("izvensodno reševanje potrošniških sporov (IRPS)");
+  expect(complaintsHtml).not.toContain("consumers/odr");
+  const termsHtml = await (await request.get("/pogoji-poslovanja")).text();
+  expect(termsHtml).toContain("Načini plačila, ki so na voljo, so prikazani na blagajni pred oddajo naročila.");
+  expect(termsHtml).not.toContain("Google Pay in Klarna");
   expect(await (await request.get("/izdelek/belilni-trakci-za-zobe")).text()).toContain('href="/garancija-vracila-denarja"');
   const home = await (await request.get("/")).text();
   expect(home).toContain('href="/garancija-vracila-denarja"');
@@ -132,15 +182,19 @@ test("model form PDF downloads; guarantee page is linked from PDP and footer; co
   await expect(page.locator('input[name="contact-topic"]:checked')).toHaveCount(0);
 });
 
-test("adverse-event report requires the batch number, routes structured fields and a private photo to compliance", async ({ page, request, fixture }) => {
+test("adverse-event report validates a given batch number, routes structured fields and a private photo to compliance", async ({ page, request, fixture }) => {
   const email = `adverse-${fixture.id}@test.si`;
   fixture.emails.add(email);
   await page.goto("/prijava-nezelenega-ucinka");
   await dismissCmp(page);
   await expect(page.getByRole("heading", { level: 1, name: "Prijava neželenega učinka" })).toBeVisible();
-  expect(await (await request.get("/prijava-nezelenega-ucinka")).text()).toContain("Natisnjena na embalaži");
+  const adverseHtml = await (await request.get("/prijava-nezelenega-ucinka")).text();
+  expect(adverseHtml).toContain("Natisnjena na embalaži");
+  expect(adverseHtml).not.toContain("Brez nje prijave ne moremo obravnavati");
+  expect(adverseHtml).not.toContain("obveznosti proizvajalca");
 
   const form = page.locator("[data-adverse-form]");
+  await expect(form.getByRole("link", { name: "Preberite politiko zasebnosti" })).toHaveAttribute("href", "/politika-zasebnosti");
   await form.getByLabel("Ime in priimek", { exact: true }).fill("Živa Ščuk");
   await form.getByLabel("E-pošta za odgovor", { exact: true }).fill(email);
   await form.getByLabel("Kdo prijavlja?", { exact: true }).selectOption("PROFESSIONAL");
@@ -153,7 +207,7 @@ test("adverse-event report requires the batch number, routes structured fields a
   await form.locator('[name="privacyAccepted"]').check();
   await form.locator('[name="contactPermission"]').check();
 
-  // Batch number is mandatory: the browser refuses to submit without a valid one.
+  // A batch number is required unless the reporter states it is unknown; a given one must be valid.
   const batch = form.getByLabel("Številka serije", { exact: true });
   await batch.fill("12");
   await form.getByRole("button", { name: "Pošlji prijavo" }).click();
@@ -170,9 +224,10 @@ test("adverse-event report requires the batch number, routes structured fields a
   const ticket = await prisma.ticket.findUniqueOrThrow({ where: { reference }, include: { attachments: true } });
   expect(ticket).toMatchObject({ topic: "ADVERSE", reason: "REACTION", email, orderId: null });
   expect(ticket.details).toMatchObject({
-    kind: "adverse", reporterType: "PROFESSIONAL", batchNumber: "LOT 2026-09A",
+    kind: "adverse", reporterType: "PROFESSIONAL", batchNumber: "LOT 2026-09A", batchUnknown: false,
     product: { slug: "serum-korektor-barve-zob" }, ongoing: false, medicalTreatment: true, contactPermission: true,
   });
+  expect(ticket.privacyVersion).toBe(PRIVACY_NOTICE_VERSIONS.adverse);
   expect(ticket.attachments).toHaveLength(1);
   expect((await request.get(`/api/support/attachments/${ticket.attachments[0].id}`)).status()).toBe(404);
 
@@ -188,4 +243,36 @@ test("adverse-event report requires the batch number, routes structured fields a
   expect(customerBody).toContain(reference);
   expect(customerBody).toContain("varnost izdelkov");
   expect(customerBody).not.toContain("LOT 2026-09A");
+});
+
+test("an adverse-event report without the packaging is accepted once the batch number is stated as unknown", async ({ page, fixture }) => {
+  const email = `adverse-nobatch-${fixture.id}@test.si`;
+  fixture.emails.add(email);
+  await page.goto("/prijava-nezelenega-ucinka");
+  await dismissCmp(page);
+
+  const form = page.locator("[data-adverse-form]");
+  await form.getByLabel("Ime in priimek", { exact: true }).fill("Živa Ščuk");
+  await form.getByLabel("E-pošta za odgovor", { exact: true }).fill(email);
+  await form.getByLabel("Izdelek", { exact: true }).selectOption("serum-korektor-barve-zob");
+  await form.getByLabel("Kje ste izdelek kupili?", { exact: true }).fill("nasmeh.si");
+  await form.getByLabel("Opis učinka", { exact: true }).fill("Po uporabi je bilo dlesni rdeče; embalaže nimam več.");
+  await form.locator('input[name="ongoing"][value="no"]').check();
+  await form.locator('input[name="medicalTreatment"][value="no"]').check();
+  await form.locator('[name="privacyAccepted"]').check();
+
+  const batch = form.getByLabel("Številka serije", { exact: true });
+  await form.getByRole("button", { name: "Pošlji prijavo" }).click();
+  expect(await batch.evaluate(element => (element as HTMLInputElement).checkValidity())).toBe(false);
+  await form.locator('[name="batchUnknown"]').check();
+  await expect(batch).toBeDisabled();
+  await form.getByRole("button", { name: "Pošlji prijavo" }).click();
+  await expect(page.locator("[data-adverse-success]")).toBeVisible();
+  const reference = (await page.locator("[data-adverse-reference]").textContent())!;
+
+  const ticket = await prisma.ticket.findUniqueOrThrow({ where: { reference } });
+  expect(ticket).toMatchObject({ topic: "ADVERSE", email, privacyVersion: PRIVACY_NOTICE_VERSIONS.adverse });
+  expect(ticket.details).toMatchObject({ kind: "adverse", batchNumber: "", batchUnknown: true });
+  const staff = await waitForMailMessage(fixture.complianceEmail);
+  expect(`${staff.Text ?? ""}\n${staff.HTML ?? ""}`).toContain("Prijavitelj številke serije ne pozna (npr. embalaže nima več): Da");
 });

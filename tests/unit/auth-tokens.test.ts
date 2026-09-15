@@ -1,14 +1,17 @@
 import { createHash } from "node:crypto";
+import bcrypt from "bcryptjs";
+import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ transaction: vi.fn(), lock: vi.fn(), update: vi.fn(), create: vi.fn(), find: vi.fn(), valid: vi.fn() }));
 vi.mock("@/lib/db", () => ({ db: { $transaction: mocks.transaction, authToken: { findFirst: mocks.valid } } }));
 import { issueAuthToken, applyAuthToken, isAuthTokenValid } from "@/lib/auth-tokens";
 const raw = "a".repeat(64);
 const activationData = { passwordHash: "$2b$10$" + "a".repeat(53), name: "Owner", marketingOptIn: false };
+const issuedAt = new Date("2026-09-14T08:00:00Z");
 const tx = { $queryRaw: mocks.lock, authToken: { updateMany: mocks.update, create: mocks.create, findUnique: mocks.find } };
 beforeEach(() => {
   vi.resetAllMocks(); mocks.transaction.mockImplementation(async fn => fn(tx));
-  mocks.find.mockResolvedValue({ userId: "u", activationData }); mocks.update.mockResolvedValue({ count: 1 });
+  mocks.find.mockResolvedValue({ userId: "u", activationData, createdAt: issuedAt }); mocks.update.mockResolvedValue({ count: 1 });
 });
 describe("auth token transactions", () => {
   it.each([["VERIFY_EMAIL", 86_400_000], ["RESET_PASSWORD", 3_600_000]] as const)("issues only a hash and bounded expiry for %s", async (kind, ttl) => {
@@ -19,12 +22,19 @@ describe("auth token transactions", () => {
     expect(data.tokenHash).not.toBe(token); expect(data.expiresAt.getTime()).toBeGreaterThanOrEqual(start + ttl);
     expect(data.expiresAt.getTime()).toBeLessThanOrEqual(Date.now() + ttl);
     expect(mocks.lock).toHaveBeenCalledOnce();
-    expect(mocks.update).toHaveBeenCalledWith({ where: { userId: "u", kind, usedAt: null }, data: { usedAt: expect.any(Date) } });
+    expect(mocks.update).toHaveBeenCalledWith({ where: { userId: "u", kind, usedAt: null }, data: { usedAt: expect.any(Date), activationData: Prisma.DbNull } });
+  });
+  it("drops the activation snapshot of every token it marks used, after handing it to the change", async () => {
+    const change = vi.fn(async () => undefined);
+    expect(await applyAuthToken(raw, "VERIFY_EMAIL", change)).toBe(true);
+    // the change also learns when the snapshot was taken (a later withdrawal wins at activation)
+    expect(change).toHaveBeenCalledWith(tx, "u", activationData, issuedAt);
+    for (const [call] of mocks.update.mock.calls) expect(call.data).toEqual({ usedAt: expect.any(Date), activationData: Prisma.DbNull });
   });
   it("makes the protected mutation inside the same transaction after token claim", async () => {
     const change = vi.fn(async transaction => { expect(transaction).toBe(tx); expect(mocks.update).toHaveBeenCalledOnce(); });
     expect(await applyAuthToken(raw, "RESET_PASSWORD", change)).toBe(true);
-    expect(change).toHaveBeenCalledWith(tx, "u", activationData); expect(mocks.update).toHaveBeenCalledTimes(2);
+    expect(change).toHaveBeenCalledWith(tx, "u", activationData, issuedAt); expect(mocks.update).toHaveBeenCalledTimes(2);
     expect(mocks.update.mock.calls[0][0].where).toMatchObject({ kind: "RESET_PASSWORD", usedAt: null, expiresAt: { gt: expect.any(Date) } });
     expect(mocks.update.mock.calls[1][0].where).toEqual({ userId: "u", kind: "RESET_PASSWORD", usedAt: null });
   });
@@ -60,5 +70,21 @@ describe("auth token transactions", () => {
   it("binds registration activation to submitted credentials and consent", async () => {
     await issueAuthToken("u", "VERIFY_EMAIL", activationData);
     expect(mocks.create.mock.calls[0][0].data.activationData).toEqual(activationData);
+  });
+  it("post-purchase links (no activation argument) snapshot the created row and that snapshot verifies", async () => {
+    // createPurchaserAccount: bcrypt cost 10, name from the checkout full name (at most 120 characters).
+    const row = { passwordHash: await bcrypt.hash("Password123!", 10), name: "Ž".repeat(120), marketingOptIn: false };
+    const findUser = vi.fn().mockResolvedValue(row);
+    mocks.transaction.mockImplementation(async fn => fn({ ...tx, user: { findUnique: findUser } }));
+    await issueAuthToken("u", "VERIFY_EMAIL");
+    expect(findUser).toHaveBeenCalledWith({ where: { id: "u" }, select: { passwordHash: true, name: true, marketingOptIn: true } });
+    const stored = mocks.create.mock.calls[0][0].data.activationData;
+    expect(stored).toEqual(row);
+    mocks.valid.mockResolvedValue({ id: "token", activationData: stored });
+    expect(await isAuthTokenValid(raw, "VERIFY_EMAIL")).toBe(true);
+    mocks.find.mockResolvedValue({ userId: "u", activationData: stored, createdAt: issuedAt });
+    const change = vi.fn(async () => undefined);
+    expect(await applyAuthToken(raw, "VERIFY_EMAIL", change)).toBe(true);
+    expect(change).toHaveBeenCalledWith(expect.anything(), "u", row, issuedAt);
   });
 });

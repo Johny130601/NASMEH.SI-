@@ -132,6 +132,7 @@ export function ReviewForm({
           {result.error}
         </p>
       ) : null}
+      <p className="text-xs text-mid-2" data-review-name-note>{copy.form.nameNote}</p>
       <UiButton type="submit" variant="primary" fullWidth disabled={pending}>
         {copy.form.submit}
       </UiButton>

@@ -82,6 +82,14 @@ test("manager edits the homepage, marquee, header menu, a page, the media librar
     await page.goto("/admin/vsebina/domov");
     const heroForm = page.locator("[data-hero-form]");
     await heroForm.getByLabel("Naslov", { exact: true }).fill(`Nasmeh E2E ${key}`);
+    // The seeded subtitle claim keeps its footnote through the edit; an emptied footnote is flagged before saving.
+    const heroFootnote = heroForm.locator("textarea[name='footnote']");
+    const seededFootnote = await heroFootnote.inputValue();
+    expect(seededFootnote).toContain("Rezultati se lahko razlikujejo");
+    await heroFootnote.fill("");
+    await expect(heroForm.locator("[data-hero-footnote-missing]")).toBeVisible();
+    await heroFootnote.fill(seededFootnote);
+    await expect(heroForm.locator("[data-hero-footnote-missing]")).toHaveCount(0);
     await heroForm.locator("[data-hero-save]").click();
     await expect(page.getByText("Hero je shranjen.")).toBeVisible();
     await page.locator("[data-section-row='bundleBanner'] [data-section-visible]").uncheck();
@@ -98,7 +106,7 @@ test("manager edits the homepage, marquee, header menu, a page, the media librar
     await expect(front.getByRole("heading", { name: "Naši paketi" })).toHaveCount(0);
     expect(await front.evaluate(() => {
       const rail = document.querySelector("#izdelki");
-      const routine = document.querySelector("a[aria-label^='Vaša vsakodnevna rutina']");
+      const routine = document.querySelector("a[aria-label^='Trakci, ustna voda in serum']");
       return !!rail && !!routine && (routine.compareDocumentPosition(rail) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
     })).toBe(true);
     expect(await (await front.request.get("/")).text()).toContain(`Nasmeh E2E ${key}`); // server-rendered
@@ -149,12 +157,30 @@ test("manager edits the homepage, marquee, header menu, a page, the media librar
     await front.goto(`/e2e-stran-${key}`);
     await expect(front.getByRole("heading", { level: 1 })).toHaveText(`E2E stran ${key}`);
     await expect(front.locator("[data-content-template='LANDING']")).toContainText(`Vsebina strani ${key}`);
+    // Phase 9 step 4: the legal-review mark belongs to the saved text — ticked on unchanged text it is stored, a text change clears it.
+    await editor.locator("[data-page-reviewed]").check();
+    await editor.locator("[data-page-save]").click();
+    await expect.poll(async () => (await prisma.contentPage.findUniqueOrThrow({ where: { id: pageId } })).reviewed).toBe(true);
+    await editor.locator("[data-page-body]").fill(`<p>Spremenjena vsebina ${key}</p>`);
+    await editor.locator("[data-page-save]").click();
+    await expect(page.locator("[data-page-message]")).toContainText("oznaka pravnega pregleda pa ne");
+    await expect(editor.locator("[data-page-reviewed]")).not.toBeChecked();
+    expect(await prisma.contentPage.findUniqueOrThrow({ where: { id: pageId } })).toMatchObject({ body: `<p>Spremenjena vsebina ${key}</p>`, reviewed: false });
     await editor.locator("input[name='slug']").fill("checkout");
     await editor.locator("[data-page-save]").click();
     await expect(page.locator("[data-page-message]")).toHaveText("Ta naslov pripada vgrajeni strani trgovine.");
     const shadowed = await prisma.contentPage.findUniqueOrThrow({ where: { slug: "politika-piskotkov" } });
     await page.goto(`/admin/strani/${shadowed.id}`);
     await expect(page.locator("[data-page-editor]")).toBeVisible();
+    await expect(page.locator("[data-page-delete]")).toHaveCount(0);
+    await expect(page.locator("[data-page-editor] input[name='slug']")).not.toBeEditable();
+    // Legal pages outside the shadowed routes are locked too: slug read-only with a hint, LEGAL template kept, no delete.
+    const terms = await prisma.contentPage.findUniqueOrThrow({ where: { slug: "pogoji-poslovanja" } });
+    await page.goto(`/admin/strani/${terms.id}`);
+    await expect(page.locator("[data-page-editor][data-page-locked]")).toBeVisible();
+    await expect(page.locator("[data-page-editor] input[name='slug']")).not.toBeEditable();
+    await expect(page.locator("[data-page-editor]").getByText("slug je zaklenjen")).toBeVisible();
+    await expect(page.locator("#page-template")).toBeDisabled();
     await expect(page.locator("[data-page-delete]")).toHaveCount(0);
     await page.goto(`/admin/strani/${pageId}`);
     page.once("dialog", (dialog) => dialog.accept());
@@ -223,7 +249,12 @@ test("manager edits the homepage, marquee, header menu, a page, the media librar
     expect(confirmation.HTML).toContain(`Hvala ${key}`);
     expect(confirmation.HTML).toContain("Belilni trakci");
     expect(confirmation.HTML).toContain("34,99");
-    expect(confirmation.Attachments?.map((attachment) => attachment.FileName)).toEqual([`racun-${number}.pdf`]);
+    // The override cannot drop the durable-medium part (Phase 9 step 4): legal block and all three PDFs still arrive.
+    expect(confirmation.HTML).toContain("data-order-legal");
+    expect(confirmation.HTML).toContain("Pravica do odstopa od pogodbe");
+    expect(confirmation.Attachments?.map((attachment) => attachment.FileName)).toEqual([
+      `racun-${number}.pdf`, "obrazec-odstop-od-pogodbe-nasmeh.pdf", `pogoji-in-odstop-${number}.pdf`,
+    ]);
     await page.goto("/admin/e-posta/orderConfirmation");
     page.once("dialog", (dialog) => dialog.accept());
     await page.locator("[data-email-reset]").click();

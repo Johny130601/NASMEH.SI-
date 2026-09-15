@@ -1,3 +1,5 @@
+import { legal } from "./legal";
+
 /** Transactional email copy (Phase 0 proof + Phase 1 verification). */
 export const email = {
   proof: {
@@ -12,6 +14,9 @@ export const email = {
     body: "Hvala za prijavo na e-novice Nasmeh.si! Za potrditev kliknite spodnji gumb.",
     cta: "Potrdi prijavo",
     ignore: "Če se niste prijavili, to sporočilo preprosto prezrite.",
+    // "<unsubscribe> <link>unsubscribeCta</link>" — the signed withdrawal route.
+    unsubscribe: "Od e-novic se lahko kadar koli odjavite:",
+    unsubscribeCta: "Odjava od e-novic",
     footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
   },
   backInStock: {
@@ -37,9 +42,42 @@ export const email = {
     subjectPrefix: "Potrditev naročila",
     heading: "Hvala za vaše naročilo!",
     body: "Vaše naročilo je bilo uspešno prejeto in plačano. Račun je priložen v prilogi (PDF).",
-    deliveryNote: "Predviden rok dostave je 2–4 delovne dni. Ob odpošiljanju prejmete sporočilo s številko sledenja.",
+    /** The estimate comes from the chosen shipping method (shipping.methods), never a fixed day count. */
+    deliveryEstimate: (estimate: string) => `Predviden rok dostave: ${estimate}. Ob odpošiljanju prejmete sporočilo s številko sledenja.`,
+    deliveryNote: "Ob odpošiljanju prejmete sporočilo s številko sledenja.",
     totalLabel: "Skupaj",
     footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+    /**
+     * Contract confirmation on a durable medium (CRD Art. 8(7)): appended after
+     * the body whether the code template or an operator override is sent. The
+     * withdrawal wording follows the Odstop od pogodbe page and the checkout
+     * notice; final wording is pending the D4 legal review.
+     */
+    legal: {
+      deliveryTitle: "Dostava",
+      sellerTitle: "Prodajalec",
+      registration: "Matična številka",
+      vatId: "ID za DDV",
+      email: "E-pošta",
+      phone: "Telefon",
+      withdrawalTitle: "Pravica do odstopa od pogodbe",
+      withdrawal: `Kot potrošnik lahko od pogodbe odstopite v 14 dneh od prevzema blaga, ne da bi navedli razlog. Odstop ni mogoč za ${legal.sealedGoodsException}.`,
+      withdrawalHow: (email: string) =>
+        `Odstop nam sporočite s spletnim obrazcem na strani Odstop od pogodbe, po e-pošti na ${email} ali pisno na naslov prodajalca. Uporabite lahko priloženi vzorčni obrazec.`,
+      returnCosts: "Stroške povratne pošiljke krije kupec, razen če je vračilo posledica naše napake.",
+      complaints: "Za stvarne napake blaga odgovarjamo v skladu z zakonom. Reklamacijo prijavite po navodilih na strani",
+      guarantee: "Prostovoljno 30-dnevno jamstvo vračila denarja ne vpliva na zakonsko pravico do odstopa. Pogoji jamstva so objavljeni na strani",
+      linksTitle: "Pravna besedila",
+      links: {
+        terms: "Pogoji poslovanja",
+        withdrawal: "Odstop od pogodbe",
+        complaints: "Reklamacije",
+        guarantee: "Jamstvo vračila denarja",
+      },
+      accepted: (label: string, hash: string) => `${label}: oznaka različice, potrjene ob oddaji naročila (SHA-256) ${hash}`,
+      attachments:
+        "V prilogi so račun, vzorčni obrazec za odstop od pogodbe ter pogoji poslovanja in besedilo o odstopu od pogodbe (PDF). Shranite jih za svojo evidenco.",
+    },
   },
   orderShipped: {
     subjectPrefix: "Naročilo je odposlano",

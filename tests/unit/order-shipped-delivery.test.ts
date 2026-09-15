@@ -21,7 +21,7 @@ import { deliverOrderShipped, retryPendingShippedEmails } from "@/lib/orders/shi
 
 const shippedOrder = {
   id: "order-1", status: "SHIPPED", carrier: "GLS", trackingNumber: "GLS12345678",
-  shippingMethod: "GLS — paketna dostava", email: "buyer@example.test",
+  shippingMethod: "GLS — paketna dostava", email: "buyer@example.test", anonymizedAt: null as Date | null,
 };
 
 describe("durable shipped-notification delivery", () => {
@@ -72,6 +72,8 @@ describe("durable shipped-notification delivery", () => {
     { ...shippedOrder, trackingNumber: null },
     { ...shippedOrder, status: "PAID" },
     { ...shippedOrder, status: "CANCELLED" },
+    // erased after the shipment was queued (or re-queued later): nothing goes to the placeholder address
+    { ...shippedOrder, email: "anonymised-order-1@invalid", anonymizedAt: new Date("2026-09-14T10:00:00Z") },
   ])("clears the pending flag instead of mailing an order that is not shipped with a number: %o", async (row) => {
     mocks.findUniqueOrThrow.mockResolvedValue(row);
     expect(await deliverOrderShipped("order-1")).toBe(false);

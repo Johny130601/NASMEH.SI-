@@ -7,13 +7,18 @@ import { requirePermission } from "@/lib/admin/access";
 import { sendMail } from "@/lib/email/mailer";
 import { EMAIL_TEMPLATE_KEYS, unknownPlaceholders, type EmailTemplateKey } from "@/lib/email/template-defs";
 import { renderSample } from "@/lib/email/templates/render";
+import { sanitizeEmailHtml } from "@/lib/email/sanitize";
 
 export type EmailTemplateActionResult = { ok: true } | { ok: false; error: "invalid" | "unknownPlaceholders" | "send"; names?: string[] };
 
+/**
+ * The body is stored sanitized (lib/email/sanitize.ts), so what the operator saves is what
+ * renders: no comment, style or head element and no unclosed tag can hide the required block.
+ */
 const templateSchema = z.object({
   key: z.enum(EMAIL_TEMPLATE_KEYS),
   subject: z.string().trim().min(1).max(200),
-  bodyHtml: z.string().min(1).max(60_000),
+  bodyHtml: z.string().min(1).max(60_000).transform(sanitizeEmailHtml).refine((body) => body.trim().length > 0),
 });
 
 function validate(input: unknown): { ok: true; data: z.output<typeof templateSchema> } | Extract<EmailTemplateActionResult, { ok: false }> {

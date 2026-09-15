@@ -4,10 +4,11 @@ import { db } from "@/lib/db";
 import { InvalidReviewPhoto } from "@/lib/reviews/photo-storage";
 import { getContactSettings } from "./settings";
 import { prepareSupportPhotos, saveSupportPhotos, removeSupportPhotos } from "./photos";
-import { contactPayloadHash, CONTACT_PRIVACY_VERSION, type ContactInput } from "./validation";
+import { contactPayloadHash, privacyNoticeVersion, ticketDetailsForInput, type ContactInput } from "./validation";
 
 export type ContactTicketResult =
-  | { ok: true; ticketId: string; reference: string }
+  /** `orderLinked`: whether the ticket carries a verified order (the withdrawal form reports an unlinked notice). */
+  | { ok: true; ticketId: string; reference: string; orderLinked: boolean }
   | { ok: false; error: "orderNotFound" | "photos" | "conflict" | "failed" };
 
 /** Contact proof is deliberately separate from checkout access capabilities. */
@@ -24,9 +25,24 @@ export async function resolveContactOrder(input: ContactInput, userId: string | 
   return null;
 }
 
-/** Durable creation is independent of SMTP. Only exact replays reuse a receipt. */
-const PHOTO_TOPICS: ReadonlySet<string> = new Set(["WRONG", "DAMAGED", "ADVERSE"]);
+/**
+ * Withdrawal notices recorded without an order link that name this order number
+ * (details.claimedOrderNumber), newest first, so the order's admin page shows them
+ * to staff who handle the order but cannot open the ticket queue.
+ */
+export async function listUnlinkedTicketsClaimingOrder(orderNumber: string) {
+  return db.ticket.findMany({
+    where: { orderId: null, details: { path: ["claimedOrderNumber"], equals: orderNumber } },
+    select: { id: true, reference: true, topic: true, reason: true, status: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+  });
+}
 
+/** RETURN: the money-back guarantee page asks for a photo of the product and packaging through this topic. */
+const PHOTO_TOPICS: ReadonlySet<string> = new Set(["WRONG", "DAMAGED", "RETURN", "ADVERSE"]);
+
+/** Durable creation is independent of SMTP. Only exact replays reuse a receipt. */
 export async function createContactTicket(input: ContactInput, files: File[], userId: string | null): Promise<ContactTicketResult> {
   if (files.length && !PHOTO_TOPICS.has(input.topic)) return { ok: false, error: "photos" };
   // Hash supplied bytes before encoding so a changed attachment cannot reuse a key.
@@ -37,16 +53,24 @@ export async function createContactTicket(input: ContactInput, files: File[], us
   }
   const payloadHash = contactPayloadHash(input, userId, digests);
   const replay = async (): Promise<ContactTicketResult | null> => {
-    const existing = await db.ticket.findUnique({ where: { submissionKey: input.requestKey }, select: { id: true, reference: true, payloadHash: true } });
+    const existing = await db.ticket.findUnique({ where: { submissionKey: input.requestKey }, select: { id: true, reference: true, payloadHash: true, orderId: true } });
     if (!existing) return null;
     return existing.payloadHash === payloadHash
-      ? { ok: true, ticketId: existing.id, reference: existing.reference }
+      ? { ok: true, ticketId: existing.id, reference: existing.reference, orderLinked: existing.orderId !== null }
       : { ok: false, error: "conflict" };
   };
   const existing = await replay();
   if (existing) return existing;
   const order = await resolveContactOrder(input, userId);
-  if (input.orderNumber && !order) return { ok: false, error: "orderNotFound" };
+  // Any unequivocal statement sent in time is a valid withdrawal (Directive 2011/83/EU
+  // Art. 11(1)), so an unmatched notice is recorded without an order link and keeps the
+  // number the consumer stated; staff verify the order by hand. Other forms still refuse.
+  const stated = ticketDetailsForInput(input);
+  const unlinkedWithdrawal = !!input.orderNumber && !order && stated?.kind === "withdrawal";
+  if (input.orderNumber && !order && !unlinkedWithdrawal) return { ok: false, error: "orderNotFound" };
+  const details = unlinkedWithdrawal && stated
+    ? { ...stated, claimedOrderNumber: input.orderNumber }
+    : stated;
 
   let saved: Array<{ filename: string; size: number }> = [];
   let persisted = false;
@@ -60,8 +84,8 @@ export async function createContactTicket(input: ContactInput, files: File[], us
         reference, submissionKey: input.requestKey, payloadHash,
         userId, orderId: order?.id ?? null, orderNumber: order?.number ?? null, orderProof: order?.proof ?? null,
         topic: input.topic, reason: input.reason, name: input.name, email: input.email, message: input.message,
-        ...(input.details ? { details: input.details as Prisma.InputJsonObject } : {}),
-        privacyAcceptedAt: new Date(), privacyVersion: CONTACT_PRIVACY_VERSION,
+        ...(details ? { details: details as Prisma.InputJsonObject } : {}),
+        privacyAcceptedAt: new Date(), privacyVersion: privacyNoticeVersion(input),
         attachments: { create: saved },
         deliveries: { create: [
           { kind: "STAFF", recipient: input.topic === "ADVERSE" ? settings.complianceEmail : settings.supportEmail },
@@ -70,7 +94,7 @@ export async function createContactTicket(input: ContactInput, files: File[], us
       }, select: { id: true, reference: true } });
     });
     persisted = true;
-    return { ok: true, ticketId: ticket.id, reference: ticket.reference };
+    return { ok: true, ticketId: ticket.id, reference: ticket.reference, orderLinked: order !== null };
   } catch (error) {
     if (error instanceof InvalidReviewPhoto) return { ok: false, error: "photos" };
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

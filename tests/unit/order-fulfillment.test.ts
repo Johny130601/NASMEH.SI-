@@ -90,10 +90,12 @@ describe("markOrderShipped", () => {
 
   it("keeps the shipment when the notification cannot be sent right now", async () => {
     mocks.findUnique.mockResolvedValue(order());
-    mocks.deliver.mockRejectedValue(new Error("smtp down"));
+    mocks.deliver.mockRejectedValue(new Error("smtp down for kupec@test.si"));
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     expect((await markOrderShipped("order-1", ship)).ok).toBe(true);
-    expect(log).toHaveBeenCalledWith("Shipped notification remains pending", expect.any(Error));
+    // Only the error type is logged: SMTP errors can carry recipient addresses.
+    expect(log).toHaveBeenCalledWith("Shipped notification remains pending", "Error");
+    expect(JSON.stringify(log.mock.calls)).not.toContain("kupec@test.si");
   });
 });
 

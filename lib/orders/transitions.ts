@@ -1,6 +1,8 @@
 import { Prisma, type Order } from "@prisma/client";
 import { db } from "@/lib/db";
 import { isTestMode } from "@/lib/turnstile";
+import { getCompany, getInvoiceFooter } from "@/lib/settings";
+import { buildInvoiceSnapshot, invoiceSnapshotJson } from "@/lib/invoice/snapshot";
 import { configuredCarriers, getShippingMethods, normalizeTrackingNumber } from "@/lib/tracking";
 import { deliverOrderConfirmation } from "./confirmation-delivery";
 import { deductOrderInventory } from "./inventory";
@@ -53,6 +55,8 @@ export function timelinePush(order: Order, event: string, detail?: string): Pris
   return [...timeline, { at: new Date().toISOString(), event, ...(detail ? { detail } : {}) }] as unknown as Prisma.InputJsonValue;
 }
 
+const errorName = (error: unknown) => (error instanceof Error ? error.name : "UnknownError");
+
 function isProcessedEventDuplicate(error: unknown) {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") return false;
   const target = error.meta?.target;
@@ -96,6 +100,8 @@ export async function markOrderPaid(
   intentId: string,
   details?: PaymentDetails,
 ): Promise<TransitionResult> {
+  // Read before the transaction opens: a pooled read inside it would hold a second connection while the order row is locked.
+  const [company, footer] = await Promise.all([getCompany(), getInvoiceFooter()]);
   const result = await applyEvent(provider, eventId, "payment.succeeded", intentId, async (tx, order) => {
     if ((!details && !isTestMode()) || (details && (!validMoney(details, order) || details.amountCents !== order.totalCents))) {
       throw new RetryableTransition({ outcome: "payment_mismatch" });
@@ -136,6 +142,11 @@ export async function markOrderPaid(
     }
 
     const now = new Date();
+    // The invoice is issued here: seller, buyer and footer are frozen with the
+    // number so later company edits or anonymisation cannot rewrite it. A
+    // missing or invalid company Setting must not block a captured payment;
+    // the confirmation delivery refuses to send an invoice without a seller.
+    if (!company) console.error("Invoice issued without a seller snapshot: company Setting missing or invalid");
     await tx.order.update({
       where: { id: order.id },
       data: {
@@ -146,10 +157,15 @@ export async function markOrderPaid(
         fulfillmentIssue: null,
         invoiceNumber: order.number,
         invoiceIssuedAt: now,
+        ...(company ? { invoiceSnapshot: invoiceSnapshotJson(buildInvoiceSnapshot(order, company, footer, now)) } : {}),
         confirmationEmailPending: true,
         timeline: timelinePush(order, "paid", `provider:${provider}`),
       },
     });
+    // The checkout became a paid order: its abandoned-checkout capture has no purpose left (GDPR Art. 5(1)(c), (e)).
+    if (order.checkoutKey) {
+      await tx.abandonedCheckout.deleteMany({ where: { recoveryToken: order.checkoutKey } });
+    }
     return { outcome: "paid", orderNumber: order.number };
   });
 
@@ -163,7 +179,8 @@ export async function markOrderPaid(
       });
       if (order) await deliverOrderConfirmation(order.id);
     } catch (error) {
-      console.error("Order confirmation remains pending", error);
+      // Error objects can carry SMTP recipients or query values; log only the type.
+      console.error("Order confirmation remains pending", errorName(error));
     }
   }
   return result;
@@ -266,7 +283,7 @@ export async function markOrderShipped(orderId: string, input: ShipmentInput): P
     try {
       await deliverOrderShipped(orderId);
     } catch (error) {
-      console.error("Shipped notification remains pending", error);
+      console.error("Shipped notification remains pending", errorName(error));
     }
   }
   return result;

@@ -30,7 +30,8 @@ async function attemptOrderShipped(orderId: string): Promise<"sent" | "failed" |
 
   try {
     const order = await db.order.findUniqueOrThrow({ where: { id: orderId } });
-    if (!order.trackingNumber || !["SHIPPED", "DELIVERED"].includes(order.status)) {
+    // Erasure ends delivery: the address is a placeholder (same guard as the confirmation).
+    if (order.anonymizedAt || !order.trackingNumber || !["SHIPPED", "DELIVERED"].includes(order.status)) {
       await db.order.update({
         where: { id: orderId },
         data: { shippedEmailPending: false, shippedEmailLeaseUntil: null },

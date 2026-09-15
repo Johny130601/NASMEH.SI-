@@ -19,13 +19,19 @@ test("GET / — chrome + homepage copy in initial HTML", async ({ request }) => 
 
   // hero (Setting-driven) + rail + banners
   expect(html).toContain("Nasmeh, ki ga opazite");
+  // the hero claim marker resolves to a LIVE footnote next to it (Phase 9 step 4, §12.6)
+  expect(html).toContain("za svetlejši nasmeh*");
+  expect(html).toMatch(/data-hero-footnote="true">\*Rezultati se lahko razlikujejo/);
+  expect(html).not.toContain("nežno do sklenine");
   expect(html).toContain("Naše uspešnice");
   expect(html).toContain("Belilni trakci");
   expect(html).toContain("Paket popolna rutina");
   expect(html).toContain("34,99");
   expect(html).toContain("Naši paketi");
-  // routine banner legal footnote is LIVE text
+  // routine banner legal footnote is LIVE text; its title is original copy
   expect(html).toContain("Rezultati se lahko razlikujejo");
+  expect(html).toContain('aria-label="Trakci, ustna voda in serum v enem paketu."');
+  expect(html).not.toContain("rutina beljenja — urejena");
 
   // footer
   expect(html).toContain("Nasmeh.si, d.o.o.");

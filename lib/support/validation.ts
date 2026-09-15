@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { authEmailSchema, humanTokenSchema } from "@/lib/auth-validation";
-import { ADVERSE_REPORTER_TYPES, TOPIC_CODES, topicReasons } from "./topics";
+import { wordingVersion } from "@/lib/consent-log";
+import { adverse } from "@/lib/copy/adverse";
+import { contact } from "@/lib/copy/contact";
+import { returns } from "@/lib/copy/returns";
+import { ADVERSE_REPORTER_TYPES, TOPIC_CODES, topicReasons, WITHDRAWAL_DELIVERY_STATUSES } from "./topics";
 
 const NUL = String.fromCharCode(0);
 const CONTROL = new RegExp(`[\\r\\n${NUL}]`);
@@ -37,14 +41,30 @@ export const contactInputSchema = z.object({
 /** Structured payload of the dedicated forms; the contact form sends none. */
 export type TicketDetails = { kind: "withdrawal" | "adverse" } & Record<string, unknown>;
 export type ContactInput = z.infer<typeof contactInputSchema> & { details?: TicketDetails };
-export const CONTACT_PRIVACY_VERSION = "contact-v1";
+
+/**
+ * Version of the privacy acknowledgement each form shows, stored in Ticket.privacyVersion
+ * (GDPR Art. 5(2)). Derived from the wording like the consent log's versions, so editing one
+ * form's text changes only that form's version. The adverse form's optional contact
+ * permission sits in the same notice block and is covered by its version.
+ */
+export const PRIVACY_NOTICE_VERSIONS = {
+  contact: `contact-${wordingVersion(contact.message.privacy)}`,
+  withdrawal: `withdrawal-${wordingVersion(returns.withdrawal.privacy)}`,
+  adverse: `adverse-${wordingVersion(`${adverse.consent.privacy}\n${adverse.consent.contact}`)}`,
+} as const;
+
+/** The form is known from the server-built details, never from a client field. */
+export function privacyNoticeVersion(input: Pick<ContactInput, "details">): string {
+  return PRIVACY_NOTICE_VERSIONS[input.details?.kind ?? "contact"];
+}
 
 /** No challenge token or request key: retries bind the actual immutable intent. */
 export function contactPayloadHash(input: ContactInput, userId: string | null, fileDigests: string[]): string {
   return createHash("sha256").update(JSON.stringify({
     userId, name: input.name, email: input.email, topic: input.topic,
     reason: input.reason, message: input.message, orderNumber: input.orderNumber,
-    orderEmail: input.orderEmail, privacyVersion: CONTACT_PRIVACY_VERSION, fileDigests,
+    orderEmail: input.orderEmail, privacyVersion: privacyNoticeVersion(input), fileDigests,
     details: input.details ?? null,
   })).digest("hex");
 }
@@ -53,25 +73,36 @@ export function contactPayloadHash(input: ContactInput, userId: string | null, f
 
 export const WITHDRAWAL_STATUTORY_BASIS = "ZVPot-1: odstop od pogodbe v 14 dneh brez navedbe razloga";
 
+/**
+ * Annex I(B) "ordered on / received on": the consumer may withdraw before delivery too
+ * (Directive 2011/83/EU Art. 9), so the receipt date is required only for received goods.
+ */
 export const withdrawalInputSchema = z.object({
   requestKey: z.uuid(),
   name: nameSchema,
   email: authEmailSchema,
   address: freeText(5, 300),
   orderNumber: contactOrderNumberSchema,
-  receivedAt: isoDate.refine(notInFuture, { message: "future" }),
+  deliveryStatus: z.enum(WITHDRAWAL_DELIVERY_STATUSES),
+  receivedAt: z.union([isoDate.refine(notInFuture, { message: "future" }), z.literal("")]).default(""),
   items: freeText(5, 2000),
   note: z.string().trim().max(2000).default(""),
   privacyAccepted: z.literal(true),
-}).strict();
+}).strict().refine(value => value.deliveryStatus === "not_received" || value.receivedAt !== "", { path: ["receivedAt"] });
 export type WithdrawalInput = z.infer<typeof withdrawalInputSchema>;
 
-/** The model wording composed for staff; the order e-mail doubles as proof. */
+/**
+ * The model wording composed for staff. The order e-mail links the order when it matches;
+ * a notice that matches no order is still recorded (lib/support/tickets.ts).
+ */
 export function withdrawalToContactInput(input: WithdrawalInput): ContactInput {
+  const goodsReceived = input.deliveryStatus === "received";
+  // A date sent with "not received" contradicts the answer; the answer wins.
+  const receivedAt = goodsReceived ? input.receivedAt : "";
   const message = [
     `Obveščam vas, da odstopam od pogodbe za nakup naslednjega blaga: ${input.items}`,
     `Številka naročila: ${input.orderNumber}`,
-    `Blago prejeto dne: ${input.receivedAt}`,
+    goodsReceived ? `Blago prejeto dne: ${receivedAt}` : "Blago še ni prejeto",
     `Naslov potrošnika: ${input.address}`,
     ...(input.note ? [`Opomba: ${input.note}`] : []),
   ].join("\n");
@@ -81,9 +112,23 @@ export function withdrawalToContactInput(input: WithdrawalInput): ContactInput {
     orderNumber: input.orderNumber, orderEmail: input.email, privacyAccepted: true,
     details: {
       kind: "withdrawal", statutoryBasis: WITHDRAWAL_STATUTORY_BASIS,
-      address: input.address, receivedAt: input.receivedAt, items: input.items, note: input.note,
+      goodsReceived, address: input.address, receivedAt, items: input.items, note: input.note,
     },
   };
+}
+
+/**
+ * Details of a ticket as stored. A RETURN/WITHDRAWAL message from the general contact form is a
+ * withdrawal notice as well (Directive 2011/83/EU Art. 11(1)), so it gets the withdrawal kind the
+ * mails, the unlinked-order exception and the admin screens key on, without the model form's
+ * fields. The privacy version and the payload hash keep using the submitted input.
+ */
+export function ticketDetailsForInput(input: ContactInput): TicketDetails | undefined {
+  if (input.details) return input.details;
+  if (input.topic === "RETURN" && input.reason === "WITHDRAWAL") {
+    return { kind: "withdrawal", statutoryBasis: WITHDRAWAL_STATUTORY_BASIS, viaContactForm: true };
+  }
+  return undefined;
 }
 
 // ---------- Adverse-event report (§12.6) ----------
@@ -96,8 +141,10 @@ export const adverseInputSchema = z.object({
   reporterType: z.enum(ADVERSE_REPORTER_TYPES),
   reason: z.enum(["REACTION", "PRODUCT_SAFETY"]).default("REACTION"),
   productSlug: z.string().trim().min(1).max(120).regex(/^[a-z0-9-]+$/),
-  // "natisnjeno na embalaži": mandatory for cosmetics vigilance, never guessed.
-  batchNumber: z.string().trim().min(3).max(40).regex(/^[A-Za-z0-9 ./-]+$/),
+  // "natisnjeno na embalaži": strongly encouraged and never guessed, but a reporter
+  // without the packaging states that it is unknown instead of being turned away.
+  batchNumber: z.union([z.string().trim().min(3).max(40).regex(/^[A-Za-z0-9 ./-]+$/), z.literal("")]).default(""),
+  batchUnknown: z.boolean().default(false),
   purchasePlace: freeText(2, 120),
   purchaseDate: z.union([isoDate, z.literal("")]).default(""),
   orderNumber: z.union([contactOrderNumberSchema, z.literal("")]).default(""),
@@ -108,7 +155,7 @@ export const adverseInputSchema = z.object({
   medicalDetails: z.string().trim().max(2000).default(""),
   contactPermission: z.boolean().default(false),
   privacyAccepted: z.literal(true),
-}).strict();
+}).strict().refine(value => value.batchNumber !== "" || value.batchUnknown, { path: ["batchNumber"] });
 export type AdverseInput = z.infer<typeof adverseInputSchema>;
 
 export function adverseToContactInput(input: AdverseInput, product: { slug: string; title: string }): ContactInput {
@@ -119,7 +166,9 @@ export function adverseToContactInput(input: AdverseInput, product: { slug: stri
     details: {
       kind: "adverse", reporterType: input.reporterType, phone: input.phone,
       product: { slug: product.slug, title: product.title },
-      batchNumber: input.batchNumber, purchasePlace: input.purchasePlace, purchaseDate: input.purchaseDate,
+      // A given batch number wins over a contradictory "unknown" tick.
+      batchNumber: input.batchNumber, batchUnknown: input.batchNumber === "",
+      purchasePlace: input.purchasePlace, purchaseDate: input.purchaseDate,
       onsetDate: input.onsetDate, ongoing: input.ongoing === "yes",
       medicalTreatment: input.medicalTreatment === "yes", medicalDetails: input.medicalDetails,
       contactPermission: input.contactPermission,

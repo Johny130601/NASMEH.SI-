@@ -37,8 +37,9 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ id
           <h2 className="text-base font-medium">{d.reporter}</h2>
           <p className="mt-2 text-sm">{ticket.name}</p>
           <p className="text-sm text-mid-1">{ticket.email}</p>
-          {ticket.user ? <p className="mt-2 text-sm"><Link href={`/admin/stranke/${ticket.user.id}`} className="underline underline-offset-4">{d.customer}</Link></p> : null}
-          <p className="mt-2 text-xs text-mid-2">{d.privacy}: {ticket.privacyAcceptedAt.toLocaleDateString("sl-SI")} (v{ticket.privacyVersion})</p>
+          {ticket.user ? <p className="mt-2 text-sm"><Link href={`/admin/stranke/${ticket.user.id}`} className="underline underline-offset-4">{d.customer}</Link></p>
+            : !ticket.email.endsWith("@invalid") ? <p className="mt-2 text-sm"><Link href={`/admin/stranke/gost?email=${encodeURIComponent(ticket.email)}`} className="underline underline-offset-4" data-ticket-guest-link>{d.customer}</Link></p> : null}
+          <p className="mt-2 text-xs text-mid-2">{d.privacy}: {ticket.privacyAcceptedAt.toLocaleDateString("sl-SI")} ({ticket.privacyVersion})</p>
         </section>
         <section className="rounded-card border border-light-2 bg-white p-5">
           <h2 className="text-base font-medium">{d.order}</h2>

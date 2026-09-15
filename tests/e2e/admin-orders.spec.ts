@@ -206,6 +206,17 @@ test("support exports and anonymises a customer, and handles a ticket", async ({
     privacyAcceptedAt: new Date(), privacyVersion: "1",
     deliveries: { create: [{ kind: "STAFF", recipient: "podpora@nasmeh.test", sentAt: new Date() }, { kind: "CUSTOMER", recipient: customer.email, sentAt: new Date() }] },
   } });
+  // Phase 9 step 4: a logged-out ticket under the account e-mail with an unsent receipt, a customer-visible
+  // order note and a confirmed newsletter subscription all belong to the same person.
+  const guestTicket = await prisma.ticket.create({ data: {
+    reference: `NP-G${key.slice(0, 11).toUpperCase()}`, submissionKey: `kg-${key}`, payloadHash: "h", userId: null,
+    topic: "OTHER", name: "Živa Zasebna", email: customer.email, message: "Vprašanje brez prijave.",
+    privacyAcceptedAt: new Date(), privacyVersion: "1",
+    // S10: an unsent staff alert as well — erasure voids it, so the daily job never retries it at 503.
+    deliveries: { create: [{ kind: "CUSTOMER", recipient: customer.email }, { kind: "STAFF", recipient: "podpora@nasmeh.test" }] },
+  } });
+  await prisma.orderNote.create({ data: { orderId: fixture.order.id, authorName: "Podpora", body: `Klic stranke ${customer.email}`, visibleToCustomer: true } });
+  await prisma.subscriber.create({ data: { email: customer.email, status: "CONFIRMED", confirmedAt: new Date(), confirmToken: `sub-${key}` } });
   try {
     await loginStaff(page, support.email, PASSWORD, support.secret);
     // Ticket inbox → detail → status, assignee, note.
@@ -228,11 +239,19 @@ test("support exports and anonymises a customer, and handles a ticket", async ({
     await expect(page.locator("[data-customer-orders]")).toContainText(fixture.order.number);
     const exported = await page.request.get(`/admin/stranke/${customer.id}/izvoz.json`);
     expect(exported.status()).toBe(200);
-    const json = await exported.json() as { profile: { email: string; passwordHash?: string }; orders: Array<{ number: string }>; addresses: unknown[] };
+    const json = await exported.json() as {
+      profile: { email: string; passwordHash?: string }; orders: Array<{ number: string; notes: Array<{ body: string }> }>; addresses: unknown[];
+      tickets: Array<{ reference: string }>; subscriptions: Array<{ status: string; confirmToken?: string }>; consents: unknown[]; abandonedCheckouts: unknown[];
+    };
     expect(json.profile.email).toBe(customer.email);
     expect(json.profile.passwordHash).toBeUndefined();
     expect(json.orders.map((order) => order.number)).toContain(fixture.order.number);
+    expect(json.orders.find((order) => order.number === fixture.order.number)?.notes.map((note) => note.body)).toEqual([`Klic stranke ${customer.email}`]);
     expect(json.addresses).toHaveLength(1);
+    expect(json.tickets.map((row) => row.reference).sort()).toEqual([guestTicket.reference, ticket.reference].sort());
+    expect(json.subscriptions).toEqual([expect.objectContaining({ status: "CONFIRMED" })]);
+    expect(json.subscriptions[0].confirmToken).toBeUndefined();
+    expect(Array.isArray(json.consents) && Array.isArray(json.abandonedCheckouts)).toBe(true);
 
     page.once("dialog", (dialog) => dialog.accept());
     await page.locator("[data-customer-anonymise]").click();
@@ -247,12 +266,83 @@ test("support exports and anonymises a customer, and handles a ticket", async ({
     expect(order.shippingAddress).toEqual({ country: "SI", anonymized: true });
     const scrubbed = await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } });
     expect(scrubbed).toMatchObject({ message: "[anonimizirano]", name: "—" });
+    // The sent receipt keeps its history without the address; the unsent one can never go out.
+    expect(await prisma.ticketEmailDelivery.findFirstOrThrow({ where: { ticketId: ticket.id, kind: "CUSTOMER" } })).toMatchObject({ recipient: `anonymised-${ticket.id}@invalid` });
+    expect(await prisma.ticketEmailDelivery.count({ where: { ticketId: guestTicket.id, kind: "CUSTOMER" } })).toBe(0);
+    expect(await prisma.ticketEmailDelivery.count({ where: { ticketId: { in: [ticket.id, guestTicket.id] }, sentAt: null } })).toBe(0);
+    expect(await prisma.ticket.findUniqueOrThrow({ where: { id: guestTicket.id } })).toMatchObject({ email: `anonymised-${guestTicket.id}@invalid`, message: "[anonimizirano]" });
+    expect((await prisma.orderNote.findFirstOrThrow({ where: { orderId: fixture.order.id } })).body).toBe("[anonimizirano]");
+    expect(await prisma.subscriber.count({ where: { email: customer.email } })).toBe(0);
+    const withdrawal = await prisma.consentLog.findFirstOrThrow({ where: { userId: customer.id, kind: "marketing-preference" } });
+    expect(withdrawal.choices).toMatchObject({ marketing: false, previous: true, reason: "anonymised" });
+    expect(JSON.stringify(withdrawal.choices)).not.toContain(customer.email);
+    await page.goto(`/admin/podpora/${ticket.id}`);
+    await expect(page.locator("[data-admin-ticket]")).not.toContainText(customer.email);
     await page.goto(`/admin/narocila/${fixture.order.number}`);
     await expect(page.locator("[data-order-total]")).toHaveText("34,90 €");
     await expect(page.getByText("anonymised-")).toHaveCount(1);
   } finally {
-    await prisma.ticket.deleteMany({ where: { id: ticket.id } });
+    await prisma.ticket.deleteMany({ where: { id: { in: [ticket.id, guestTicket.id] } } });
+    await prisma.subscriber.deleteMany({ where: { confirmToken: `sub-${key}` } });
+    await prisma.consentLog.deleteMany({ where: { userId: customer.id } });
     await cleanupOrder(fixture);
     await prisma.user.deleteMany({ where: { id: { in: [support.id, customer.id] } } });
+  }
+});
+
+test("a person with no account or order is found by e-mail, exported and anonymised (Phase 9 step 4)", async ({ page }) => {
+  const key = randomUUID();
+  const support = await staff("SUPPORT", key);
+  const email = `orders-nonbuyer-${key}@test.si`;
+  const subscriber = await prisma.subscriber.create({ data: { email, status: "CONFIRMED", confirmedAt: new Date(), confirmToken: `nb-${key}` } });
+  const consent = await prisma.consentLog.create({ data: { kind: "marketing-email", version: "t-e2e", choices: { marketing: true, doubleOptIn: true, source: "footer", subscriberId: subscriber.id } } });
+  const ticket = await prisma.ticket.create({ data: {
+    reference: `NP-N${key.slice(0, 11).toUpperCase()}`, submissionKey: `kn-${key}`, payloadHash: "h", userId: null,
+    topic: "ADVICE", name: "Nina Neprijavljena", email, message: "Ali je izdelek primeren zame?",
+    privacyAcceptedAt: new Date(), privacyVersion: "1",
+    deliveries: { create: [{ kind: "CUSTOMER", recipient: email, sentAt: new Date() }] },
+  } });
+  try {
+    await loginStaff(page, support.email, PASSWORD, support.secret);
+    // Guest tickets link to the person page.
+    await page.goto(`/admin/podpora/${ticket.id}`);
+    await page.locator("[data-ticket-guest-link]").click();
+    await page.waitForURL(/\/admin\/stranke\/gost\?email=/);
+    await expect(page.locator("[data-customer-tickets]")).toContainText(ticket.reference);
+    // The find-by-e-mail entry reaches the same page.
+    await page.goto("/admin/stranke");
+    await page.locator("[data-customer-find-email] input[name='email']").fill(email.toUpperCase());
+    await page.locator("[data-customer-find-email] button[type='submit']").click();
+    await expect(page.locator(`[data-admin-customer='${email}']`)).toBeVisible();
+    await expect(page.locator("[data-customer-newsletter]")).toHaveText("potrjena");
+    await expect(page.locator("[data-customer-consents]")).toContainText("marketing-email");
+
+    const exported = await page.request.get(`/admin/stranke/gost/izvoz.json?email=${encodeURIComponent(email)}`);
+    expect(exported.status()).toBe(200);
+    const json = await exported.json() as { profile: { guest: boolean }; orders: unknown[]; tickets: Array<{ reference: string }>; subscriptions: Array<{ id: string }>; consents: Array<{ id: string }> };
+    expect(json.profile.guest).toBe(true);
+    expect(json.orders).toEqual([]);
+    expect(json.tickets.map((row) => row.reference)).toEqual([ticket.reference]);
+    expect(json.subscriptions.map((row) => row.id)).toEqual([subscriber.id]);
+    expect(json.consents.map((row) => row.id)).toContain(consent.id);
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.locator("[data-customer-anonymise]").click();
+    // X7: the guest page no longer exists after erasure, so the list opens with a notice instead.
+    await page.waitForURL(/\/admin\/stranke\?anonimizirano=1/);
+    await expect(page.locator("[data-customer-anonymised-notice]")).toBeVisible();
+    await expect.poll(async () => prisma.subscriber.count({ where: { email } })).toBe(0);
+    expect(await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).toMatchObject({ email: `anonymised-${ticket.id}@invalid`, name: "—" });
+    expect(await prisma.ticketEmailDelivery.findFirstOrThrow({ where: { ticketId: ticket.id, kind: "CUSTOMER" } })).toMatchObject({ recipient: `anonymised-${ticket.id}@invalid` });
+    // Consent proof stays, and the end of the subscription is appended to it.
+    expect(await prisma.consentLog.count({ where: { id: consent.id } })).toBe(1);
+    const withdrawal = await prisma.consentLog.findFirstOrThrow({ where: { kind: "marketing-preference", choices: { path: ["subscriberId"], equals: subscriber.id } } });
+    expect(withdrawal.choices).toMatchObject({ marketing: false, reason: "anonymised" });
+    expect((await page.request.get(`/admin/stranke/gost/izvoz.json?email=${encodeURIComponent(email)}`)).status()).toBe(404);
+  } finally {
+    await prisma.ticket.deleteMany({ where: { id: ticket.id } });
+    await prisma.subscriber.deleteMany({ where: { id: subscriber.id } });
+    await prisma.consentLog.deleteMany({ where: { OR: [{ id: consent.id }, { choices: { path: ["subscriberId"], equals: subscriber.id } }] } });
+    await prisma.user.deleteMany({ where: { id: support.id } });
   }
 });

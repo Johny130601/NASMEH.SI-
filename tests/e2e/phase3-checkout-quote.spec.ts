@@ -1,7 +1,9 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { expect, test as base, type Page } from "@playwright/test";
 import { changeVariantPriceInTx, recordInitialPriceInTx } from "@/lib/price-history";
-import { prisma } from "./helpers";
+import { checkout } from "@/lib/copy";
+import { marketingVersion } from "@/lib/consent-log";
+import { prisma, waitForMailTo } from "./helpers";
 
 interface QuoteFixture {
   slug: string;
@@ -42,6 +44,7 @@ const test = base.extend<{ quoteFixture: QuoteFixture }>({
         });
         await tx.order.deleteMany({ where: { email } });
         await tx.abandonedCheckout.deleteMany({ where: { email } });
+        await tx.subscriber.deleteMany({ where: { email } });
         await tx.product.delete({ where: { id: product.id } });
       });
     }
@@ -84,8 +87,37 @@ async function contactAndAddress(page: Page, email: string) {
 async function review(page: Page) {
   await page.locator("[data-continue-shipping]").click();
   await page.locator('input[name="provider"][value="test"]').check();
+  // The terms note belongs next to the order button, not on the payment step.
+  await expect(page.locator("[data-legal-terms]")).toHaveCount(0);
   await page.locator("[data-continue-payment]").click();
   await expect(page.locator("[data-place-order]")).toBeEnabled();
+  const legalNote = page.locator("[data-review-legal]");
+  await expect(legalNote).toContainText(`${checkout.review.legal.termsLead} ${checkout.review.legal.termsLink}.`);
+  await expect(legalNote).toContainText(`${checkout.review.legal.withdrawalLead} ${checkout.review.legal.withdrawalLink} ${checkout.review.legal.withdrawalTail}`);
+  await expect(page.locator("[data-legal-terms]")).toHaveCount(1);
+  await expect(page.locator("[data-legal-withdrawal]")).toHaveCount(1);
+  // S6: the legal texts open in a new tab, so the filled-in checkout is never left behind
+  for (const selector of ["[data-legal-terms]", "[data-legal-withdrawal]"]) {
+    await expect(page.locator(selector)).toHaveAttribute("target", "_blank");
+    await expect(page.locator(selector)).toHaveAttribute("rel", "noopener noreferrer");
+  }
+}
+
+async function expectLegalAcceptance(orderNumber: string) {
+  const order = await prisma.order.findUniqueOrThrow({ where: { number: orderNumber } });
+  // Each accepted page is stored with its published title and body HTML next to the body's SHA-256,
+  // so the confirmation can print the accepted text even after the page is edited.
+  const page = async (key: string, slug: string) => {
+    const row = await prisma.contentPage.findFirstOrThrow({ where: { slug, published: true }, select: { title: true, body: true, updatedAt: true } });
+    return {
+      key, path: `/${slug}`, slug, updatedAt: row.updatedAt.toISOString(),
+      sha256: createHash("sha256").update(row.body, "utf8").digest("hex"), title: row.title, body: row.body,
+    };
+  };
+  expect(order.legalAcceptance).toEqual({
+    acceptedAt: expect.any(String), noticeVersion: expect.stringMatching(/^t-[0-9a-f]{12}$/),
+    pages: [await page("terms", "pogoji-poslovanja"), await page("withdrawal", "odstop-od-pogodbe")],
+  });
 }
 
 test("guest quote keeps shipping, TEST10, VAT and the accepted order in sync", async ({ page, quoteFixture }) => {
@@ -106,6 +138,16 @@ test("guest quote keeps shipping, TEST10, VAT and the accepted order in sync", a
   await expectTotals(page, "24,89", "6,90", "4,49");
   await review(page);
   await expect(page.locator("[data-review-total]")).toHaveText("Skupaj: 24,89 €");
+  // The recap above the button repeats the itemisation, so a phone user does not scroll past the button to see it.
+  const recap = page.locator("[data-review-recap]");
+  await expect(recap.locator(`[data-review-line='${quoteFixture.variantId}']`)).toContainText("1 × Ustna voda — preizkus povzetka");
+  await expect(recap.locator(`[data-review-line='${quoteFixture.variantId}']`)).toContainText("19,99 €");
+  await expect(recap.locator("[data-review-subtotal]")).toHaveText("19,99 €");
+  await expect(recap.locator("[data-review-discount]")).toHaveText("−2,00 €");
+  await expect(recap).toContainText(`${checkout.summary.shipping} (Pošta Slovenije — express)`);
+  await expect(recap.locator("[data-review-shipping]")).toHaveText("6,90 €");
+  await expect(recap).toContainText(`${checkout.summary.vat} (22 %)`);
+  await expect(recap.locator("[data-review-vat]")).toHaveText("4,49 €");
 
   const submitted = page.waitForRequest(request => request.method() === "POST"
     && !!request.headers()["next-action"] && !!request.postData()?.includes('"quoteToken"'));
@@ -127,6 +169,35 @@ test("guest quote keeps shipping, TEST10, VAT and the accepted order in sync", a
   });
   expect(orders[0].items).toHaveLength(1);
   expect(orders[0].items[0]).toMatchObject({ variantId: quoteFixture.variantId, quantity: 1, unitPriceCents: 1999 });
+  await expectLegalAcceptance(orders[0].number);
+  // An unticked box is recorded as not given, never as a withdrawal, and enrols nobody.
+  const consent = await prisma.consentLog.findFirstOrThrow({ where: { kind: "marketing-checkout", choices: { path: ["orderNumber"], equals: orders[0].number } } });
+  expect(consent).toMatchObject({ version: marketingVersion("marketing-checkout"), choices: { marketing: false, action: "not-given", orderNumber: orders[0].number } });
+  expect(await prisma.subscriber.count({ where: { email: quoteFixture.email } })).toBe(0);
+});
+
+test("a ticked checkout opt-in starts the newsletter double opt-in", async ({ page, quoteFixture }) => {
+  await startCheckout(page, quoteFixture);
+  await expect(page.locator("[data-checkout-email-notice]")).toContainText(checkout.contact.emailNotice);
+  const optIn = page.locator("[data-marketing-optin]");
+  await expect(optIn).not.toBeChecked();
+  await optIn.check();
+  await contactAndAddress(page, quoteFixture.email);
+  await review(page);
+  await page.locator("[data-place-order]").click();
+  await expect(page.locator("[data-pay-panel]")).toBeVisible();
+
+  const order = await prisma.order.findFirstOrThrow({ where: { email: quoteFixture.email } });
+  expect(order.marketingOptIn).toBe(true);
+  await expectLegalAcceptance(order.number);
+  const subscriber = await prisma.subscriber.findUniqueOrThrow({ where: { email: quoteFixture.email } });
+  expect(subscriber).toMatchObject({ status: "PENDING", source: "checkout", confirmedAt: null });
+  const consent = await prisma.consentLog.findFirstOrThrow({ where: { kind: "marketing-checkout", choices: { path: ["orderNumber"], equals: order.number } } });
+  expect(consent).toMatchObject({
+    version: marketingVersion("marketing-checkout"),
+    choices: { marketing: true, action: "pending-confirmation", orderNumber: order.number, subscriberId: subscriber.id },
+  });
+  expect(await waitForMailTo(quoteFixture.email)).toContain(`/potrdi/${subscriber.confirmToken}`);
 });
 
 test("a price changed after review requires explicit confirmation of a refreshed quote", async ({ page, quoteFixture }) => {

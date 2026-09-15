@@ -94,7 +94,7 @@ model ConsentLog {
   userId    String?
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   visitorId String?
-  kind      String // cookie | marketing-email | terms
+  kind      String // cookie | marketing-checkout | marketing-register | marketing-activation | marketing-preference | marketing-email | back-in-stock (lib/consent-log.ts)
   version   String
   choices   Json
   ip        String?
@@ -321,6 +321,8 @@ model Order {
   marketingOptIn        Boolean            @default(false)
   couponCode            String?
   couponSnapshot        Json? // {code,type,percentOff,amountOffCents,discountCents}
+  legalAcceptance       Json? // Phase 9 step 4: terms/withdrawal pages in force at placement {acceptedAt,pages:[{key,path,slug,updatedAt,sha256}]}
+  invoiceSnapshot       Json? // Phase 9 step 4: seller, buyer and footer frozen when the invoice is issued; never rewritten
   timeline              Json               @default("[]")
   items                 OrderItem[]
   redemptions           CouponRedemption[]

@@ -19,3 +19,7 @@ export type ReasonCode = (typeof topicReasons)[TopicCode][number];
 /** Adverse-event reporter kinds (§12.6); pure constants shared with the client form. */
 export const ADVERSE_REPORTER_TYPES = ["USER", "CARER", "PROFESSIONAL"] as const;
 export type AdverseReporterType = (typeof ADVERSE_REPORTER_TYPES)[number];
+
+/** Withdrawal form answer to "have the goods arrived?" (Annex I(B) ordered on / received on). */
+export const WITHDRAWAL_DELIVERY_STATUSES = ["received", "not_received"] as const;
+export type WithdrawalDeliveryStatus = (typeof WITHDRAWAL_DELIVERY_STATUSES)[number];

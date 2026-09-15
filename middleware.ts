@@ -16,7 +16,9 @@ import {
 const withAuth = NextAuth(authConfig).auth;
 
 /** Always reachable — even while the store is locked. */
-const ALLOWED_WHEN_LOCKED = ["/vzdrzevanje", "/prijava", "/admin"];
+// Consent confirmation and withdrawal stay reachable while the store is locked:
+// a person must be able to confirm or withdraw a subscription at any time.
+const ALLOWED_WHEN_LOCKED = ["/vzdrzevanje", "/prijava", "/admin", "/potrdi", "/potrdi-zalogo", "/odjava-novice", "/odjava-zaloga"];
 
 /**
  * Per page request (Node.js runtime, Prisma lookup):

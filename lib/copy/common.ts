@@ -18,6 +18,14 @@ export const common = {
     next: "Naslednji",
     submit: "Potrdi",
     loading: "Nalaganje …",
+    /** Screen-reader hint on links that open in a new tab. */
+    opensInNewTab: "(odpre se v novem zavihku)",
+  },
+  /** Lazy Turnstile on the capture forms (useLazyChallenge). */
+  challenge: {
+    waiting: "Preverjamo, da niste robot …",
+    unavailable:
+      "Preverjanja, da niste robot, ni bilo mogoče dokončati. Preverite povezavo ali izklopite blokiranje vsebin in poskusite znova.",
   },
   footer: {
     legal: "Pravno",

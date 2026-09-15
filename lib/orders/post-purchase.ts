@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { marketingVersion, recordConsent } from "@/lib/consent-log";
 import { clearGuestCart, getCartLines } from "@/lib/cart/server";
 import { issueAuthToken } from "@/lib/auth-tokens";
 import { sendVerifyAccountEmail } from "@/lib/email/mailer";
@@ -12,6 +13,19 @@ import { cartDigest } from "./access-token";
 const paidStatuses = ["PAID", "PROCESSING", "SHIPPED", "DELIVERED"] as const;
 const orderNumberSchema = z.string().min(1).max(80);
 const claimSchema = z.object({ orderNumber: orderNumberSchema, password: z.string().min(8).max(72) });
+
+type SubscriberReader = Pick<Prisma.TransactionClient, "subscriber">;
+
+/**
+ * The newsletter consent a purchaser account may carry. Order.marketingOptIn
+ * records only the request made on the checkout box; the consent itself is
+ * the double opt-in, so the account opts in only while a CONFIRMED Subscriber
+ * exists for the address. A pending or withdrawn subscription yields false.
+ */
+async function confirmedSubscription(client: SubscriberReader, email: string) {
+  const subscriber = await client.subscriber.findUnique({ where: { email }, select: { id: true, status: true } });
+  return { subscriber, confirmed: subscriber?.status === "CONFIRMED" };
+}
 
 /** A purchaser receipt authorizes creating a new account, never taking over one. */
 export async function createPurchaserAccount(input: unknown): Promise<{ ok: boolean; error?: string }> {
@@ -26,18 +40,36 @@ export async function createPurchaserAccount(input: unknown): Promise<{ ok: bool
     let userId = order.userId;
     if (userId) {
       // Retry an interrupted verification send only for the account this order
-      // already owns. Do not change its password, email, or marketing choices.
+      // already owns. Do not change its password or email.
       const linked = await db.user.findUnique({ where: { id: userId } });
       if (!linked || linked.email.toLowerCase() !== email || linked.emailVerified) return { ok: false, error: "email_taken" };
+      // The activation snapshot is read from this row: a subscription withdrawn (or never confirmed) since the
+      // account was created must not come back on verification. The flag is only ever lowered here, and logged.
+      if (linked.marketingOptIn) {
+        await db.$transaction(async (tx) => {
+          const { subscriber, confirmed } = await confirmedSubscription(tx, email);
+          if (confirmed) return;
+          const lowered = await tx.user.updateMany({ where: { id: linked.id, emailVerified: null, marketingOptIn: true }, data: { marketingOptIn: false } });
+          if (lowered.count !== 1) return;
+          await recordConsent(tx, {
+            userId: linked.id, kind: "marketing-register", version: marketingVersion("marketing-checkout"),
+            choices: {
+              marketing: false, previous: true, source: "post-purchase-resend", orderNumber: order.number,
+              subscriberStatus: subscriber?.status ?? "none", ...(subscriber ? { subscriberId: subscriber.id } : {}),
+            },
+          });
+        });
+      }
     } else {
       if (await db.user.findUnique({ where: { email } })) return { ok: false, error: "email_taken" };
       const passwordHash = await bcrypt.hash(parsed.data.password, 10);
       userId = await db.$transaction(async (tx) => {
+        const { subscriber, confirmed } = await confirmedSubscription(tx, email);
         const user = await tx.user.create({
           data: {
             email, passwordHash, role: "CUSTOMER",
             name: (order.shippingAddress as { fullName?: string } | null)?.fullName ?? null,
-            marketingOptIn: order.marketingOptIn,
+            marketingOptIn: confirmed,
           },
         });
         const claimed = await tx.order.updateMany({
@@ -45,10 +77,13 @@ export async function createPurchaserAccount(input: unknown): Promise<{ ok: bool
           data: { userId: user.id },
         });
         if (claimed.count !== 1) throw new Error("order_already_claimed");
-        await tx.consentLog.create({
-          data: {
-            userId: user.id, kind: "marketing-register", version: "1",
-            choices: { marketing: order.marketingOptIn, source: "post-purchase", orderNumber: order.number },
+        // The request was made on the checkout box, so the row carries that wording's version; the recorded
+        // value is the confirmed double opt-in, with the box's request kept beside it.
+        await recordConsent(tx, {
+          userId: user.id, kind: "marketing-register", version: marketingVersion("marketing-checkout"),
+          choices: {
+            marketing: confirmed, requested: order.marketingOptIn, source: "post-purchase", orderNumber: order.number,
+            subscriberStatus: subscriber?.status ?? "none", ...(subscriber ? { subscriberId: subscriber.id } : {}),
           },
         });
         return user.id;
@@ -58,7 +93,8 @@ export async function createPurchaserAccount(input: unknown): Promise<{ ok: bool
     await sendVerifyAccountEmail(email, token);
     return { ok: true };
   } catch (error) {
-    console.error("post-purchase account activation failed", error);
+    // SMTP errors can quote the recipient address: log the error class only.
+    console.error("post-purchase account activation failed", error instanceof Error ? error.name : "unknown");
     return { ok: false, error: "account_failed" };
   }
 }

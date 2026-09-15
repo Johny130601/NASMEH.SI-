@@ -183,7 +183,7 @@ export async function refundOrder(orderId: string, request: RefundRequest): Prom
   }, TX);
 
   if (applied.armed > 0) {
-    try { await sendPendingRestockAlerts(); } catch (error) { console.error("Restock alerts remain queued", error); }
+    try { await sendPendingRestockAlerts(); } catch (error) { console.error("Restock alerts remain queued", error instanceof Error ? error.name : "unknown"); }
   }
   await notifyOrderStatus(orderId, applied.status === "CANCELLED" ? "cancelled" : "refunded", { amountCents: plan.amountCents });
   return { ok: true, refundId: refund.id, amountCents: plan.amountCents, full: applied.full, status: applied.status };

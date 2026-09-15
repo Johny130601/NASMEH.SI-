@@ -3,7 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePagePermission } from "@/lib/admin/access";
 import { loadPage } from "@/lib/admin/cms";
+import { protectedPageSlugs } from "@/lib/admin/cms-schemas";
 import { admin as copy } from "@/lib/copy";
+import { getLegalLinks } from "@/lib/settings";
 import { PageEditor } from "@/components/admin/PageEditor";
 
 export const metadata: Metadata = { title: copy.content.pages.title, robots: { index: false, follow: false } };
@@ -12,8 +14,10 @@ export const metadata: Metadata = { title: copy.content.pages.title, robots: { i
 export default async function AdminPageEditorPage({ params }: { params: Promise<{ id: string }> }) {
   await requirePagePermission("content:manage");
   const { id } = await params;
-  const page = await loadPage(id);
+  const [page, legalLinks] = await Promise.all([loadPage(id), getLegalLinks()]);
   if (!page) notFound();
+  // The editor mirrors the actions' guard; savePageAction and deletePageAction re-check it.
+  const locked = protectedPageSlugs(Object.values(legalLinks)).has(page.slug);
   const c = copy.content.pages.editor;
   return (
     <section className="mx-auto max-w-(--container-wide)" data-admin-page={page.slug}>
@@ -25,6 +29,7 @@ export default async function AdminPageEditorPage({ params }: { params: Promise<
       <div className="mt-6 grid gap-4 xl:grid-cols-[3fr_2fr]">
         <PageEditor
           pageId={page.id}
+          locked={locked}
           initial={{ title: page.title, slug: page.slug, template: page.template, body: page.body, seoTitle: page.seoTitle ?? "", seoDescription: page.seoDescription ?? "", published: page.published, reviewed: page.reviewed }}
         />
         <section className="rounded-card border border-light-2 bg-white p-5" data-page-preview>

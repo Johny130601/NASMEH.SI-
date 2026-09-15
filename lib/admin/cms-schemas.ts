@@ -18,10 +18,25 @@ export const homeSectionsSchema = z.array(z.object({ id: z.enum(HOME_SECTION_IDS
   .refine((sections) => new Set(sections.map((section) => section.id)).size === HOME_SECTION_IDS.length, { message: "sections" });
 export type HomeSectionsInput = z.input<typeof homeSectionsSchema>;
 
+/** Hero fields HeroSection renders as visible text; a claim can sit in any of them. */
+export const HERO_CLAIM_FIELDS = ["kicker", "title", "subtitle", "ctaLabel", "promoOverlayText"] as const;
+
+/**
+ * A `*` or `^` claim marker in any visible hero text has nothing to resolve to without a footnote
+ * (§12.6 claims discipline). Media paths, links and the image alt are not checked.
+ */
+export function heroClaimLacksFootnote(
+  hero: Partial<Record<(typeof HERO_CLAIM_FIELDS)[number] | "footnote", string | null>>,
+): boolean {
+  return HERO_CLAIM_FIELDS.some((key) => /[*^]/.test(hero[key] ?? "")) && !(hero.footnote ?? "").trim();
+}
+
 export const heroSchema = z.object({
   kicker: text(40),
   title: required(120),
   subtitle: text(400),
+  /** Plain-text qualifier rendered as small live text under the subtitle; optional unless a visible hero text carries a claim marker. */
+  footnote: text(300).default(""),
   ctaLabel: required(40),
   ctaHref: linkSchema,
   videoDesktop: optionalMedia,
@@ -30,7 +45,7 @@ export const heroSchema = z.object({
   imageAlt: text(200),
   promoOverlayText: text(120),
   promoOverlayHref: optionalLink,
-});
+}).refine((hero) => !heroClaimLacksFootnote(hero), { message: "footnote", path: ["footnote"] });
 export type HeroInput = z.input<typeof heroSchema>;
 
 export const bundleBannerSchema = z.object({ title: required(120), cta: required(40), href: linkSchema });
@@ -91,7 +106,7 @@ export const CONTENT_TEMPLATES = ["DEFAULT", "LEGAL", "CONTACT", "LANDING"] as c
 /** First path segments owned by code (storefront routes, redirects, system paths); a page may not take them. */
 export const RESERVED_SLUGS = new Set([
   "admin", "api", "uploads", "vzdrzevanje", "sitemap.xml", "robots.txt", "_next", "favicon.ico",
-  "cart", "checkout", "dostava", "iskanje", "izdelek", "koda", "kontakt", "o-nas", "oceni", "odjava-zaloga", "odstop-od-pogodbe",
+  "cart", "checkout", "dostava", "iskanje", "izdelek", "koda", "kontakt", "o-nas", "oceni", "odjava-novice", "odjava-zaloga", "odstop-od-pogodbe",
   "paketi", "politika-piskotkov", "pomoc", "ponastavi-geslo", "potrdi", "potrdi-racun", "potrdi-zalogo", "potrditev", "pozabljeno-geslo",
   "prijava", "prijava-nezelenega-ucinka", "racun", "razisli", "registracija", "reklamacije", "sledi", "trgovina",
 ]);
@@ -103,7 +118,32 @@ export function isReservedSlug(slug: string): boolean {
   return RESERVED_SLUGS.has(slug) && !SHADOWED_SLUGS.has(slug);
 }
 
-export const pageSlugSchema = z.string().trim().toLowerCase().min(2).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const pageSlugSchema = z.string().trim().toLowerCase().min(2).max(80).regex(SLUG_PATTERN);
+
+/** Legal pages the footer menu, the checkout and the form privacy notices link to by their fixed slug. */
+export const LEGAL_PAGE_SLUGS = new Set(["pogoji-poslovanja", "politika-zasebnosti", "garancija-vracila-denarja"]);
+
+/** The page slug a same-site link names (`/pogoji-poslovanja?e2e=1#top` → `pogoji-poslovanja`); null when no single-segment page can serve it. */
+export function linkedPageSlug(href: string): string | null {
+  const [path] = href.trim().split(/[?#]/, 1);
+  const slug = path.startsWith("/") ? path.slice(1).replace(/\/+$/, "") : "";
+  return SLUG_PATTERN.test(slug) ? slug : null;
+}
+
+/**
+ * Pages that can be neither deleted nor given another slug: the shadowed pages, the fixed legal pages and every
+ * page a `legal.links` value points at. Renaming one would 404 the static route and every link to it, and a
+ * renamed shadowed page would drop out of this set and become deletable.
+ */
+export function protectedPageSlugs(legalLinkHrefs: Iterable<string>): Set<string> {
+  const slugs = new Set([...SHADOWED_SLUGS, ...LEGAL_PAGE_SLUGS]);
+  for (const href of legalLinkHrefs) {
+    const slug = linkedPageSlug(href);
+    if (slug) slugs.add(slug);
+  }
+  return slugs;
+}
 
 export const contentPageSchema = z.object({
   title: required(160),

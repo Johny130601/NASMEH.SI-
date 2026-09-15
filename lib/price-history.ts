@@ -4,8 +4,8 @@ import type { Prisma, PrismaClient } from "@prisma/client";
  * Omnibus (ZVPot) price-history path (AGENTS §5.6, §8.9):
  * EVERY Variant.priceCents change must go through here so a PriceHistory
  * row is appended in the SAME transaction as the price update.
- * The table is append-only — the "Najnižja cena v zadnjih 30 dneh" line is
- * computed from it.
+ * The table is append-only — the announced reduction (struck prior price and
+ * the "Najnižja cena v 30 dneh pred znižanjem" line) is computed from it.
  */
 
 export interface PriceChangeInput {
@@ -17,7 +17,13 @@ export interface PriceChangeInput {
 /**
  * Applies a price change inside an existing transaction: records the NEW
  * price in PriceHistory and updates the Variant in the same tx.
- * No-op (no history row) when the price is unchanged.
+ * No-op (no history row) when neither the price nor the compare-at changes.
+ * A compare-at-only change is recorded as well — it switches the reduction
+ * announcement on or off, which the audit trail keeps — and `priceReduction`
+ * (lib/pricing) merges rows that keep the price, so such a row never poses as
+ * a prior price. Switching the announcement on later than
+ * OMNIBUS_ANNOUNCEMENT_GRACE_HOURS after the price change (or on again after it
+ * was off) starts a new announcement, and the 30-day window is anchored there.
  */
 export async function changeVariantPriceInTx(
   tx: Prisma.TransactionClient,

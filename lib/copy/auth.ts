@@ -40,6 +40,9 @@ export const auth = {
     lastName: "Priimek",
     passwordLabel: "Geslo (vsaj 8 znakov)",
     marketing: "Želim prejemati e-novice in ponudbe (neobvezno).",
+    // Rendered as "<privacyLead> <link>privacyLink</link>." under the checkbox.
+    privacyLead: "Kako ravnamo z vašimi osebnimi podatki, pojasnjuje",
+    privacyLink: "politika zasebnosti",
     submit: "Ustvari račun",
     loginLink: "Že imate račun? Prijavite se",
     successTitle: "Skoraj gotovo!",

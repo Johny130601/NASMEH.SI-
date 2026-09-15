@@ -1,3 +1,5 @@
+import { legal } from "./legal";
+
 /** Checkout + orders/confirmation/lookup copy. */
 export const checkout = {
   title: "Blagajna",
@@ -10,6 +12,10 @@ export const checkout = {
   contact: {
     emailLabel: "E-pošta",
     accountHint: "imate račun? prijavite se",
+    /** Point-of-collection notice (GDPR Art. 13): the address is stored when the shopper continues to delivery. */
+    emailNotice: "E-poštni naslov uporabimo za izvedbo naročila in za nadaljevanje nedokončanega nakupa.",
+    privacyLead: "Več v",
+    privacyLink: "politiki zasebnosti",
     marketingOptIn: "Želim prejemati e-novice in ponudbe (neobvezno).",
     continue: "Naprej na dostavo",
   },
@@ -31,10 +37,6 @@ export const checkout = {
     stripe: "Kartica / Apple Pay / Google Pay",
     paypal: "PayPal",
     test: "Testno plačilo (e2e)",
-    legalNote: "Z oddajo naročila se strinjate s",
-    terms: "pogoji poslovanja",
-    and: "in",
-    withdrawal: "pravico do odstopa",
     continue: "Na pregled",
   },
   review: {
@@ -42,6 +44,21 @@ export const checkout = {
     contactLabel: "Kontakt",
     shippingLabel: "Dostava",
     paymentLabel: "Plačilo",
+    recapTitle: "Vaše naročilo",
+    /**
+     * Shown directly above the order button. Terms acceptance and the withdrawal
+     * notice are separate sentences: the statutory right is information, not a
+     * term the shopper agrees to. The exception is the shared Art. 16(e) phrase
+     * (legal.sealedGoodsException; D4 review pending). Order.legalAcceptance.noticeVersion
+     * fingerprints this text, so a wording change is visible per order.
+     */
+    legal: {
+      termsLead: "Z oddajo naročila se strinjate s",
+      termsLink: "pogoji poslovanja",
+      withdrawalLead: "Kot potrošnik imate",
+      withdrawalLink: "pravico do odstopa od pogodbe",
+      withdrawalTail: `v 14 dneh od prevzema blaga; odstop ni mogoč za ${legal.sealedGoodsException}.`,
+    },
     placeOrder: "Naročilo z obveznostjo plačila",
   },
   pay: {
@@ -106,7 +123,8 @@ export const orders = {
     summaryTitle: "Povzetek",
     totalLabel: "Skupaj",
     discountLabel: "Popust",
-    deliveryEstimate: "Predviden rok dostave: 2–4 delovni dni.",
+    /** The chosen method's estimate (shipping.methods); no line when the method is no longer configured. */
+    deliveryEstimate: (estimate: string) => `Predviden rok dostave: ${estimate}.`,
     trackingNote: "Ob odpošiljanju boste prejeli e-sporočilo s številko sledenja — pošiljko lahko spremljate na strani Sledi naročilu.",
     createAccountTitle: "Ustvarite račun za naslednjič",
     createAccountBody: "Shranite podatke in spremljajte naročila. Izberite geslo, nato potrdite svoj e-poštni naslov.",

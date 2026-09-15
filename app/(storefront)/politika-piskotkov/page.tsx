@@ -18,7 +18,7 @@ export async function generateMetadata(): Promise<Metadata> {
   });
 }
 
-/** Cookie-policy page: CMS body + LIVE cookie table (spec §3.4). */
+/** Cookie-policy page: CMS body + LIVE cookie table with each row's consent category (spec §3.4). */
 export default async function CookiePolicyPage() {
   const page = await db.contentPage.findFirst({
     where: { slug: SLUG, published: true },
@@ -46,7 +46,7 @@ export default async function CookiePolicyPage() {
 
       <h2 className="mt-12 text-2xl">{copy.policy.tableTitle}</h2>
       <div className="mt-6 overflow-x-auto rounded-card border border-light-2 bg-white">
-        <table className="w-full min-w-[36rem] text-left text-sm">
+        <table className="w-full min-w-[42rem] text-left text-sm">
           <thead>
             <tr className="border-b border-light-2 text-xs uppercase tracking-[0.1em] text-mid-2">
               {copy.policy.columns.map((column) => (
@@ -57,11 +57,12 @@ export default async function CookiePolicyPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-light-3">
-            {cookieRows.map((cookie) => (
-              <tr key={cookie.name} data-cookie-row={cookie.name}>
+            {cookieRows.map((cookie, index) => (
+              <tr key={`${index}-${cookie.name}`} data-cookie-row={cookie.name} data-cookie-category={cookie.category}>
                 <td className="px-4 py-3 font-medium text-dark-1">
                   {cookie.name}
                 </td>
+                <td className="px-4 py-3 text-mid-1">{copy.categories[cookie.category].label}</td>
                 <td className="px-4 py-3 text-mid-1">{cookie.provider}</td>
                 <td className="px-4 py-3 text-mid-1">{cookie.purpose}</td>
                 <td className="px-4 py-3 text-mid-1">{cookie.duration}</td>

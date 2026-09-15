@@ -24,6 +24,7 @@ function line(overrides: Partial<CouponLine> = {}): CouponLine {
     quantity: 1,
     priceCents: 3499,
     compareAtPriceCents: null,
+    reduced: false,
     vatRatePercent: 22,
     maxCartQuantity: 5,
     isBundle: false,
@@ -82,17 +83,56 @@ describe("PERCENT coupons", () => {
     } else throw new Error("expected ok");
   });
 
-  it("already-discounted (compareAt) lines are EXCLUDED (terms)", () => {
+  it("already-reduced lines (history-backed reduction shown in the shop) are EXCLUDED (terms)", () => {
     const result = evaluateCoupon(
       coupon(),
       [
         line({ priceCents: 10000 }),
-        line({ variantId: "v2", priceCents: 1999, compareAtPriceCents: 2499 }),
+        line({ variantId: "v2", priceCents: 1999, compareAtPriceCents: 2499, reduced: true }),
       ],
       CTX,
       NOW,
     );
-    if (result.ok) expect(result.decision.discountCents).toBe(1000);
+    if (result.ok) {
+      expect(result.decision.discountCents).toBe(1000);
+      expect(result.decision.discountedVariantIds).toEqual(["v1"]);
+    } else throw new Error("expected ok");
+  });
+
+  it("a compare-at WITHOUT a shown reduction does not exclude the line (plain price in the shop)", () => {
+    // e.g. a variant created with a compare-at, or one switched on long after the price change
+    const result = evaluateCoupon(
+      coupon(),
+      [line({ variantId: "v2", priceCents: 2000, compareAtPriceCents: 2499, reduced: false })],
+      CTX,
+      NOW,
+    );
+    expect(result).toEqual({
+      ok: true,
+      decision: { discountCents: 200, freeShipping: false, discountedVariantIds: ["v2"] },
+    });
+  });
+
+  it("the only line shown as reduced → not_eligible for PERCENT, FIXED and FIXED_PRODUCT", () => {
+    const reducedOnly = [line({ priceCents: 1999, compareAtPriceCents: 2499, reduced: true })];
+    for (const overrides of [
+      {},
+      { type: "FIXED" as const, percentOff: null, amountOffCents: 500 },
+      { type: "FIXED_PRODUCT" as const, percentOff: null, amountOffCents: 500 },
+    ]) {
+      expect(evaluateCoupon(coupon(overrides), reducedOnly, CTX, NOW)).toEqual({ ok: false, rejection: "not_eligible" });
+    }
+  });
+
+  it("the reduced flag decides even when compare-at and price disagree with it", () => {
+    // the engine does not second-guess the injected Omnibus decision from raw compare-at data
+    const result = evaluateCoupon(
+      coupon(),
+      [line({ priceCents: 10000, compareAtPriceCents: null, reduced: true }), line({ variantId: "v2", priceCents: 5000 })],
+      CTX,
+      NOW,
+    );
+    if (result.ok) expect(result.decision).toMatchObject({ discountCents: 500, discountedVariantIds: ["v2"] });
     else throw new Error("expected ok");
   });
 

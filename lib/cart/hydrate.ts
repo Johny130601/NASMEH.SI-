@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import type { CartLine } from "./codec";
 import type { CartLineInput } from "@/lib/promo";
 import { variantIsPurchasable } from "./visibility";
+import { withReducedFlags } from "@/lib/promo/reductions";
 
 export interface HydratedLine extends CartLineInput {
   productSlug: string;
@@ -14,7 +15,9 @@ export interface HydratedLine extends CartLineInput {
 /**
  * Server-side line hydration (AGENTS §5.2): cookie/DB lines (ids+qty only)
  * become full display+pricing rows from the DATABASE — prices never come
- * from the client.
+ * from the client. Each line carries `reduced` (the history-backed Omnibus
+ * reduction the storefront shows, one batched query) so the coupon terms
+ * exclude the same lines on the cart, the checkout quote and order creation.
  */
 export async function hydrateCartLines(lines: CartLine[]): Promise<HydratedLine[]> {
   if (lines.length === 0) return [];
@@ -37,7 +40,7 @@ export async function hydrateCartLines(lines: CartLine[]): Promise<HydratedLine[
   });
   const byId = new Map(variants.map((variant) => [variant.id, variant]));
 
-  return lines.flatMap((line) => {
+  const built = lines.flatMap((line): Array<Omit<HydratedLine, "reduced">> => {
     const variant = byId.get(line.variantId);
     // drop lines that are no longer purchasable (deleted, drafted, deal SKU)
     if (!variant || !variantIsPurchasable(variant.product)) return [];
@@ -83,4 +86,5 @@ export async function hydrateCartLines(lines: CartLine[]): Promise<HydratedLine[
       },
     ];
   });
+  return withReducedFlags(built);
 }

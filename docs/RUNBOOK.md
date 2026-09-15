@@ -80,6 +80,18 @@ To promote a restored stack after a disaster: stop the live project (`docker com
 - **Logs:** both containers log to Docker's `json-file` driver with rotation (`max-size 10m`, `max-file 5` — at most 50 MB per container). `docker compose -f docker-compose.yml logs --tail 200 app`. The app's own lines worth grepping: `[csp]` (policy reports, Phase 9 step 1), `[auth]`, `[jobs]`, `[entrypoint]`.
 - **Error tracking:** no third-party tracker before launch (no PII leaves the host); the CSP report sink and the server log are the sources. Revisit after go-live (Phase 8 growth backlog).
 
+## Data-subject requests (GDPR)
+
+Requests arrive by e-mail at the support mailbox (`support.contact`); the privacy policy promises an answer within one month (GDPR Art. 12(3)). Never act on a request from an address the store does not know: reply to the address on file (account, subscriber or order e-mail) and ask the person to confirm from it.
+
+1. **Find the person** in `/admin/stranke` (search by e-mail). Guests, newsletter-only and ticket-only subjects resolve through the guest page (`/admin/stranke/gost?email=…`). The next two steps need `customers:gdpr` (OWNER, SUPPORT).
+2. **Access and portability (Art. 15, 20):** the export link on the customer page downloads one JSON document: profile, addresses, cart, orders, reviews, tickets (attachment metadata), subscriptions, back-in-stock rows, checkout captures, coupon redemptions and consent records. Send it to the confirmed address.
+3. **Erasure (Art. 17):** the anonymise action replaces e-mail, name, password, addresses, tokens, cart, subscriptions and checkout captures, scrubs ticket deliveries and notes that quote the address, appends a marketing withdrawal when the person was opted in, and keeps what the law or proof needs: order financials, the issued invoice snapshot, the accepted legal texts, consent records and review content. Settle open orders (unpaid, unshipped, refund pending) first; the action cannot be undone.
+4. **Rectification (Art. 16):** no staff tool at P1. The customer changes the address book in the account; anything else is fixed with a database console and noted in the ticket.
+5. **Record** the request, the identity check and the completion date in a support ticket (create one from the e-mail when none exists).
+
+Backups keep erased data for up to 14 daily and 8 weekly copies (see Backups); after a restore, re-apply every anonymisation done since the backup was taken. `scripts/consent-audit.sql` (read-only) checks the consent log on demand.
+
 ## Incidents
 
 | Symptom | Check | Action |

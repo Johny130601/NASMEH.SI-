@@ -115,7 +115,8 @@ export async function resendConfirmationAction(input: { orderId: string }): Prom
   if (!parsed.success) return { ok: false, message: "invalid" };
   const order = await db.order.findUnique({ where: { id: parsed.data.orderId } });
   if (!order) return { ok: false, message: "not_found" };
-  if (!order.paidAt || !order.stockDeducted || order.refundRequired || ["CANCELLED", "REFUNDED"].includes(order.status)) {
+  // An anonymised order has no recipient left: delivery would only clear the flag again.
+  if (order.anonymizedAt || !order.paidAt || !order.stockDeducted || order.refundRequired || ["CANCELLED", "REFUNDED"].includes(order.status)) {
     return { ok: false, message: "invalid_transition" };
   }
   await db.order.update({
@@ -133,7 +134,7 @@ export async function resendShippedAction(input: { orderId: string }): Promise<O
   if (!parsed.success) return { ok: false, message: "invalid" };
   const order = await db.order.findUnique({ where: { id: parsed.data.orderId } });
   if (!order) return { ok: false, message: "not_found" };
-  if (!order.trackingNumber || !["SHIPPED", "DELIVERED"].includes(order.status)) return { ok: false, message: "invalid_transition" };
+  if (order.anonymizedAt || !order.trackingNumber || !["SHIPPED", "DELIVERED"].includes(order.status)) return { ok: false, message: "invalid_transition" };
   await db.order.update({
     where: { id: order.id },
     data: { shippedEmailPending: true, shippedEmailSentAt: null, shippedEmailLeaseUntil: null, shippedEmailLastError: null },

@@ -13,24 +13,21 @@ import { AddToCartButton } from "./AddToCartButton";
 
 /**
  * Universal product card (§5): promo pill badge → packshot tile → title →
- * rating → price (compare-at + Omnibus when discounted) → unit price →
- * swatches "+N" → full-width CTA by state.
+ * rating → price (Omnibus prior price struck through + its 30-day line, only
+ * when `product.reduction` is set) → unit price → swatches "+N" → full-width
+ * CTA by state.
  * ATC choice (documented): links to PDP until Phase 3 wires the cart.
  */
 export function CatalogCard({
   product,
-  omnibusLowestCents = null,
   testToken = null,
 }: {
   product: CatalogProduct;
-  omnibusLowestCents?: number | null;
   testToken?: string | null;
 }) {
   const href = `/izdelek/${product.slug}`;
   const soldOut = product.soldOut;
-  const discounted =
-    product.compareAtPriceCents !== null &&
-    product.compareAtPriceCents > product.priceCents;
+  const reduction = product.reduction;
   const ctaLabel = soldOut
     ? catalog.card.notifyMe
     : product.isBundle
@@ -70,19 +67,17 @@ export function CatalogCard({
       <RatingStars rating={product.rating} className="mt-1" />
 
       <p className="mt-2 text-brand">
-        {discounted ? (
-          <>
-            <span className="mr-2 text-mid-2 line-through">
-              {formatEUR(product.compareAtPriceCents!)}
-            </span>
-          </>
+        {reduction ? (
+          <span className="mr-2 text-mid-2 line-through">
+            {formatEUR(reduction.priorPriceCents)}
+          </span>
         ) : null}
         {formatEUR(product.priceCents)}{" "}
         <span className="text-xs text-mid-2">{home.vatIncluded}</span>
       </p>
-      {discounted && omnibusLowestCents !== null ? (
-        <p className="mt-0.5 text-xs text-mid-2">
-          {pdp.buyBox.omnibusPrefix}: {formatEUR(omnibusLowestCents)}
+      {reduction ? (
+        <p className="mt-0.5 text-xs text-mid-2" data-omnibus-line>
+          {pdp.buyBox.omnibusPrefix}: {formatEUR(reduction.priorPriceCents)}
         </p>
       ) : null}
 

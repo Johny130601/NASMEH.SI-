@@ -5,8 +5,12 @@ import { returns } from "@/lib/copy/returns";
 
 const copy = returns.withdrawalPdf;
 
-/** Model withdrawal form (CRD Annex I(B)) with the seller block prefilled. */
-export async function generateWithdrawalFormPdf(company: CompanySetting | null): Promise<Buffer> {
+/**
+ * Model withdrawal form (CRD Annex I(B)) with the seller block prefilled. The
+ * seller is required: a form without the trader's name, address and e-mail is
+ * not the model form, so callers refuse to serve one when the Setting is missing.
+ */
+export async function generateWithdrawalFormPdf(company: CompanySetting): Promise<Buffer> {
   const doc = new PDFDocument({
     size: "A4",
     margin: 50,
@@ -27,13 +31,10 @@ export async function generateWithdrawalFormPdf(company: CompanySetting | null):
 
   doc.moveDown();
   doc.fontSize(10).text(`${copy.to}:`);
-  if (company) {
-    doc.text(company.name);
-    doc.text(company.address);
-    doc.text(company.email);
-  } else {
-    doc.text(copy.toPlaceholder);
-  }
+  doc.text(company.name);
+  doc.text(company.address);
+  doc.text(company.email);
+  if (company.phone?.trim()) doc.text(company.phone.trim());
 
   doc.moveDown();
   for (const line of copy.lines) {

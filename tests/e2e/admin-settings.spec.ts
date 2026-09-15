@@ -34,12 +34,20 @@ async function staff(role: "OWNER" | "MANAGER", key: string) {
   return { ...user, secret: totp.secret };
 }
 
+const ISSUED_AT = new Date("2026-09-01T10:00:00Z");
+
 async function shippedOrder(key: string) {
   const product = await prisma.product.findUniqueOrThrow({ where: { slug: "belilni-trakci-za-zobe" }, include: { variants: true } });
   const number = `NS-2026-7${randomInt(1000, 9999)}`;
   return prisma.order.create({ data: {
     number, email: `settings-kupec-${key}@test.si`, status: "SHIPPED", paidAt: new Date(), stockDeducted: true, paymentProvider: "test",
-    stripePaymentIntentId: `test_pi_${number}`, invoiceNumber: number, invoiceIssuedAt: new Date(), shippingMethod: "GLS — paketna dostava",
+    stripePaymentIntentId: `test_pi_${number}`, invoiceNumber: number, invoiceIssuedAt: ISSUED_AT, shippingMethod: "GLS — paketna dostava",
+    // The invoice as issued (Phase 9 step 4): later company edits must not reach it.
+    invoiceSnapshot: {
+      issuedAt: ISSUED_AT.toISOString(), footer: null,
+      seller: { name: "Izdajatelj ob izdaji d.o.o.", address: "Testna 1, 1000 Ljubljana", registrationNumber: "1234567000", vatId: "SI12345678", email: "info@nasmeh.si" },
+      buyer: { name: "Nastavitve Test", email: `settings-kupec-${key}@test.si`, address: { fullName: "Nastavitve Test", line1: "Testna 5", postalCode: "1000", city: "Ljubljana", country: "SI" } },
+    },
     carrier: "GLS", trackingNumber: `E2E${key.toUpperCase()}`, shippedAt: new Date(),
     shippingCents: 490, subtotalCents: 3499, totalCents: 3989, vatCents: 719, vatRatePercent: 22,
     shippingAddress: { fullName: "Nastavitve Test", line1: "Testna 5", postalCode: "1000", city: "Ljubljana", country: "SI" },
@@ -98,7 +106,14 @@ test("owner edits shipping, tax, marketing, consent, legal, maintenance and supp
     await page.goto("/admin/nastavitve/davki-racuni");
     await expect(page.locator("[data-provider-status='test']")).toHaveAttribute("data-provider-configured", "yes");
     await expect(page.locator("[data-provider-status='stripe']")).toHaveAttribute("data-provider-configured", "no");
+    // The seeded company still carries the G4 placeholders, and the screen says so.
+    if ((await prisma.setting.findUniqueOrThrow({ where: { key: "company" } }).then((row) => (row.value as { vatId: string }).vatId)) === "SI00000000") {
+      await expect(page.locator("[data-company-placeholders]")).toContainText("začasne vrednosti");
+    }
     await page.getByLabel("Naziv", { exact: true }).fill(`E2E podjetje ${key} d.o.o.`);
+    await page.getByLabel("Telefon (neobvezno)", { exact: true }).fill("telefon");
+    await saved(page, "company", "Preverite vnesene podatke.");
+    await page.getByLabel("Telefon (neobvezno)", { exact: true }).fill("+386 1 234 56 78");
     await saved(page, "company");
     await page.locator("[data-invoice-footer]").fill(`Opomba računa ${key}`);
     await saved(page, "invoice");
@@ -111,9 +126,13 @@ test("owner edits shipping, tax, marketing, consent, legal, maintenance and supp
     expect(await prisma.setting.findUniqueOrThrow({ where: { key: "invoice.footer" } }).then((row) => row.value)).toBe(`Opomba računa ${key}`);
     await front.goto("/");
     await expect(front.locator("footer")).toContainText(`E2E podjetje ${key} d.o.o.`);
+    await expect(front.locator("footer [data-company-phone]")).toHaveAttribute("href", "tel:+38612345678");
     const invoice = await page.request.get(`/racun/narocilo/${order.number}/racun.pdf`);
     expect(invoice.status()).toBe(200);
     expect(invoice.headers()["content-type"]).toBe("application/pdf");
+    // The already-issued invoice keeps the seller it was issued with; only new invoices pick up the edit.
+    const issued = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, select: { invoiceSnapshot: true } });
+    expect(issued.invoiceSnapshot).toMatchObject({ seller: { name: "Izdajatelj ob izdaji d.o.o." }, footer: null });
 
     // Marketing: SEO title template and the index switch; Search Console token.
     await page.goto("/admin/nastavitve/trzenje");
@@ -170,12 +189,15 @@ test("owner edits shipping, tax, marketing, consent, legal, maintenance and supp
       await visitorContext.close();
     }
 
-    // Legal links: the checkout payment step names the configured terms page.
+    // Legal links: the contact step links the privacy policy at the e-mail field; the review step names the
+    // configured terms page directly above the order button, and the payment step no longer carries the note.
     await page.goto("/admin/nastavitve/trzenje");
     await page.getByLabel("Pogoji poslovanja", { exact: true }).fill(`/pogoji-poslovanja?e2e=${key}`);
     await saved(page, "legal");
     await front.goto("/checkout");
     await dismissCookieBanner(front); // the version bump above re-opened the banner for this context
+    await expect(front.locator("[data-checkout-email-notice] [data-legal-privacy]")).toHaveAttribute("href", "/politika-zasebnosti");
+    await expect(front.locator("[data-checkout-email-notice] [data-legal-privacy]")).toHaveAttribute("target", "_blank");
     await front.getByLabel("E-pošta").fill(`settings-kupec-${key}@test.si`);
     await front.locator("[data-continue-contact]").click();
     await front.getByLabel("Ime in priimek").fill("Kupec Nastavitve");
@@ -184,6 +206,11 @@ test("owner edits shipping, tax, marketing, consent, legal, maintenance and supp
     await front.getByLabel("Kraj").fill("Ljubljana");
     await front.getByLabel("Poštna številka").fill("1000");
     await front.locator("[data-continue-shipping]").click();
+    await expect(front.locator("[data-continue-payment]")).toBeVisible();
+    await expect(front.locator("[data-legal-terms]")).toHaveCount(0);
+    await front.locator("[data-continue-payment]").click();
+    await expect(front.locator("[data-legal-terms]")).toHaveCount(1);
+    await expect(front.locator("[data-legal-withdrawal]")).toHaveCount(1);
     await expect(front.locator("[data-legal-terms]")).toHaveAttribute("href", `/pogoji-poslovanja?e2e=${key}`);
     await expect(front.locator("[data-legal-withdrawal]")).toHaveAttribute("href", "/odstop-od-pogodbe");
 

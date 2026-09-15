@@ -14,6 +14,13 @@ export interface CartLineInput {
   quantity: number;
   priceCents: number;
   compareAtPriceCents: number | null;
+  /**
+   * The storefront shows this line as reduced: a history-backed Omnibus
+   * reduction (`getPriceReductions` in lib/omnibus) exists for the variant.
+   * Computed by the async layer that builds the lines; the coupon terms
+   * exclude exactly these lines, never a bare compare-at.
+   */
+  reduced: boolean;
   vatRatePercent: number;
   maxCartQuantity: number;
   isBundle: boolean;

@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { expect, test as base, type Page } from "@playwright/test";
 import { contact } from "@/lib/copy/contact";
 import { TOPIC_CODES, topicReasons, type TopicCode } from "@/lib/support/topics";
+import { PRIVACY_NOTICE_VERSIONS } from "@/lib/support/validation";
 import { prisma, TURNSTILE_TEST_TOKEN, waitForMailMessage } from "./helpers";
 
 const PASSWORD = "ContactAcceptance123!";
@@ -130,14 +131,20 @@ test("all nine guided topics persist basic requests, route staff mail, acknowled
     await chooseTopic(page, topic);
     const reason = topicReasons[topic].at(-1)!;
     if (topicReasons[topic].length > 1) await page.getByLabel(contact.reasonLabel, { exact: true }).selectOption(reason);
+    // Phase 9 step 4: the adverse topic and the withdrawal reason point to the structured forms; the generic path still submits.
+    const structured = page.locator("[data-contact-structured-form]");
+    if (topic === "ADVERSE") await expect(structured.locator("a")).toHaveAttribute("href", "/prijava-nezelenega-ucinka");
+    else if (topic === "RETURN" && reason === "WITHDRAWAL") await expect(structured.locator("a")).toHaveAttribute("href", "/odstop-od-pogodbe");
+    else await expect(structured).toHaveCount(0);
+    await expect(page.locator("[data-contact-form]").getByRole("link", { name: contact.message.privacyLink })).toHaveAttribute("href", "/politika-zasebnosti");
     const message = `Sporočilo za temo ${topic}, preizkus ${fixture.id}.`;
     await fillMessage(page, email, message);
     const reference = await submit(page);
     expect(reference).toMatch(/^NP-[A-F0-9]{12}$/);
     const ticket = await prisma.ticket.findUniqueOrThrow({ where: { reference }, include: { deliveries: true, attachments: true } });
-    expect(ticket).toMatchObject({ email, topic, reason, message, name: "Živa Ščuk", userId: null, orderId: null, orderNumber: null, status: "OPEN", privacyVersion: "contact-v1" });
+    expect(ticket).toMatchObject({ email, topic, reason, message, name: "Živa Ščuk", userId: null, orderId: null, orderNumber: null, status: "OPEN", privacyVersion: PRIVACY_NOTICE_VERSIONS.contact });
     expect(ticket.privacyAcceptedAt).toBeInstanceOf(Date);
-    // WRONG/DAMAGED also accept an untouched optional file input.
+    // WRONG/DAMAGED/RETURN also accept an untouched optional file input.
     expect(ticket.attachments).toHaveLength(0);
     expect(ticket.deliveries).toHaveLength(2);
     expect(ticket.deliveries.find(delivery => delivery.kind === "STAFF")?.recipient).toBe(topic === "ADVERSE" ? fixture.complianceEmail : fixture.supportEmail);

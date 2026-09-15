@@ -14,6 +14,10 @@ export const backInStock = {
   botCheckFailed: "Preverjanje ni uspelo. Poskusite znova.",
   genericError: "Prijava ni uspela. Poskusite znova kasneje.",
   confirm: {
+    title: "Potrdite obvestilo o zalogi",
+    body: "Za aktivacijo obvestila o zalogi kliknite spodnji gumb.",
+    submit: "Aktiviraj obvestilo",
+    genericError: "Potrditev ni uspela. Poskusite znova.",
     titleOk: "Obvestilo je aktivno",
     bodyOk: "Hvala! Ko bo izdelek spet na zalogi, vas obvestimo po e-pošti.",
     titleInvalid: "Povezava ni veljavna",
@@ -21,6 +25,10 @@ export const backInStock = {
     cta: "Na domačo stran",
   },
   unsubscribe: {
+    title: "Odjava od obvestila o zalogi",
+    body: "Potrdite, da obvestila o zalogi za ta izdelek ne želite več prejemati.",
+    submit: "Odjavi me",
+    genericError: "Odjava ni uspela. Poskusite znova.",
     titleOk: "Odjava je uspela",
     bodyOk: "Obvestil o zalogi za ta izdelek ne boste več prejemali.",
     titleInvalid: "Povezava ni veljavna",

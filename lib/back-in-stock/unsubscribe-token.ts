@@ -1,11 +1,16 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 /**
- * One-click unsubscribe links for restock alerts: `<subscriptionId>.<hmac>`.
+ * One-click unsubscribe links for restock alerts: `<subscriptionId>-<hmac>`.
  * The id is the only payload, so the link stays valid until the row is gone
  * and cannot be forged for another subscription. Tamper → null.
+ * New links use a hyphen: the middleware matcher skips dotted paths, and this
+ * route needs the per-request CSP nonce like every other page. Links mailed
+ * before the change carry `<id>.<hmac>` and keep verifying. The id is
+ * alphanumeric, so the first non-alphanumeric character is the separator.
  */
 
+const TOKEN_PATTERN = /^([a-z0-9]{20,40})([.-])([A-Za-z0-9_-]{43})$/i;
 const ID_PATTERN = /^[a-z0-9]{20,40}$/i;
 
 function sign(subscriptionId: string, secret: string): string {
@@ -14,16 +19,14 @@ function sign(subscriptionId: string, secret: string): string {
 
 export function signUnsubscribeToken(subscriptionId: string, secret: string): string {
   if (!ID_PATTERN.test(subscriptionId)) throw new Error("invalid subscription id");
-  return `${subscriptionId}.${sign(subscriptionId, secret)}`;
+  return `${subscriptionId}-${sign(subscriptionId, secret)}`;
 }
 
 export function verifyUnsubscribeToken(token: string | null | undefined, secret: string): string | null {
   if (!token || token.length > 128) return null;
-  const dot = token.indexOf(".");
-  if (dot <= 0) return null;
-  const id = token.slice(0, dot);
-  const signature = token.slice(dot + 1);
-  if (!ID_PATTERN.test(id) || !/^[A-Za-z0-9_-]{43}$/.test(signature)) return null;
+  const match = TOKEN_PATTERN.exec(token);
+  if (!match) return null;
+  const [, id, , signature] = match;
   const expected = sign(id, secret);
   if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
   return id;

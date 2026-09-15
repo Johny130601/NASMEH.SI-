@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { z } from "zod";
 import { requirePagePermission } from "@/lib/admin/access";
 import { CUSTOMER_SCAN_LIMIT, listCustomers, parseCustomerFilters } from "@/lib/admin/customers";
 import { formatEUR } from "@/lib/pricing";
@@ -16,7 +17,10 @@ function tri(value: boolean | null): string {
 /** /admin/stranke — accounts and guest purchasers (§14.8). */
 export default async function AdminCustomersPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requirePagePermission("customers:view");
-  const filters = parseCustomerFilters(await searchParams);
+  const query = await searchParams;
+  const filters = parseCustomerFilters(query);
+  // Set by the guest anonymisation, whose own page can no longer resolve the person.
+  const anonymised = z.literal("1").safeParse(query.anonimizirano).success;
   const result = await listCustomers(filters);
   const c = copy.customers.columns;
   const pageQuery = (page: number) => {
@@ -32,6 +36,7 @@ export default async function AdminCustomersPage({ searchParams }: { searchParam
   return (
     <section className="mx-auto max-w-(--container-wide)" data-admin-customers>
       <h1 className="text-[2rem]">{copy.customers.title}</h1>
+      {anonymised ? <p role="status" className="mt-3 rounded-card border border-light-2 bg-white px-4 py-3 text-sm text-mid-1" data-customer-anonymised-notice>{copy.customers.anonymisedNotice}</p> : null}
       <form method="get" className="mt-4 grid gap-3 rounded-card border border-light-2 bg-white p-4 md:grid-cols-5" aria-label={copy.common.apply}>
         <label className="flex flex-col gap-1 text-xs text-mid-1 md:col-span-2">
           {copy.customers.searchLabel}
@@ -53,6 +58,14 @@ export default async function AdminCustomersPage({ searchParams }: { searchParam
           <button type="submit" className="rounded-btn bg-dark-1 px-4 py-2 text-sm text-white">{copy.common.apply}</button>
           <Link href="/admin/stranke" className="rounded-btn border border-light-1 px-4 py-2 text-sm">{copy.common.reset}</Link>
         </div>
+      </form>
+      {/* GDPR requests also come from people with no account or order: newsletter, restock alerts, tickets, abandoned checkouts. */}
+      <form method="get" action="/admin/stranke/gost" className="mt-3 flex flex-wrap items-end gap-2 rounded-card border border-light-2 bg-white p-4" data-customer-find-email>
+        <label className="flex min-w-[16rem] flex-1 flex-col gap-1 text-xs text-mid-1">
+          {copy.customers.findByEmail.label}
+          <input type="email" name="email" required maxLength={254} autoComplete="off" className={inputClass} />
+        </label>
+        <button type="submit" className="rounded-btn border border-light-1 px-4 py-2 text-sm">{copy.customers.findByEmail.submit}</button>
       </form>
       {result.truncated ? <p role="status" className="mt-3 text-sm text-warning" data-list-truncated>{copy.common.truncated.replace("{n}", String(CUSTOMER_SCAN_LIMIT))}</p> : null}
       <p className="mt-2 text-xs text-mid-2">{copy.customers.total.replace("{total}", String(result.total))}</p>

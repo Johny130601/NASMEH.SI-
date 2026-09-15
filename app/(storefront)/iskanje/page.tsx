@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { searchProducts } from "@/lib/search";
 import type { CatalogProduct } from "@/lib/catalog";
+import { getPriceReductions } from "@/lib/omnibus";
 import { buildMetadata } from "@/lib/seo";
 import { search as copy } from "@/lib/copy";
 import { CatalogCard } from "@/components/storefront/catalog/CatalogCard";
@@ -23,6 +24,8 @@ export default async function SearchPage({
   const { q = "" } = await searchParams;
   const query = q.trim();
   const results = query.length >= 2 ? await searchProducts(query, 48) : [];
+  // same Omnibus gate as every other card surface (one batched history query)
+  const reductions = await getPriceReductions(results);
 
   const cards: CatalogProduct[] = results.map((result) => ({
     slug: result.slug,
@@ -30,7 +33,7 @@ export default async function SearchPage({
     variantId: result.variantId,
     sku: result.sku,
     priceCents: result.priceCents,
-    compareAtPriceCents: result.compareAtPriceCents,
+    reduction: reductions.get(result.variantId) ?? null,
     stock: result.stock,
     soldOut: result.soldOut,
     backorderNote: null,

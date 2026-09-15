@@ -19,7 +19,13 @@ interface ContactFormProps {
   defaults: { name: string; email: string };
   /** Preselected topic from a validated `?tema=` link (complaints page CTAs). */
   initialTopic?: TopicCode | null;
+  /** `legal.links` privacy path. */
+  privacyHref: string;
 }
+
+/** Static routes of the structured forms; the generic message path stays available beside them. */
+const ADVERSE_FORM_PATH = "/prijava-nezelenega-ucinka";
+const WITHDRAWAL_FORM_PATH = "/odstop-od-pogodbe";
 
 const selectClass = "min-h-[3.25rem] w-full rounded-input border border-light-1 bg-white px-4 text-base outline-none focus:border-brand";
 const iconPaths: Record<TopicCode, string> = {
@@ -40,7 +46,7 @@ function orderLabel(order: ContactOrder) {
   return `${order.number} · ${status} · ${date}`;
 }
 
-export function ContactForm({ settings, challenge, requestKey: initialRequestKey, isSignedIn, accountOrders, defaults, initialTopic = null }: ContactFormProps) {
+export function ContactForm({ settings, challenge, requestKey: initialRequestKey, isSignedIn, accountOrders, defaults, initialTopic = null, privacyHref }: ContactFormProps) {
   const [requestKey] = useState(initialRequestKey);
   const [topic, setTopic] = useState<TopicCode | null>(initialTopic);
   const [reason, setReason] = useState<ReasonCode>(initialTopic ? topicReasons[initialTopic][0] : "OTHER");
@@ -150,6 +156,14 @@ export function ContactForm({ settings, challenge, requestKey: initialRequestKey
             </select>
           </UiFormField>
         </div> : null}
+        {topic === "ADVERSE" ? <p data-contact-structured-form="adverse" className="mt-5 rounded-card bg-light-3 p-4 text-sm leading-relaxed text-mid-1">
+          {contact.message.adverseForm}{" "}
+          <Link href={ADVERSE_FORM_PATH} className="font-medium text-brand underline underline-offset-4">{contact.message.adverseFormLink}</Link>
+        </p> : null}
+        {topic === "RETURN" && reason === "WITHDRAWAL" ? <p data-contact-structured-form="withdrawal" className="mt-5 rounded-card bg-light-3 p-4 text-sm leading-relaxed text-mid-1">
+          {contact.message.withdrawalForm}{" "}
+          <Link href={WITHDRAWAL_FORM_PATH} className="font-medium text-brand underline underline-offset-4">{contact.message.withdrawalFormLink}</Link>
+        </p> : null}
       </fieldset>
 
       <section aria-labelledby="contact-order-title" className="border-t border-light-2 pt-8">
@@ -198,7 +212,7 @@ export function ContactForm({ settings, challenge, requestKey: initialRequestKey
             <textarea id="contact-message" name="message" required minLength={10} maxLength={5000} rows={7} aria-describedby="contact-message-hint" className="w-full resize-y rounded-input border border-light-1 bg-white p-4 text-base outline-none focus:border-brand" />
             <p id="contact-message-hint" className="text-sm leading-relaxed text-mid-1">{contact.message.hint}</p>
           </UiFormField>
-          {topic === "WRONG" || topic === "DAMAGED" ? <UiFormField label={contact.message.photos} htmlFor="contact-photos">
+          {topic === "WRONG" || topic === "DAMAGED" || topic === "RETURN" ? <UiFormField label={contact.message.photos} htmlFor="contact-photos">
             <input id="contact-photos" name="photos" type="file" ref={photos} accept="image/jpeg,image/png,image/webp" multiple aria-describedby="contact-photos-hint" className="w-full min-w-0 rounded-input border border-light-1 p-3 text-sm file:mr-3 file:rounded-btn file:border-0 file:bg-light-3 file:px-4 file:py-2" />
             <p id="contact-photos-hint" className="text-sm leading-relaxed text-mid-1">{contact.message.photosHint}</p>
           </UiFormField> : null}
@@ -207,7 +221,7 @@ export function ContactForm({ settings, challenge, requestKey: initialRequestKey
               <input name="privacyAccepted" type="checkbox" required className="mt-1 size-4 shrink-0 accent-brand" />
               <span>{contact.message.privacy}</span>
             </label>
-            <Link href="/politika-zasebnosti" className="ml-7 inline-block text-sm text-mid-1 underline underline-offset-4">{contact.message.privacyLink}</Link>
+            <Link href={privacyHref} className="ml-7 inline-block text-sm text-mid-1 underline underline-offset-4">{contact.message.privacyLink}</Link>
           </div>
         </fieldset>
         {error ? <p role="alert" className="text-sm text-error">{error}</p> : null}

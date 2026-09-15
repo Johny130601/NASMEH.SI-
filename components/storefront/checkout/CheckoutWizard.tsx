@@ -10,7 +10,7 @@ import {
   placeOrderAction,
 } from "@/app/(storefront)/actions/checkout";
 import { EU_COUNTRIES, isValidPostalCode, type ShippingMethodSetting } from "@/lib/orders/checkout-constants";
-import { checkout } from "@/lib/copy";
+import { checkout, common, promo } from "@/lib/copy";
 import { UiButton } from "../ui/UiButton";
 import { UiInput } from "../ui/UiInput";
 
@@ -30,6 +30,34 @@ const ProviderPaymentPanel = dynamic(
 
 type Provider = "stripe" | "paypal" | "test";
 
+/**
+ * Terms, withdrawal and privacy links inside the wizard open in a new tab: the
+ * wizard keeps everything the shopper entered in component state, so a
+ * same-tab visit to a legal page would discard the form (review finding S6).
+ * Screen readers announce the new tab through the link's description (one
+ * hidden hint the wizard renders), so the visible sentences stay unchanged.
+ */
+export const NEW_TAB_HINT_ID = "checkout-new-tab-hint";
+
+export function LegalLink({ href, children, ...data }: { href: string; children: ReactNode } & Record<`data-${string}`, boolean>) {
+  return (
+    <Link
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-describedby={NEW_TAB_HINT_ID}
+      className="underline underline-offset-2"
+      {...data}
+    >
+      {children}
+    </Link>
+  );
+}
+
+export function NewTabHint() {
+  return <span id={NEW_TAB_HINT_ID} hidden>{common.actions.opensInNewTab}</span>;
+}
+
 interface WizardProps {
   providers: Provider[];
   shippingMethods: ShippingMethodSetting[];
@@ -41,8 +69,8 @@ interface WizardProps {
   turnstileSiteKey: string | null;
   initialQuote: CheckoutQuote | null;
   activeCode: string | null;
-  /** `legal.links` Setting: the terms and withdrawal pages named in the payment step. */
-  legalLinks: { terms: string; withdrawal: string };
+  /** `legal.links` Setting: privacy at the e-mail field, terms and withdrawal directly above the order button. */
+  legalLinks: { terms: string; withdrawal: string; privacy: string };
 }
 
 interface FormState {
@@ -177,6 +205,8 @@ export function CheckoutWizard({
   const selectedMethod = shippingMethods.find(
     (method) => method.id === form.shippingMethodId,
   );
+  // The recap names the method the signed quote was priced with, not a selection still being re-quoted.
+  const quotedMethod = quote ? shippingMethods.find((method) => method.id === quote.shippingMethodId) : undefined;
 
   if (payInfo) {
     return <ProviderPaymentPanel initial={payInfo} stripeKey={stripePublishableKey} paypalClientId={paypalClientId}
@@ -186,6 +216,7 @@ export function CheckoutWizard({
   return (
     <div className="grid gap-10 lg:grid-cols-[1fr_20rem]">
     <div className="flex flex-col gap-4" data-checkout-wizard>
+      <NewTabHint />
       <StepShell
         index={0}
         title={checkout.steps.contact}
@@ -203,7 +234,15 @@ export function CheckoutWizard({
               value={form.email}
               onChange={(e) => set("email", e.target.value)}
               onBlur={onEmailBlur}
+              aria-describedby="checkout-email-notice"
             />
+            <p id="checkout-email-notice" className="mt-1 text-xs text-mid-2" data-checkout-email-notice>
+              {checkout.contact.emailNotice} {checkout.contact.privacyLead}{" "}
+              <LegalLink href={legalLinks.privacy} data-legal-privacy>
+                {checkout.contact.privacyLink}
+              </LegalLink>
+              .
+            </p>
             {emailExists ? (
               <p className="mt-1 text-xs text-link">
                 <Link href="/prijava" className="underline underline-offset-2">
@@ -404,17 +443,6 @@ export function CheckoutWizard({
               </label>
             ))}
           </fieldset>
-          <p className="text-xs text-mid-2">
-            {checkout.payment.legalNote}{" "}
-            <Link href={legalLinks.terms} className="underline underline-offset-2" data-legal-terms>
-              {checkout.payment.terms}
-            </Link>{" "}
-            {checkout.payment.and}{" "}
-            <Link href={legalLinks.withdrawal} className="underline underline-offset-2" data-legal-withdrawal>
-              {checkout.payment.withdrawal}
-            </Link>
-            .
-          </p>
           <div className="flex gap-3">
             <UiButton variant="ghost" onClick={() => setStep(1)}>
               {checkout.shipping.back}
@@ -458,8 +486,55 @@ export function CheckoutWizard({
             </p>
           ) : null}
 
-          {quote ? <p className="text-lg font-medium" data-review-total>{checkout.summary.total}: {formatEUR(quote.totalCents)}</p> : null}
           {turnstileSiteKey && !testToken ? <TurnstileWidget key={widgetAttempt} siteKey={turnstileSiteKey} onToken={setTurnstileToken} /> : null}
+
+          {/* Essentials right above the button at every breakpoint: the aside summary renders below the wizard on mobile. */}
+          {quote ? (
+            <section aria-labelledby="checkout-review-recap" aria-busy={quotePending} className="flex flex-col gap-3 border-t border-light-3 pt-4 text-sm" data-review-recap>
+              <p id="checkout-review-recap" className="font-medium text-dark-1">{checkout.review.recapTitle}</p>
+              <ul className="flex flex-col gap-2">
+                {quote.lines.map((line) => (
+                  <li key={line.variantId} className="flex justify-between gap-3" data-review-line={line.variantId}>
+                    <span>{line.quantity} × {line.title}</span>
+                    <span className="whitespace-nowrap">{formatEUR(line.lineTotalCents)}</span>
+                  </li>
+                ))}
+              </ul>
+              <dl className="flex flex-col gap-2 border-t border-light-3 pt-3">
+                <div className="flex justify-between gap-3">
+                  <dt>{checkout.summary.subtotal}</dt>
+                  <dd className="whitespace-nowrap" data-review-subtotal>{formatEUR(quote.subtotalCents)}</dd>
+                </div>
+                {quote.discountCents > 0 ? (
+                  <div className="flex justify-between gap-3 text-success">
+                    <dt>{promo.discountLabel} ({quote.couponCode})</dt>
+                    <dd className="whitespace-nowrap" data-review-discount>−{formatEUR(quote.discountCents)}</dd>
+                  </div>
+                ) : null}
+                <div className="flex justify-between gap-3">
+                  <dt>{checkout.summary.shipping}{quotedMethod ? ` (${quotedMethod.label})` : ""}</dt>
+                  <dd className="whitespace-nowrap" data-review-shipping>{formatEUR(quote.shippingCents)}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt>{checkout.summary.vat} ({quote.vatRatePercent} %)</dt>
+                  <dd className="whitespace-nowrap" data-review-vat>{formatEUR(quote.vatCents)}</dd>
+                </div>
+              </dl>
+              <p className="text-lg font-medium" data-review-total>{checkout.summary.total}: {formatEUR(quote.totalCents)}</p>
+            </section>
+          ) : null}
+
+          <p className="text-xs text-mid-2" data-review-legal>
+            {checkout.review.legal.termsLead}{" "}
+            <LegalLink href={legalLinks.terms} data-legal-terms>
+              {checkout.review.legal.termsLink}
+            </LegalLink>
+            . {checkout.review.legal.withdrawalLead}{" "}
+            <LegalLink href={legalLinks.withdrawal} data-legal-withdrawal>
+              {checkout.review.legal.withdrawalLink}
+            </LegalLink>{" "}
+            {checkout.review.legal.withdrawalTail}
+          </p>
           <UiButton
             variant="sale"
             fullWidth

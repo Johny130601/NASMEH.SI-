@@ -17,25 +17,32 @@ const CATEGORY_KEYS: CategoryKey[] = ["analytics", "marketing"];
  * a choice is made.
  */
 export function CmpBanner() {
-  const { consent, bannerOpen, save, banner, policyHref } = useConsent();
+  const { bannerOpen } = useConsent();
+  // Mounted only while open, so every (re)open starts from the stored choice.
+  return bannerOpen ? <CmpBannerDialog /> : null;
+}
+
+function CmpBannerDialog() {
+  const { consent, save, banner, policyHref } = useConsent();
   const [toggles, setToggles] = useState<Record<CategoryKey, boolean>>({
     analytics: consent?.analytics ?? false,
     marketing: consent?.marketing ?? false,
   });
   const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (bannerOpen) dialogRef.current?.focus();
-  }, [bannerOpen]);
-
-  if (!bannerOpen) return null;
+    dialogRef.current?.focus();
+  }, []);
 
   const persist = async (choices: { analytics: boolean; marketing: boolean }) => {
     setSaving(true);
-    try {
-      await save(choices);
-    } finally {
+    setFailed(false);
+    const ok = await save(choices);
+    // On success the dialog unmounts; only a failure updates its state.
+    if (!ok) {
+      setFailed(true);
       setSaving(false);
     }
   };
@@ -103,6 +110,11 @@ export function CmpBanner() {
           {copy.banner.saveChoice}
         </UiButton>
       </div>
+      {failed ? (
+        <p role="alert" className="mt-3 text-sm text-error">
+          {copy.banner.saveFailed}
+        </p>
+      ) : null}
     </div>
   );
 }

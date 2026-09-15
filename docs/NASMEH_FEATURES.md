@@ -185,7 +185,7 @@ One template, three products; strips get the most built-out landing variant [BAS
 4. **Rating summary**: stars + count + link to review section [NEW]. `[P1-core]`
 5. **USP chips row** (icon + label, max 3): e.g. strips: "Rezultati že po 1 uporabi*" / "30 minut" / "Brez peroksida" [ADAPT: 02 §4]. `[P1-core]`
 6. **Intro line + 3–4 checkmark bullets** [BASE: 02 §4]. `[P1-core]`
-7. **Accordion set #1** (server-rendered content — NEW vs HiSmile's lazy empty bodies): *Kako deluje · Sestavine (INCI) · Jamstvo vračila denarja · *Testirano za rezultate* — asterisked marketing claims (`*`, `^`) resolve to these substantiation accordions [ADAPT: 02 §5.5, 04 §11]. `[P1-core]`
+7. **Accordion set #1** (server-rendered content — NEW vs HiSmile's lazy empty bodies): *Kako deluje · Sestavine (INCI) · Jamstvo vračila denarja · *Opombe k navedbam* — asterisked marketing claims (`*`, `^`) resolve to this claim-notes accordion; no study figure ships without an evidence file (Reg. 655/2013, Phase 9 step 4) [ADAPT: 02 §5.5, 04 §11]. `[P1-core]`
 8. **Buy box**: price (VAT incl.; Omnibus 30-day-low line when discounted) + **unit price anchor** "(€2,50 na uporabo)" + **Klarna line** ("ali 3 obroka po €11,66 s Klarna") + qty stepper (1–5, minus disabled at 1) + full-width "Dodaj v košarico" + green **"30-dnevno jamstvo vračila denarja"** pill under ATC [ADAPT: 02 §4–5]. `[P1-core]`
 9. **Delivery & returns accordion on PDP** (dostava 2–4 dni, brezplačna nad €45, 14-dnevni odstop) [NEW — HiSmile hides this in Help; EU buyers expect it on PDP: 02 §8]. `[P1-core]`
 10. **Cross-sell block**: "Dopolni svojo rutino" — curated cards of the other 2 products + bundle with quick ATC [ADAPT: 02 §5.7 — simple curation at launch]. `[P1-core]`
@@ -282,7 +282,7 @@ Custom Next.js checkout (we are not on Shopify — everything here is built, not
 
 ### 9.2 Price display & Omnibus compliance
 
-- Compare-at strikethrough supported catalog-wide; **when a discount is announced, the reference price shown is the lowest price from the previous 30 days** (system tracks price history per SKU and renders the "Najnižja cena v zadnjih 30 dneh: €X" line automatically) [EU Omnibus; NEW vs HiSmile which avoids strikethrough entirely: 02 §5.2]. `[P1-core]`
+- Compare-at strikethrough supported catalog-wide; **when a discount is announced, the reference price shown is the lowest price from the previous 30 days** (system tracks price history per SKU and renders the "Najnižja cena v 30 dneh pred znižanjem: €X" line automatically; the window is the 30 days before the announced reduction, i.e. the compare-at switched on with the price change or within 24 h) [EU Omnibus; NEW vs HiSmile which avoids strikethrough entirely: 02 §5.2]. `[P1-core]`
 - **Value-math anchoring**: "2 kosa za €X — vrednost €Y — prihranite Z %" and per-application unit prices — allowed when the reference is genuine current individual prices [BASE: 02 §7; compliance-checked]. `[P2-growth]`
 - "Od: €X" from-pricing on configurable bundles [BASE: 02 §3.3]. `[P3-later]`
 
@@ -375,7 +375,7 @@ HiSmile runs **zero on-site reviews** (Amazon screenshots instead; Trustpilot 2.
 ### 12.4 Returns, withdrawal & complaints (EU)
 
 - **14-day withdrawal right page** with instructions + **model withdrawal form** (downloadable + online version) [CRD; standard practice]. `[P1-core]`
-- **Sealed-cosmetics exception**: opened/used products excluded from withdrawal for hygiene reasons (CRD art. 16(e)) — stated plainly; unopened returns within 14 days, refund incl. standard outbound shipping, to original payment method, within 14 days of receiving goods [EU; ADAPT of HiSmile's 30-day/unused policy: 05 §9.1]. `[P1-core]`
+- **Sealed-cosmetics exception**: sealed goods unsuitable for return for health or hygiene reasons and unsealed after delivery are excluded from withdrawal (CRD art. 16(e)) — one shared phrase on every surface; refund incl. standard outbound shipping, to the original payment method, within 14 days of the withdrawal notice, withheld until the goods or proof of sending arrive (CRD art. 13) [EU; ADAPT of HiSmile's 30-day/unused policy: 05 §9.1]. `[P1-core]`
 - **Voluntary extension**: 30-day money-back guarantee program (marketing layer above statutory 14 days; conditions: contact first, proof of purchase, photos) [ADAPT: 05 §9.1]. `[P1-core]` as policy; automated return-flow `[P2-growth]`
 - **Faulty-product claim process** (3-stage: troubleshooting → photo/video + batch number → physical inspection) [ADAPT: 05 §9.2]. `[P1-core]` as documented process; structured forms `[P2-growth]`
 - Reklamacije (complaints) page + out-of-court dispute-resolution (IRPS) info per SI law [standard SI practice]. `[P1-core]`

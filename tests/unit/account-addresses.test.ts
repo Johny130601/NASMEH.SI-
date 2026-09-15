@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { addressSchema, deleteAddressForUser, saveAddressForUser, setDefaultAddressForUser } from "@/lib/account/addresses";
 import { deleteAddressAction, saveAddressAction, setDefaultAddressAction, updateMarketingPreferenceAction } from "@/app/(storefront)/actions/address";
+import { marketingVersion } from "@/lib/consent-log";
 
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(), transaction: vi.fn(), lock: vi.fn(),
   address: { findFirst: vi.fn(), updateMany: vi.fn(), update: vi.fn(), create: vi.fn(), delete: vi.fn() },
   user: { findUniqueOrThrow: vi.fn(), update: vi.fn() }, consentLog: { create: vi.fn() },
+  subscriber: { findUnique: vi.fn(), updateMany: vi.fn() },
 }));
 vi.mock("@/lib/auth", () => ({ auth: mocks.auth }));
 vi.mock("@/lib/db", () => ({ db: { $transaction: mocks.transaction } }));
@@ -15,9 +17,11 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.auth.mockResolvedValue({ user: { id: "owner", role: "CUSTOMER" } });
   mocks.lock.mockResolvedValue([{ id: "owner" }]);
-  mocks.transaction.mockImplementation(async operation => operation({ $queryRaw: mocks.lock, address: mocks.address, user: mocks.user, consentLog: mocks.consentLog }));
+  mocks.transaction.mockImplementation(async operation => operation({ $queryRaw: mocks.lock, address: mocks.address, user: mocks.user, consentLog: mocks.consentLog, subscriber: mocks.subscriber }));
   mocks.address.findFirst.mockResolvedValue(null);
-  mocks.user.findUniqueOrThrow.mockResolvedValue({ marketingOptIn: false });
+  mocks.user.findUniqueOrThrow.mockResolvedValue({ marketingOptIn: false, email: "owner@test.si" });
+  mocks.subscriber.findUnique.mockResolvedValue(null);
+  mocks.subscriber.updateMany.mockResolvedValue({ count: 1 });
 });
 
 describe("address book authorization and invariants", () => {
@@ -97,13 +101,41 @@ describe("account action boundaries and marketing history", () => {
     expect(mocks.transaction).toHaveBeenCalledTimes(1);
     expect(mocks.user.update).toHaveBeenCalledWith({ where: { id: "owner" }, data: { marketingOptIn: true } });
     expect(mocks.consentLog.create).toHaveBeenCalledWith({ data: {
-      userId: "owner", kind: "marketing-preference", version: "1", choices: { marketing: true, previous: false },
+      userId: "owner", kind: "marketing-preference", version: marketingVersion("marketing-preference"),
+      choices: { marketing: true, previous: false, source: "account" }, visitorId: null,
     } });
+    // Opting in never confirms or touches a newsletter subscription.
+    expect(mocks.subscriber.findUnique).not.toHaveBeenCalled();
+    expect(mocks.subscriber.updateMany).not.toHaveBeenCalled();
   });
   it("records withdrawal and does not duplicate history for unchanged preferences", async () => {
-    mocks.user.findUniqueOrThrow.mockResolvedValueOnce({ marketingOptIn: true }).mockResolvedValueOnce({ marketingOptIn: false });
+    mocks.user.findUniqueOrThrow.mockResolvedValueOnce({ marketingOptIn: true, email: "owner@test.si" }).mockResolvedValueOnce({ marketingOptIn: false, email: "owner@test.si" });
     await updateMarketingPreferenceAction({ marketingOptIn: false });
-    expect(mocks.consentLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ choices: { marketing: false, previous: true } }) });
+    expect(mocks.consentLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ choices: { marketing: false, previous: true, source: "account" } }) });
+    await updateMarketingPreferenceAction({ marketingOptIn: false });
+    expect(mocks.consentLog.create).toHaveBeenCalledTimes(1);
+  });
+  it("switching e-novice off also withdraws the address's newsletter subscription, logged once with its subject", async () => {
+    mocks.user.findUniqueOrThrow.mockResolvedValue({ marketingOptIn: true, email: "Owner@Test.si" });
+    mocks.subscriber.findUnique.mockResolvedValue({ id: "sub_1", status: "CONFIRMED", source: "footer" });
+    expect(await updateMarketingPreferenceAction({ marketingOptIn: false })).toEqual({ ok: true });
+    expect(mocks.subscriber.findUnique).toHaveBeenCalledWith({ where: { email: "owner@test.si" }, select: { id: true, status: true, source: true } });
+    expect(mocks.subscriber.updateMany).toHaveBeenCalledWith({
+      where: { id: "sub_1", status: { in: ["PENDING", "CONFIRMED"] } }, data: { status: "UNSUBSCRIBED" },
+    });
+    expect(mocks.consentLog.create).toHaveBeenCalledWith({ data: {
+      userId: "owner", kind: "marketing-email", version: marketingVersion("marketing-email"), visitorId: null,
+      choices: { marketing: false, withdrawn: true, previousStatus: "CONFIRMED", source: "account-preference", subscriberId: "sub_1" },
+    } });
+    expect(mocks.consentLog.create).toHaveBeenCalledTimes(2);
+  });
+  it("withdraws a footer subscription even when the account preference was already off, without a duplicate row", async () => {
+    mocks.subscriber.findUnique.mockResolvedValue({ id: "sub_2", status: "CONFIRMED", source: "welcome-popup" });
+    expect(await updateMarketingPreferenceAction({ marketingOptIn: false })).toEqual({ ok: true });
+    expect(mocks.user.update).not.toHaveBeenCalled();
+    expect(mocks.consentLog.create).toHaveBeenCalledTimes(1);
+    expect(mocks.consentLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ kind: "marketing-email" }) });
+    mocks.subscriber.updateMany.mockResolvedValue({ count: 0 });
     await updateMarketingPreferenceAction({ marketingOptIn: false });
     expect(mocks.consentLog.create).toHaveBeenCalledTimes(1);
   });

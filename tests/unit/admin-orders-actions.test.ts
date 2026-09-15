@@ -111,4 +111,14 @@ describe("order action validation and resend", () => {
     expect(await resendShippedAction({ orderId })).toEqual({ ok: true, message: "resendQueued" });
     expect(mocks.update.mock.calls[0][0].data).toMatchObject({ shippedEmailPending: true, shippedEmailSentAt: null });
   });
+
+  it("refuses to re-queue either mail for an anonymised order", async () => {
+    const anonymizedAt = new Date("2026-09-14T10:00:00Z");
+    mocks.findUnique.mockResolvedValue({ id: orderId, status: "SHIPPED", paidAt: new Date(), stockDeducted: true, refundRequired: false, trackingNumber: "GLS123456", anonymizedAt });
+    expect(await resendConfirmationAction({ orderId })).toEqual({ ok: false, message: "invalid_transition" });
+    expect(await resendShippedAction({ orderId })).toEqual({ ok: false, message: "invalid_transition" });
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.deliverConfirmation).not.toHaveBeenCalled();
+    expect(mocks.deliverShipped).not.toHaveBeenCalled();
+  });
 });

@@ -33,15 +33,21 @@ export async function moderateReviewAction(input: {
     merchantReply: z.string().trim().max(1000).optional(),
   }).safeParse(input);
   if (!parsed.success) return { ok: false };
-  const review = await db.review.findUnique({ where: { id: parsed.data.reviewId }, select: { product: { select: { slug: true } } } });
+  const review = await db.review.findUnique({ where: { id: parsed.data.reviewId }, select: { photos: true, product: { select: { slug: true } } } });
   if (!review) return { ok: false };
+  const rejected = parsed.data.decision === "reject";
+  // A rejected review is never shown, so its photos have no purpose left (storage limitation).
+  const photos = rejected ? reviewPhotoPaths(review.photos) : [];
   await db.review.update({
     where: { id: parsed.data.reviewId },
     data: {
       ...(parsed.data.decision === "reply" ? {} : { status: parsed.data.decision === "approve" ? "PUBLISHED" : "REJECTED" }),
       ...(parsed.data.merchantReply !== undefined ? { merchantReply: parsed.data.merchantReply || null } : {}),
+      ...(photos.length ? { photos: [] } : {}),
     },
   });
+  // Access is revoked by the DB commit; a failed unlink leaves an orphan file and is logged without its path.
+  if (photos.length) await removeReviewPhotos(photos).catch(() => console.error("Rejected review photos remain on disk"));
   refreshReviews(review.product.slug);
   return { ok: true };
 }

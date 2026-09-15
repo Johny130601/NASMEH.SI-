@@ -10,11 +10,15 @@ import { deliverTicketEmails } from "@/lib/support/delivery";
 
 const copy = returns.withdrawal;
 
-/** Online model withdrawal form (§12.4) → RETURN/WITHDRAWAL ticket through the step 1 pipeline. */
-export async function submitWithdrawalAction(form: FormData): Promise<{ ok: boolean; error?: string; reference?: string }> {
+/**
+ * Online model withdrawal form (§12.4) → RETURN/WITHDRAWAL ticket through the step 1 pipeline.
+ * `orderLinked: false` tells the form that the notice was recorded without a matched order.
+ */
+export async function submitWithdrawalAction(form: FormData): Promise<{ ok: boolean; error?: string; reference?: string; orderLinked?: boolean }> {
   const parsed = withdrawalInputSchema.safeParse({
     requestKey: form.get("requestKey"), name: form.get("name"), email: form.get("email"),
-    address: form.get("address"), orderNumber: form.get("orderNumber"), receivedAt: form.get("receivedAt"),
+    address: form.get("address"), orderNumber: form.get("orderNumber"),
+    deliveryStatus: form.get("deliveryStatus"), receivedAt: form.get("receivedAt") ?? "",
     items: form.get("items"), note: form.get("note") ?? "",
     privacyAccepted: form.get("privacyAccepted") === "on",
   });
@@ -28,7 +32,7 @@ export async function submitWithdrawalAction(form: FormData): Promise<{ ok: bool
     }
     // Persisted queued requests remain successful even when SMTP is unavailable.
     await deliverTicketEmails(result.ticketId).catch(() => console.error("Withdrawal ticket emails remain queued"));
-    return { ok: true, reference: result.reference };
+    return { ok: true, reference: result.reference, orderLinked: result.orderLinked };
   } catch {
     console.error("Withdrawal request requires retry");
     return { ok: false, error: copy.errors.failed };

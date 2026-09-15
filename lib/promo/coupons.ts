@@ -8,7 +8,8 @@ import { priceCart } from "./priceCart";
  * line discounts → order discount → free shipping → threshold re-check.
  *
  * TERMS (hard rules): the discount base EXCLUDES bundle lines and
- * already-discounted (compareAt) lines; shipping is excluded from %
+ * already-reduced lines (`reduced`: the history-backed reduction the
+ * storefront displays, injected by the caller); shipping is excluded from %
  * calculations; one code per order (no stacking).
  */
 
@@ -71,8 +72,9 @@ export type CouponLine = CartLineInput & { product: LineProductInfo };
 function discountableLines(coupon: CouponInput, lines: CouponLine[]): CouponLine[] {
   return lines.filter((line) => {
     if (line.isBundle) return false; // terms: bundles excluded
-    if (line.compareAtPriceCents !== null && line.compareAtPriceCents > line.priceCents)
-      return false; // terms: already-discounted excluded
+    // terms: already-reduced excluded — the same Omnibus gate the storefront
+    // shows, not a compare-at without a history-backed reduction
+    if (line.reduced) return false;
     if (coupon.excludedProductIds.includes(line.product.productId)) return false;
     if (
       coupon.eligibleProductIds !== null &&

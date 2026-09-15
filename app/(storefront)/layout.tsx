@@ -1,12 +1,18 @@
 import { cookies, headers } from "next/headers";
 import type { ReactNode } from "react";
-import { CONSENT_COOKIE, decodeConsentCookie, parseConsent } from "@/lib/consent";
 import {
+  clientConsent,
+  CONSENT_COOKIE,
+  consentModeSnippet,
+  decodeConsentCookie,
+  parseConsent,
+} from "@/lib/consent";
+import {
+  getCompany,
   getConsentConfig,
   getLegalLinks,
   getSetting,
   SETTING_KEYS,
-  type CompanySetting,
 } from "@/lib/settings";
 import { siteUrl } from "@/lib/seo";
 import { SiteHeader } from "@/components/storefront/chrome/SiteHeader";
@@ -27,19 +33,6 @@ import { common } from "@/lib/copy";
 // be prerendered at build time (no DB in the image build).
 export const dynamic = "force-dynamic";
 
-// Google Consent Mode v2 defaults — always rendered SSR, everything denied
-// until the CMP choice updates it (spec §3.4). Not a tracker.
-const CONSENT_DEFAULTS_SNIPPET = `
-window.dataLayer = window.dataLayer || [];
-function gtag(){dataLayer.push(arguments);}
-gtag('consent', 'default', {
-  'analytics_storage': 'denied',
-  'ad_storage': 'denied',
-  'ad_user_data': 'denied',
-  'ad_personalization': 'denied',
-  'wait_for_update': 500
-});`;
-
 export default async function StorefrontLayout({
   children,
 }: {
@@ -51,14 +44,15 @@ export default async function StorefrontLayout({
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   const [gtmId, company, welcomePopup, consentConfig, legalLinks] = await Promise.all([
     getSetting<string>(SETTING_KEYS.gtmId),
-    getSetting<CompanySetting>(SETTING_KEYS.company),
+    // Validated reader (AGENTS §8.17), the same one the footer uses.
+    getCompany(),
     getSetting<WelcomePopupSetting>("welcomePopup"),
     getConsentConfig(),
     getLegalLinks(),
   ]);
   const gtm = gtmId?.trim() ? gtmId.trim() : null;
   const consentCookie = jar.get(CONSENT_COOKIE)?.value;
-  const consent = parseConsent(decodeConsentCookie(consentCookie), consentConfig.version);
+  const consent = clientConsent(parseConsent(decodeConsentCookie(consentCookie), consentConfig.version));
 
   // Welcome popup suppression: known CONFIRMED subscriber (by session email)
   const session = await auth();
@@ -79,6 +73,7 @@ export default async function StorefrontLayout({
     url: base,
     logo: `${base}/og-default.svg`,
     ...(company?.email ? { email: company.email } : {}),
+    ...(company?.phone?.trim() ? { telephone: company.phone.trim() } : {}),
   };
   const websiteLd = {
     "@context": "https://schema.org",
@@ -97,10 +92,12 @@ export default async function StorefrontLayout({
 
   return (
     <ConsentProvider initialConsent={consent} gtmId={gtm} consentVersion={consentConfig.version} banner={consentConfig.banner} policyHref={legalLinks.cookies}>
+      {/* Google Consent Mode v2 — all denied by default, then the stored
+          choice (booleans only), before any other script (spec §3.4). Not a tracker. */}
       <script
         id="consent-defaults"
         nonce={nonce}
-        dangerouslySetInnerHTML={{ __html: CONSENT_DEFAULTS_SNIPPET }}
+        dangerouslySetInnerHTML={{ __html: consentModeSnippet(consent) }}
       />
       <JsonLd data={organizationLd} />
       <JsonLd data={websiteLd} />
@@ -113,6 +110,8 @@ export default async function StorefrontLayout({
         <WelcomePopup
           setting={welcomePopup}
           testToken={testToken}
+          siteKey={env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? null}
+          privacyHref={legalLinks.privacy}
           knownSubscriber={knownSubscriber}
         />
       ) : null}

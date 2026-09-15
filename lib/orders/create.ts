@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { clearKodaCode } from "@/lib/koda";
 import { siteUrl } from "@/lib/seo";
+import { getLegalLinks } from "@/lib/settings";
+import { marketingVersion, recordConsent } from "@/lib/consent-log";
 import { getPaymentProvider } from "@/lib/payments";
 import { capturePayPalOrder } from "@/lib/payments/paypal";
 import type { PaymentIntentHandle } from "@/lib/payments/types";
@@ -12,6 +14,8 @@ import { checkoutFormSchema } from "./checkout-schema";
 import { buildCheckoutPricing, quoteMatches } from "./quote";
 import { collectInventoryRequirements } from "./inventory";
 import { nextOrderNumber } from "./numbers";
+import { resolveLegalAcceptance } from "./legal-acceptance";
+import { requestCheckoutSubscription, scheduleCheckoutSubscriptionMail } from "./checkout-subscription";
 
 export type PlaceOrderResult =
   | { ok: true; orderNumber: string; provider: PaymentIntentHandle["provider"]; clientSecret?: string;
@@ -90,7 +94,8 @@ export async function placeOrder(rawInput: unknown): Promise<PlaceOrderResult> {
       if (!variant || (!variant.allowBackorder && variant.stock < line.quantity)) return { ok: false, error: `stock:${variant?.title ?? line.variantId}` };
     }
 
-    const order = await db.$transaction(async tx => {
+    const legalLinks = await getLegalLinks();
+    const { order, subscription } = await db.$transaction(async tx => {
       // Serialize each code's usage reservation and re-evaluate under its lock.
       let couponId: string | undefined;
       if (coupon) {
@@ -103,6 +108,9 @@ export async function placeOrder(rawInput: unknown): Promise<PlaceOrderResult> {
         }
       }
       const number = await nextOrderNumber(tx);
+      // The terms and withdrawal pages the review-step links pointed at, as published at this moment (Phase 9 step 4).
+      const placedAt = new Date();
+      const legalAcceptance = await resolveLegalAcceptance(tx, legalLinks, placedAt);
       const created = await tx.order.create({ data: {
         number, checkoutKey: input.checkoutKey, status: "PENDING", userId: session?.user?.id ?? null,
         email: input.email.toLowerCase(), phone: input.phone || null,
@@ -112,17 +120,29 @@ export async function placeOrder(rawInput: unknown): Promise<PlaceOrderResult> {
         paymentProvider: input.provider, marketingOptIn: input.marketingOptIn,
         couponCode: coupon?.code ?? null,
         ...(coupon ? { couponSnapshot: { code: coupon.code, type: coupon.type, percentOff: coupon.percentOff, amountOffCents: coupon.amountOffCents, discountCents: quote.discountCents } } : {}),
-        timeline: [{ at: new Date().toISOString(), event: "created", detail: `provider:${input.provider}` }],
+        legalAcceptance,
+        timeline: [{ at: placedAt.toISOString(), event: "created", detail: `provider:${input.provider}` }],
         items: { create: items },
       } });
       if (couponId) {
         await tx.couponRedemption.create({ data: { couponId, email: input.email.toLowerCase(), orderId: created.id } });
         await tx.coupon.update({ where: { id: couponId }, data: { usedCount: { increment: 1 } } });
       }
-      await tx.consentLog.create({ data: { userId: session?.user?.id ?? null, kind: "marketing-checkout", version: "1", choices: { marketing: input.marketingOptIn, orderNumber: number } } });
-      return created;
+      // Order.marketingOptIn records the request only; a ticked box enters the newsletter double opt-in.
+      // An unticked box is logged as "not-given" so it never reads as a withdrawal of an earlier consent.
+      const subscription = input.marketingOptIn ? await requestCheckoutSubscription(tx, input.email) : null;
+      await recordConsent(tx, {
+        userId: session?.user?.id ?? null, kind: "marketing-checkout", version: marketingVersion("marketing-checkout"),
+        choices: {
+          marketing: input.marketingOptIn, action: subscription?.status ?? "not-given", orderNumber: number,
+          ...(subscription ? { subscriberId: subscription.subscriberId } : {}),
+        },
+      });
+      return { order: created, subscription };
     });
     if (display.code) await clearKodaCode();
+    // Committed: the verification mail goes out after the response, so SMTP never holds or decides the order result.
+    scheduleCheckoutSubscriptionMail(order.email, subscription);
     const result = await ensureOrderPayment(order);
     return result.ok ? { ...result, created: true } : result;
   } catch (error) {

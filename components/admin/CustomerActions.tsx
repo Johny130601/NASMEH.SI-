@@ -9,6 +9,16 @@ import { UiInput } from "@/components/storefront/ui/UiInput";
 
 const textareaClass = "w-full resize-y rounded-input border border-light-1 bg-white p-4 text-base outline-none focus:border-brand";
 
+/**
+ * Where to go after a successful anonymisation, or null to stay and refresh.
+ * A guest page finds the person by the e-mail that erasure has just removed,
+ * so reloading it would 404: the list opens with a success notice instead.
+ * An account page keeps working (the row stays, anonymised).
+ */
+export function anonymiseDestination(target: { userId: string } | { email: string }, result: { ok: boolean }): string | null {
+  return result.ok && !("userId" in target) ? "/admin/stranke?anonimizirano=1" : null;
+}
+
 export function CustomerActions({
   target,
   tags,
@@ -81,6 +91,11 @@ export function CustomerActions({
                   startTransition(async () => {
                     try {
                       const result = await anonymiseCustomerAction(target);
+                      const destination = anonymiseDestination(target, result);
+                      if (destination) {
+                        router.push(destination);
+                        return;
+                      }
                       setMessage(result.ok ? copy.common.done : copy.common.error);
                       router.refresh();
                     } catch {

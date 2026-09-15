@@ -138,7 +138,10 @@ test("owner creates, prices, illustrates, restocks, hides and backorders a produ
     expect(history.map((row) => [row.priceCents, row.compareAtPriceCents])).toEqual([[2990, null], [2490, 2990]]);
     await expect(page.locator("[data-price-history]")).toContainText("24,90");
     await page.goto(`/izdelek/${slug}`);
-    await expect(page.locator("p", { hasText: "Najnižja cena v zadnjih 30 dneh" })).toContainText("29,90");
+    // scoped to the buy box: the rails may carry other products' Omnibus lines
+    const priceBox = page.locator("[data-pdp-price-box]");
+    await expect(priceBox.locator("[data-omnibus-line]")).toContainText("29,90");
+    await expect(priceBox.locator("span.line-through")).toContainText("29,90");
 
     // HIDE: sold out → gone from lists and the sitemap, PDP stays with noindex.
     await page.goto(`/admin/izdelki/${productId}`);
