@@ -59,7 +59,7 @@ Plan: [docs/plans/phase-9.md](../plans/phase-9.md) step 6 design; the gates are 
 | # | Item | How to verify | Evidence | Done by, date |
 |---|---|---|---|---|
 | E1 | `scripts/launch-check.sh https://nasmeh.si` exits 0 | its output attached | | |
-| E2 | A browser pass over the live store (home, catalogue, product, cart, checkout to the payment step, legal pages, sign-in) logs no `[csp]` lines; then `CSP_ENFORCE=true` and `up -d`; launch-check shows "CSP enforced" | `docker compose logs app | grep -c "\[csp\]"` = 0 before and after | | |
+| E2 | A browser pass over the live store (home, catalogue, product, cart, checkout to the payment step, legal pages, sign-in) logs no `[csp]` lines; then `CSP_ENFORCE=true` and `up -d`; launch-check shows "CSP enforced". Local evidence: the full test suite passes with the policy enforced ([closure record](phase-9-closure-2026-09-15.md)); the host pass adds the live Stripe, PayPal, Turnstile and GTM hosts | `docker compose logs app | grep -c "\[csp\]"` = 0 before and after | | |
 | E3 | Backup taken right before the switch (`scripts/backup.sh`) and its manifest noted | manifest path and `orders:` line | | |
 | E4 | Rollback plan rehearsed: the previous release tag is known and `docker images nasmeh-app` lists it | the tag; the runbook Rollback section | | |
 | E5 | First-day watch: health, `docker compose logs app`, the uptime checker, the first real order's confirmation mail; the daily job's first run at 06:00 | notes with timestamps | | |

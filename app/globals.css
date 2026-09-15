@@ -1,15 +1,19 @@
 @import "tailwindcss";
 
-/* Self-hosted Plus Jakarta Sans (variable 300–800), font-display: swap.
+/* Self-hosted Plus Jakarta Sans (variable 300–800), font-display: optional.
    research 06 §3.3 free Circular alternative. One subset built from the
    upstream variable font (fontTools, weight axis 300–800): Latin-1, Latin
    Extended-A (č š ž đ ć), general punctuation, € — 38 kB in place of the two
-   Google subsets (49 kB, two requests); preloaded from the root layout. */
+   Google subsets (49 kB, two requests); preloaded from the root layout.
+   font-display: optional (Phase 9 closure): the preloaded face is used when it
+   arrives within the block period, otherwise the fallback face for that view;
+   text paints at first paint and never shifts. With swap, every template's
+   mobile LCP was the font's arrival time in the throttled lab (2.4-2.7 s). */
 @font-face {
   font-family: "Plus Jakarta Sans";
   font-style: normal;
   font-weight: 300 800;
-  font-display: swap;
+  font-display: optional;
   src: url("/fonts/jakarta-sl.woff2") format("woff2");
 }
 

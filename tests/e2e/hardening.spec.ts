@@ -37,7 +37,12 @@ test("the login form works without JavaScript: a wrong password shows the error,
   }
 });
 
-test("every page carries the static headers and a nonce-based report-only CSP that its inline scripts honour; API responses carry the static headers", async ({ page, request }) => {
+// The CSP ships report-only until a real-traffic pass stays clean, then CSP_ENFORCE=true enforces the same
+// policy without a rebuild (Phase 9 step 1). The suite runs against either mode: the header name follows the switch.
+const CSP_HEADER = process.env.CSP_ENFORCE === "true" ? "content-security-policy" : "content-security-policy-report-only";
+const OTHER_CSP_HEADER = process.env.CSP_ENFORCE === "true" ? "content-security-policy-report-only" : "content-security-policy";
+
+test("every page carries the static headers and a nonce-based CSP (report-only or enforced per CSP_ENFORCE) that its inline scripts honour; API responses carry the static headers", async ({ page, request }) => {
   const violations: string[] = [];
   page.on("console", (message) => { if (/content security policy|csp/i.test(message.text())) violations.push(message.text()); });
   const response = await page.goto("/");
@@ -47,9 +52,9 @@ test("every page carries the static headers and a nonce-based report-only CSP th
   expect(headers["x-frame-options"]).toBe("DENY");
   expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
   expect(headers["permissions-policy"]).toContain("camera=()");
-  const csp = headers["content-security-policy-report-only"];
+  const csp = headers[CSP_HEADER];
   expect(csp).toBeDefined();
-  expect(headers["content-security-policy"]).toBeUndefined();
+  expect(headers[OTHER_CSP_HEADER]).toBeUndefined();
   const nonce = /'nonce-([^']+)'/.exec(csp!)?.[1];
   expect(nonce).toBeTruthy();
   expect(csp).toContain("'strict-dynamic'");
@@ -60,7 +65,7 @@ test("every page carries the static headers and a nonce-based report-only CSP th
   await dismissCookieBanner(page);
   await expect(page.locator("[data-cart-link]")).toBeVisible(); // hydration ran under the policy
   const second = await page.goto("/trgovina");
-  expect(/'nonce-([^']+)'/.exec(second!.headers()["content-security-policy-report-only"])?.[1]).not.toBe(nonce);
+  expect(/'nonce-([^']+)'/.exec(second!.headers()[CSP_HEADER])?.[1]).not.toBe(nonce);
   // The middleware itself (not only the page guards) turns anonymous staff and account requests away, with the callback URL.
   for (const path of ["/admin", "/admin/narocila", "/racun"]) {
     const gate = await request.get(path, { maxRedirects: 0 });
@@ -68,7 +73,7 @@ test("every page carries the static headers and a nonce-based report-only CSP th
     // A relative Location (same origin as whatever the browser used) with a relative callback path: an absolute one on the
     // server's internal origin is cross-origin for the browser, and an RSC prefetch following it trips connect-src (F7).
     expect(gate.headers()["location"], path).toBe(`/prijava?callbackUrl=${encodeURIComponent(path)}`);
-    expect(gate.headers()["content-security-policy-report-only"], path).toContain("'nonce-");
+    expect(gate.headers()[CSP_HEADER], path).toContain("'nonce-");
   }
   const api = await request.get("/api/health");
   expect(api.headers()["x-content-type-options"]).toBe("nosniff");
