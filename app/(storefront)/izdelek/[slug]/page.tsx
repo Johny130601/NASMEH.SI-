@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
-import { getCatalogProducts, parseBadges } from "@/lib/catalog";
+import { getCatalogProducts, lowStockUnits, parseBadges } from "@/lib/catalog";
 import { getPriceReductions } from "@/lib/omnibus";
 import {
   formatEUR,
@@ -11,13 +11,15 @@ import {
   bundleSavings,
   standardShippingMethod,
 } from "@/lib/pricing";
-import { getShippingSettings } from "@/lib/settings";
+import { getLowStockThreshold, getShippingSettings } from "@/lib/settings";
 import { isTestMode } from "@/lib/turnstile";
 import { getEnv } from "@/lib/env";
 import { buildMetadata, siteUrl } from "@/lib/seo";
-import { pdp as copy, common } from "@/lib/copy";
+import { catalog, pdp as copy, common } from "@/lib/copy";
 import { UiAccordion } from "@/components/storefront/ui/UiAccordion";
+import { UiIcon } from "@/components/storefront/ui/UiIcon";
 import { UiPill } from "@/components/storefront/ui/UiPill";
+import { TrustRow } from "@/components/storefront/pdp/TrustRow";
 import { JsonLd } from "@/components/storefront/seo/JsonLd";
 import { CatalogCard } from "@/components/storefront/catalog/CatalogCard";
 import { BadgePill } from "@/components/storefront/catalog/BadgePill";
@@ -110,7 +112,7 @@ export default async function ProductPage({
 
   // Omnibus gate (lib/pricing priceReduction): strikethrough + 30-day line
   // only with a history-backed prior price above the current price.
-  const [reductions, shipping, reviewAggregate, crossSellProducts] =
+  const [reductions, shipping, reviewAggregate, crossSellProducts, lowStockThreshold] =
     await Promise.all([
       getPriceReductions([
         { variantId: variant.id, priceCents: variant.priceCents, compareAtPriceCents: variant.compareAtPriceCents },
@@ -120,14 +122,16 @@ export default async function ProductPage({
       getCatalogProducts().then((all) =>
         all.filter((p) => p.slug !== product.slug),
       ),
+      getLowStockThreshold(),
     ]);
 
   const reduction = reductions.get(variant.id) ?? null;
-  // Delivery accordion from the shipping Setting (the cart's standard method and threshold)
-  const deliveryShipping = copy.delivery.shipping({
-    estimate: standardShippingMethod(shipping.methods, shipping.standardCostCents)?.estimate.trim() || null,
-    freeThreshold: shipping.freeThresholdCents > 0 ? formatEUR(shipping.freeThresholdCents) : null,
-  });
+  // the real remaining units, only while the stock is at or under the admin's threshold
+  const lowStock = soldOut ? null : lowStockUnits(variant.stock, lowStockThreshold);
+  // Delivery accordion and trust row from the shipping Setting (the cart's standard method and threshold)
+  const deliveryEstimate = standardShippingMethod(shipping.methods, shipping.standardCostCents)?.estimate.trim() || null;
+  const freeThreshold = shipping.freeThresholdCents > 0 ? formatEUR(shipping.freeThresholdCents) : null;
+  const deliveryShipping = copy.delivery.shipping({ estimate: deliveryEstimate, freeThreshold });
 
   const rating =
     reviewAggregate.count > 0
@@ -250,20 +254,22 @@ export default async function ProductPage({
               <div aria-hidden="true" className="aspect-[0.6875] w-full rounded-card bg-light-3" />
             ) : (
               product.media.map((image, index) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  key={image.id}
-                  src={image.url}
-                  alt={image.alt}
-                  width={880}
-                  height={1280}
-                  {...(index === 0
-                    ? { fetchPriority: "high" }
-                    : index === 1
-                      ? { loading: "eager" }
-                      : { loading: "lazy" })}
-                  className="aspect-[0.6875] w-full rounded-card bg-light-3 object-cover"
-                />
+                // the frame clips a slow zoom on hover; the image keeps its intrinsic box (no shift)
+                <div key={image.id} className="group overflow-hidden rounded-card bg-light-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={image.url}
+                    alt={image.alt}
+                    width={880}
+                    height={1280}
+                    {...(index === 0
+                      ? { fetchPriority: "high" }
+                      : index === 1
+                        ? { loading: "eager" }
+                        : { loading: "lazy" })}
+                    className="aspect-[0.6875] w-full object-cover transition-transform duration-700 ease-out-quart group-hover:scale-[1.04]"
+                  />
+                </div>
               ))
             )}
           </div>
@@ -295,7 +301,10 @@ export default async function ProductPage({
               <ul className="mt-5 flex flex-wrap gap-2">
                 {cf.uspChips.slice(0, 3).map((chip) => (
                   <li key={chip}>
-                    <UiPill variant="neutral">{chip}</UiPill>
+                    <UiPill variant="neutral">
+                      <UiIcon name="check" className="h-3.5 w-3.5 text-brand" />
+                      {chip}
+                    </UiPill>
                   </li>
                 ))}
               </ul>
@@ -352,15 +361,22 @@ export default async function ProductPage({
             ) : null}
 
             {/* 8. Buy box */}
-            <div className="mt-8 rounded-card border border-light-2 bg-white p-5" data-pdp-price-box>
-              <p className="text-2xl text-dark-1">
+            <div className="mt-8 rounded-card border border-light-2 bg-white p-5 shadow-card" data-pdp-price-box>
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-2xl text-dark-1">
                 {reduction ? (
-                  <span className="mr-2 text-base text-mid-2 line-through">
+                  <span className="text-base text-mid-2 line-through">
                     {formatEUR(reduction.priorPriceCents)}
                   </span>
                 ) : null}
-                {formatEUR(variant.priceCents)}{" "}
-                <span className="text-sm text-mid-2">{copy.buyBox.vatIncluded}</span>
+                <span>
+                  {formatEUR(variant.priceCents)}{" "}
+                  <span className="text-sm text-mid-2">{copy.buyBox.vatIncluded}</span>
+                </span>
+                {reduction && !soldOut ? (
+                  <UiPill variant="brand" data-percent-off>
+                    {catalog.card.percentOff(reduction.percentOff)}
+                  </UiPill>
+                ) : null}
               </p>
               {reduction ? (
                 <p className="mt-1 text-xs text-mid-2" data-omnibus-line>
@@ -376,6 +392,12 @@ export default async function ProductPage({
                     cf.unitPrice.unit,
                   )}
                   )
+                </p>
+              ) : null}
+              {lowStock !== null ? (
+                <p className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-dark-1" data-low-stock>
+                  <span aria-hidden="true" className="h-2 w-2 animate-pulse-dot rounded-btn bg-warning" />
+                  {copy.buyBox.lowStock(lowStock)}
                 </p>
               ) : null}
               {backorder ? (
@@ -399,8 +421,12 @@ export default async function ProductPage({
                   maxQuantity={variant.maxCartQuantity}
                   soldOut={soldOut}
                   testToken={testToken}
+                  imageUrl={product.media[0]?.url ?? null}
                 />
               </div>
+
+              {/* Trust row (research 04 §8 risk reversal; every figure from the shipping Setting) */}
+              <TrustRow estimate={deliveryEstimate} freeThreshold={freeThreshold} guarantee={false} className="mt-5 border-t border-light-3 pt-4" />
             </div>
 
             {/* 9. Delivery & returns accordion */}
@@ -423,7 +449,7 @@ export default async function ProductPage({
 
         {/* 10. Cross-sell */}
         {crossSell.length > 0 ? (
-          <section className="mt-20">
+          <section className="ui-reveal mt-20">
             <h2 className="text-2xl md:text-[2rem]">{copy.crossSell}</h2>
             <ul className="mt-8 grid grid-cols-2 gap-x-2 gap-y-8 md:grid-cols-3 md:gap-x-5">
               {crossSell.map((p) => (
@@ -439,7 +465,7 @@ export default async function ProductPage({
         {education.length > 0 ? (
           <section className="mt-20 grid gap-6 md:grid-cols-2">
             {education.map((section) => (
-              <div key={section.heading} className="rounded-card bg-light-3 p-8">
+              <div key={section.heading} className="ui-reveal rounded-card bg-light-3 p-8 transition-colors duration-300 hover:bg-light-2">
                 <h2 className="text-2xl">{section.heading}</h2>
                 <p className="mt-3 text-sm leading-6 text-mid-1">{section.body}</p>
               </div>
@@ -449,7 +475,7 @@ export default async function ProductPage({
 
         {/* 12. FAQ + FAQPage JSON-LD */}
         {faqItems.length > 0 ? (
-          <section className="mt-20 max-w-(--container-narrow)">
+          <section className="ui-reveal mt-20 max-w-(--container-narrow)">
             <h2 className="text-2xl md:text-[2rem]">{copy.faq.title}</h2>
             <div className="mt-6">
               <UiAccordion
@@ -472,7 +498,7 @@ export default async function ProductPage({
 
         {/* 14. "Ljudje tudi kupujejo" */}
         {alsoBought.length > 0 ? (
-          <section className="mt-20">
+          <section className="ui-reveal mt-20">
             <h2 className="text-2xl md:text-[2rem]">{copy.alsoBought}</h2>
             <ul className="mt-8 grid grid-cols-2 gap-x-2 gap-y-8 md:grid-cols-4 md:gap-x-5">
               {alsoBought.map((p) => (
@@ -495,6 +521,7 @@ export default async function ProductPage({
         priceCents={variant.priceCents}
         soldOut={soldOut}
         testToken={testToken}
+        imageUrl={product.media[0]?.url ?? null}
       />
       <TrackViewItem
         event={buildViewItemEvent({

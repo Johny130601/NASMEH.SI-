@@ -1,4 +1,19 @@
 /** /trgovina + product-card copy. */
+
+/** Slovenian count form of "kos" (dual and plural: 1 kos, 2 kosa, 3–4 kosi, 5+ kosov). */
+export function kosForm(count: number): string {
+  const mod100 = Math.abs(count) % 100;
+  if (mod100 === 1) return "kos";
+  if (mod100 === 2) return "kosa";
+  if (mod100 === 3 || mod100 === 4) return "kosi";
+  return "kosov";
+}
+
+/** The real remaining units (lib/catalog `lowStockUnits`), never a made-up figure. */
+export function lowStockLine(units: number): string {
+  return `Samo še ${units} ${kosForm(units)} na zalogi`;
+}
+
 export const catalog = {
   title: "Trgovina",
   bannerAlt: "Nasmeh.si trgovina — promocijski pas",
@@ -20,12 +35,18 @@ export const catalog = {
   },
   card: {
     addToCart: "Dodaj v košarico",
+    adding: "Dodajam …",
     added: "Dodano ✓",
     buildBundle: "Sestavi paket",
     notifyMe: "Obvestite me",
     soldOut: "Razprodano",
     moreSwatches: "+N",
     vatIncluded: "DDV vključen",
+    /** History-backed reduction (lib/pricing percentOff, rounded down): "−20 %". */
+    percentOff: (percent: number) => `−${percent} %`,
+    /** Fixed-bundle value math from the components' current prices (§6.6). */
+    bundleValue: (value: string, percent: number) => `Vrednost ${value} · prihranite ${percent} %`,
+    lowStock: lowStockLine,
   },
   seoBlock: {
     title: "Beljenje zob, pošteno povedano",

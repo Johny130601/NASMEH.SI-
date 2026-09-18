@@ -56,7 +56,7 @@ export async function SiteHeader() {
   const cartCount = cartLines.reduce((sum, line) => sum + line.quantity, 0);
 
   return (
-    <header className="sticky top-0 z-40 bg-white">
+    <header className="ui-header sticky top-0 z-40 bg-white">
       {marqueeActive !== false ? (
         <UiMarquee
           text={marqueeText ?? home.marqueeFallback}
@@ -109,9 +109,11 @@ export async function SiteHeader() {
             >
               <UiIcon name="cart" className="h-5 w-5" />
               {cartCount > 0 ? (
+                // keyed by the count so every change pops the badge (research 06 §10 cart dot)
                 <span
+                  key={cartCount}
                   data-cart-badge
-                  className="absolute right-0 top-0 flex h-5 min-w-5 items-center justify-center rounded-btn bg-brand px-1 text-xs font-medium leading-none text-white"
+                  className="absolute right-0 top-0 flex h-5 min-w-5 animate-pop items-center justify-center rounded-btn bg-brand px-1 text-xs font-medium leading-none text-white"
                 >
                   {cartCount}
                 </span>

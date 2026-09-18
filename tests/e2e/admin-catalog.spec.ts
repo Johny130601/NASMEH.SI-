@@ -123,8 +123,10 @@ test("owner creates, prices, illustrates, restocks, hides and backorders a produ
     await page.goto("/trgovina");
     const listing = page.locator(`[data-product-card='${slug}']`);
     await expect(listing).toBeVisible();
-    await expect(listing.locator("img")).toHaveAttribute("src", card.url);
-    await expect(listing.locator("img")).toHaveAttribute("alt", `Kartica ${key}`);
+    // the card image comes first; the decorative hover view (first gallery image) follows it
+    await expect(listing.locator("img").first()).toHaveAttribute("src", card.url);
+    await expect(listing.locator("img").first()).toHaveAttribute("alt", `Kartica ${key}`);
+    await expect(listing.locator("[data-hover-image]")).toHaveAttribute("alt", "");
     await page.goto(`/izdelek/${slug}`);
     await expect(page.locator("h1")).toHaveText(title);
     await expect(page.locator(`img[alt='Galerija ${key}']`).first()).toBeVisible();

@@ -1,6 +1,6 @@
 import type { HTMLAttributes, ReactNode } from "react";
 
-export type UiPillVariant = "neutral" | "brand" | "success" | "error" | "warning";
+export type UiPillVariant = "neutral" | "brand" | "success" | "error" | "warning" | "dark" | "outline" | "grey";
 
 const variantClasses: Record<UiPillVariant, string> = {
   neutral: "bg-light-3 text-dark-2",
@@ -8,6 +8,10 @@ const variantClasses: Record<UiPillVariant, string> = {
   success: "bg-success text-white",
   error: "bg-error text-white",
   warning: "bg-warning text-dark-1",
+  // admin badge styles (BadgePill): solid, outline and the grey sold-out pill
+  dark: "bg-dark-1 text-white",
+  outline: "border border-dark-1 bg-white text-dark-1",
+  grey: "bg-light-1 text-mid-1",
 };
 
 export interface UiPillProps extends HTMLAttributes<HTMLSpanElement> {

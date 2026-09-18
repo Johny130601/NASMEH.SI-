@@ -1,32 +1,22 @@
 import type { Badge } from "@/lib/catalog";
 import { UiPill, type UiPillVariant } from "../ui/UiPill";
 
-const STYLE_VARIANTS: Record<Badge["style"], { variant: UiPillVariant; outline: boolean }> = {
-  outline: { variant: "neutral", outline: true },
-  solid: { variant: "neutral", outline: false },
-  grey: { variant: "neutral", outline: false },
-  warning: { variant: "warning", outline: false },
-  promo: { variant: "brand", outline: false },
+/**
+ * Each admin badge style is its own pill variant. Overriding the neutral
+ * variant's background through `className` does not work: two `bg-*`
+ * utilities on one element resolve by stylesheet order, and the solid
+ * "USPEŠNICA" badge came out white on the light tile (found 2026-09-16).
+ */
+const STYLE_VARIANTS: Record<Badge["style"], UiPillVariant> = {
+  outline: "outline",
+  solid: "dark",
+  grey: "grey",
+  warning: "warning",
+  promo: "brand",
 };
 
 /** Admin-data-driven badge pill (§5): NOVO outline, Uspešnica, Hitro se
  *  prodaja, Razprodano grey, promo pill. */
 export function BadgePill({ badge }: { badge: Badge }) {
-  const { variant, outline } = STYLE_VARIANTS[badge.style];
-  return (
-    <UiPill
-      variant={variant}
-      className={
-        outline
-          ? "border border-dark-1 bg-transparent text-dark-1"
-          : badge.style === "grey"
-            ? "bg-light-1 text-mid-1"
-            : badge.style === "solid"
-              ? "bg-dark-1 text-white"
-              : ""
-      }
-    >
-      {badge.label}
-    </UiPill>
-  );
+  return <UiPill variant={STYLE_VARIANTS[badge.style]}>{badge.label}</UiPill>;
 }

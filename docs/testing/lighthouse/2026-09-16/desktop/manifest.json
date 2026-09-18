@@ -1,0 +1,146 @@
+[
+  {
+    "url": "http://127.0.0.1:4317/",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\-2026_09_16_11_33_02.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\-2026_09_16_11_33_02.json",
+    "summary": {
+      "performance": 1,
+      "accessibility": 0.96,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\-2026_09_16_11_33_14.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\-2026_09_16_11_33_14.json",
+    "summary": {
+      "performance": 1,
+      "accessibility": 0.96,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/izdelek/belilni-trakci-za-zobe",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\izdelek_belilni_trakci_za_zobe-2026_09_16_11_33_27.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\izdelek_belilni_trakci_za_zobe-2026_09_16_11_33_27.json",
+    "summary": {
+      "performance": 1,
+      "accessibility": 0.96,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/izdelek/belilni-trakci-za-zobe",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\izdelek_belilni_trakci_za_zobe-2026_09_16_11_33_40.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\izdelek_belilni_trakci_za_zobe-2026_09_16_11_33_40.json",
+    "summary": {
+      "performance": 1,
+      "accessibility": 0.96,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/cart",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\cart-2026_09_16_11_34_19.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\cart-2026_09_16_11_34_19.json",
+    "summary": {
+      "performance": 1,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.61
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/cart",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\cart-2026_09_16_11_34_32.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\cart-2026_09_16_11_34_32.json",
+    "summary": {
+      "performance": 1,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.61
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/checkout",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\checkout-2026_09_16_11_34_44.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\checkout-2026_09_16_11_34_44.json",
+    "summary": {
+      "performance": 1,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.58
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/checkout",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\checkout-2026_09_16_11_35_09.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\checkout-2026_09_16_11_35_09.json",
+    "summary": {
+      "performance": 1,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.58
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/",
+    "isRepresentativeRun": true,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\-2026_09_16_11_32_48.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\-2026_09_16_11_32_48.json",
+    "summary": {
+      "performance": 1,
+      "accessibility": 0.96,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/izdelek/belilni-trakci-za-zobe",
+    "isRepresentativeRun": true,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\izdelek_belilni_trakci_za_zobe-2026_09_16_11_33_54.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\izdelek_belilni_trakci_za_zobe-2026_09_16_11_33_54.json",
+    "summary": {
+      "performance": 1,
+      "accessibility": 0.96,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/cart",
+    "isRepresentativeRun": true,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\cart-2026_09_16_11_34_07.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\cart-2026_09_16_11_34_07.json",
+    "summary": {
+      "performance": 1,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.61
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/checkout",
+    "isRepresentativeRun": true,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\checkout-2026_09_16_11_34_56.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-09-16\\desktop\\checkout-2026_09_16_11_34_56.json",
+    "summary": {
+      "performance": 1,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.58
+    }
+  }
+]

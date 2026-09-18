@@ -17,12 +17,14 @@ export function ObvestiteMeButton({
   testToken,
   siteKey,
   fullWidth = true,
+  className = "",
 }: {
   productSlug: string;
   testToken: string | null;
   /** Public Turnstile key when the page has it; omitted, the form fetches it when it opens. */
   siteKey?: string | null;
   fullWidth?: boolean;
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -30,6 +32,7 @@ export function ObvestiteMeButton({
       <UiButton
         variant="outline"
         fullWidth={fullWidth}
+        className={className}
         onClick={() => setOpen(true)}
         data-notify-button={productSlug}
       >
@@ -104,6 +107,8 @@ export function BackInStockForm({
       data-backinstock-form
     >
       <UiInput
+        // own id: the modal is portaled after the footer, whose newsletter input is also named "email"
+        id="back-in-stock-email"
         label={copy.emailLabel}
         name="email"
         type="email"

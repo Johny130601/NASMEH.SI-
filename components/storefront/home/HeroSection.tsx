@@ -1,15 +1,27 @@
 import Link from "next/link";
 import type { HeroSlotSetting } from "@/lib/settings";
 import { home } from "@/lib/copy";
+import { TrustRow } from "../pdp/TrustRow";
 import { UiButton } from "../ui/UiButton";
+import { UiIcon } from "../ui/UiIcon";
 import { UiPill } from "../ui/UiPill";
+
+export interface HeroTrust {
+  /** The standard Slovenian method's estimate, or null when none is configured. */
+  estimate: string | null;
+  /** Formatted free-shipping threshold, or null when every order ships free. */
+  freeThreshold: string | null;
+}
 
 /**
  * Hero product-launch slot (§4.1): split layout, Setting-driven content.
  * Video (mobile/desktop crops via <source media>) when D2 assets exist,
  * poster/image fallback otherwise. Optional claim footnote and promo overlay banner.
+ * The trust strip under the grid states delivery, threshold, guarantee and
+ * payment from live settings. Nothing in the first viewport animates on load:
+ * the poster is the LCP element (AGENTS §8.20).
  */
-export function HeroSection({ hero }: { hero: HeroSlotSetting | null }) {
+export function HeroSection({ hero, trust }: { hero: HeroSlotSetting | null; trust: HeroTrust }) {
   const content = hero ?? {
     title: home.hero.title,
     subtitle: home.hero.subtitle,
@@ -36,8 +48,9 @@ export function HeroSection({ hero }: { hero: HeroSlotSetting | null }) {
             </p>
           ) : null}
           <div className="mt-8">
-            <UiButton variant="primary" href={content.ctaHref}>
+            <UiButton variant="primary" href={content.ctaHref} className="group">
               {content.ctaLabel}
+              <UiIcon name="arrow-right" className="h-4 w-4 transition-transform duration-300 ease-out-quart group-hover:translate-x-1" />
             </UiButton>
           </div>
         </div>
@@ -72,12 +85,20 @@ export function HeroSection({ hero }: { hero: HeroSlotSetting | null }) {
         </div>
       </div>
 
+      {/* Trust strip (research 04 §8): the reasons to buy, stated once, from settings */}
+      <div className="border-t border-light-3 bg-light-4">
+        <div className="mx-auto max-w-(--container-wide) px-(--padding) py-5">
+          <TrustRow variant="strip" estimate={trust.estimate} freeThreshold={trust.freeThreshold} />
+        </div>
+      </div>
+
       {content.promoOverlayText ? (
         <Link
           href={content.promoOverlayHref ?? "/trgovina"}
-          className="block bg-brand py-3 text-center text-sm font-medium text-white transition-opacity hover:opacity-90"
+          className="group flex items-center justify-center gap-2 bg-brand py-3 text-center text-sm font-medium text-dark-1 transition-opacity hover:opacity-90"
         >
           {content.promoOverlayText}
+          <UiIcon name="arrow-right" className="h-4 w-4 transition-transform duration-300 ease-out-quart group-hover:translate-x-1" />
         </Link>
       ) : null}
     </section>

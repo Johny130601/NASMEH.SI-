@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { getCatalogProducts } from "@/lib/catalog";
-import { getSetting, SETTING_KEYS, type BundleBannerSetting, type HeroSlotSetting, type RoutineBannerSetting } from "@/lib/settings";
+import { getSetting, getShippingSettings, SETTING_KEYS, type BundleBannerSetting, type HeroSlotSetting, type RoutineBannerSetting } from "@/lib/settings";
 import { bundleBannerWithDefaults, normaliseHomeSections, routineBannerWithDefaults } from "@/lib/admin/cms";
+import { formatEUR, standardShippingMethod } from "@/lib/pricing";
 import { isTestMode } from "@/lib/turnstile";
 import { getEnv } from "@/lib/env";
 import { buildMetadata } from "@/lib/seo";
@@ -22,16 +23,22 @@ export const metadata: Metadata = buildMetadata({
 });
 
 export default async function HomePage() {
-  const [hero, products, sectionSetting, bundleSetting, routineSetting] = await Promise.all([
+  const [hero, products, sectionSetting, bundleSetting, routineSetting, shipping] = await Promise.all([
     getSetting<HeroSlotSetting>(SETTING_KEYS.homeHero),
     getCatalogProducts(),
     getSetting<unknown>(SETTING_KEYS.homeSections),
     getSetting<BundleBannerSetting>(SETTING_KEYS.homeBundleBanner),
     getSetting<RoutineBannerSetting>(SETTING_KEYS.homeRoutineBanner),
+    getShippingSettings(),
   ]);
   const sections = normaliseHomeSections(sectionSetting).filter((section) => section.visible);
   const bundleBanner = bundleBannerWithDefaults(bundleSetting);
   const routineBanner = routineBannerWithDefaults(routineSetting);
+  // the hero trust strip reads the same shipping Setting as the PDP delivery accordion
+  const trust = {
+    estimate: standardShippingMethod(shipping.methods, shipping.standardCostCents)?.estimate.trim() || null,
+    freeThreshold: shipping.freeThresholdCents > 0 ? formatEUR(shipping.freeThresholdCents) : null,
+  };
   // cards carry their Omnibus-backed reduction from getCatalogProducts
   const rail = products.slice(0, 4);
 
@@ -40,12 +47,12 @@ export default async function HomePage() {
 
   // §4 sections in the order and visibility set in /admin/vsebina/domov.
   const rendered = {
-    hero: <HeroSection key="hero" hero={hero} />,
+    hero: <HeroSection key="hero" hero={hero} trust={trust} />,
     rail: (
       <section
         key="rail"
         id="izdelki"
-        className="mx-auto max-w-(--container-wide) px-(--padding) py-16"
+        className="ui-reveal mx-auto max-w-(--container-wide) px-(--padding) py-16"
       >
         <h2 className="text-2xl md:text-[2rem]">{home.rail.title}</h2>
         {rail.length === 0 ? (
@@ -54,11 +61,10 @@ export default async function HomePage() {
           <div className="mt-8">
             <UiCarousel label={home.rail.carouselLabel}>
               {rail.map((product) => (
-                <CatalogCard
-                  key={product.slug}
-                  product={product}
-                  testToken={testToken}
-                />
+                // the slide sets the card width (research 06 §4 rail: 262 → 300 px)
+                <div key={product.slug} className="w-[15rem] shrink-0 snap-start md:w-[17rem]">
+                  <CatalogCard product={product} testToken={testToken} />
+                </div>
               ))}
             </UiCarousel>
           </div>

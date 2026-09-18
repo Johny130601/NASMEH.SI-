@@ -41,4 +41,11 @@ export const cart = {
     phaseNote: "Koda se aktivira s popustom v fazi 4.",
     invalid: "Koda ni veljavna.",
   },
+  /** Confirmation card after "Dodaj v košarico" (no drawer cart at P1, §15). */
+  toast: {
+    added: "Dodano v košarico",
+    view: "Poglej košarico",
+    close: "Zapri obvestilo",
+    line: (quantity: number, price: string) => `${quantity} × ${price}`,
+  },
 } as const;

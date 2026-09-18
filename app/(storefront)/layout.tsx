@@ -21,6 +21,7 @@ import { ConsentProvider } from "@/components/storefront/cmp/ConsentProvider";
 import { CmpBanner } from "@/components/storefront/cmp/CmpBanner";
 import { GatedScripts } from "@/components/storefront/cmp/GatedScripts";
 import { WelcomePopup } from "@/components/storefront/WelcomePopup";
+import { CartToast } from "@/components/storefront/cart/CartToast";
 import { JsonLd } from "@/components/storefront/seo/JsonLd";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -104,6 +105,8 @@ export default async function StorefrontLayout({
       <SiteHeader />
       <main id="content">{children}</main>
       <SiteFooter />
+      {/* one confirmation card for every add-to-cart button on the page */}
+      <CartToast />
       <CmpBanner />
       <GatedScripts />
       {welcomePopup ? (

@@ -127,6 +127,7 @@
 - **404 page** with copy + auto-redirect countdown to home [BASE: 05 §11]. `[P1-core]`
 - **Site-wide ops notice banner** (delayed-shipping/ops messaging broadcast from admin) [BASE: 04 §9]. `[P2-growth]`
 - Skeleton loaders + lazy sections via IntersectionObserver; font-display swap [BASE: 01 §4, 06 §3]. `[P1-core]`
+- **Motion system** (2026-09-16, AGENTS §8.23): tokenised, compositor-only animations (research 06 §14 restraint) — card lift + shadow + image cross-fade on hover, press feedback on every pill button, a popping cart badge and success label, pulsing low-stock dot, pure-CSS scroll-driven reveals for below-the-fold sections (`animation-timeline: view()`, progressive enhancement), a scroll shadow under the sticky header, drawn-in nav underlines, an ambient highlight on the bundle banner; all disabled by `prefers-reduced-motion`, nothing in the first viewport animates on load [ADAPT: 06 §6, §10, §14]. `[P1-core]`
 - Accessibility baseline: semantic landmarks, focus states, alt-text discipline (descriptive, not marketing captions — HiSmile's alts are captions; we do better), contrast AA, keyboard-navigable menus/modals [NEW: 02 §5.1]. `[P2-growth]`
 - Bot protection (Cloudflare Turnstile/hCaptcha) on all forms + checkout [BASE: 05 §1]. `[P1-core]`
 - Maintenance/password mode for pre-launch [BASE: 07 §8.4]. `[P1-core]`
@@ -142,6 +143,7 @@ Section order (adapted from BASE 01 §1; ~one screen of merchandising, not a bra
 1. **Hero — product-launch slot** `[P1-core]`
    - Split layout: left copy (outcome-verb headline + one-sentence ingredient+mechanism+benefit subcopy + black pill "Nakupuj zdaj"), right **autoplay muted loop video** (UGC-style, separate mobile/desktop crops, poster image) [BASE: 01 §2.4, 06 §16].
    - Optional **promo overlay banner** at hero bottom tied to the current campaign (e.g. free gift) [BASE: 01 §2.4]. `[P1-core]`
+   - **Trust strip** under the hero grid (delivery estimate, free-shipping threshold, guarantee, secure payment — the PDP trust row's data, from the shipping Setting), so the campaign line above the fold is free for an offer [ADAPT: 04 §8; 2026-09-16]. `[P1-core]`
    - Admin-swappable: hero is a content slot (see campaign presets, §14.10). `[P1-core]`
 2. **"Naše uspešnice" product rail** — horizontal-scroll carousel of the 3 heroes + bundle, cards with direct "Dodaj v košarico", badge pills, **star rating on card** (NEW) [ADAPT: 01 §2.5]. `[P1-core]`
 3. **Bundle banner** — full-width brand-color block: "Naši paketi" + underlined "Nakupuj zdaj" [BASE: 01 §2.6]. `[P1-core]`
@@ -167,6 +169,7 @@ With 3 SKUs + 1 bundle, one strong shop page beats a collection tree [ADAPT: 02 
 - **No facet filters** — deliberately omitted (3 SKUs; merchandising order does the work) [BASE: 02 §3.2]. Re-evaluate `[P3-later]` if catalog grows.
 - **Product card anatomy**: promo pill badge → packshot on light tile → title → **star rating + review count** [NEW] → price (VAT incl., Omnibus-compliant compare-at when on sale) → unit price where relevant → variant swatches with "+N" overflow → full-width CTA by state: "Dodaj v košarico" / "Sestavi paket" / "Obvestite me" (sold out) [ADAPT: 02 §3.3, 01 §2.5]. `[P1-core]`
 - **Badge system** (admin-driven): NOVO (outline), Uspešnica, Hitro se prodaja, Razprodano (grey), promo pill (campaign color) [BASE: 02 §3.4]. `[P1-core]`
+- **Computed hooks on every card** (2026-09-16): a "−X %" pill from the Omnibus-backed reduction (the same figure as the strikethrough and the 30-day line), the bundle's value line "Vrednost €Y · prihranite Z %" from its components' current prices (§6.6 math, no strikethrough), the real "Samo še N kosov na zalogi" line while the stock is at or under the admin's low-stock threshold (§14.2), and a hover cross-fade to the first gallery image with a lift and shadow; at most one admin badge and one computed pill on the image; no typed figure anywhere [ADAPT: 02 §3.3–3.4, 04 §8, 06 §7.3; UCPD Annex I(7)]. `[P1-core]`
 - **Image sticker overlays** (gift starburst PNG on card corners when GWP campaign active) [BASE: 02 §3.3]. `[P2-growth]`
 - **Double-wide feature cards** spanning 2 grid columns for editorial rhythm [BASE: 02 §3.2]. `[P2-growth]`
 - Sold-out products **stay published** with "Obvestite me" email capture (card + PDP), never hidden [BASE: 02 §5.9]. `[P1-core]`
@@ -186,7 +189,7 @@ One template, three products; strips get the most built-out landing variant [BAS
 5. **USP chips row** (icon + label, max 3): e.g. strips: "Rezultati že po 1 uporabi*" / "30 minut" / "Brez peroksida" [ADAPT: 02 §4]. `[P1-core]`
 6. **Intro line + 3–4 checkmark bullets** [BASE: 02 §4]. `[P1-core]`
 7. **Accordion set #1** (server-rendered content — NEW vs HiSmile's lazy empty bodies): *Kako deluje · Sestavine (INCI) · Jamstvo vračila denarja · *Opombe k navedbam* — asterisked marketing claims (`*`, `^`) resolve to this claim-notes accordion; no study figure ships without an evidence file (Reg. 655/2013, Phase 9 step 4) [ADAPT: 02 §5.5, 04 §11]. `[P1-core]`
-8. **Buy box**: price (VAT incl.; Omnibus 30-day-low line when discounted) + **unit price anchor** "(€2,50 na uporabo)" + **Klarna line** ("ali 3 obroka po €11,66 s Klarna") + qty stepper (1–5, minus disabled at 1) + full-width "Dodaj v košarico" + green **"30-dnevno jamstvo vračila denarja"** pill under ATC [ADAPT: 02 §4–5]. `[P1-core]`
+8. **Buy box**: price (VAT incl.; Omnibus 30-day-low line when discounted, with the "−X %" pill beside the price) + **unit price anchor** "(€2,50 na uporabo)" + **Klarna line** ("ali 3 obroka po €11,66 s Klarna") + the real low-stock line under the admin threshold + qty stepper (1–5, minus disabled at 1) + full-width "Dodaj v košarico" (busy → green "Dodano ✓" flash, then the page-level confirmation card, §7.1) + green **"30-dnevno jamstvo vračila denarja"** pill under ATC + **trust row** (delivery estimate, free-shipping threshold, guarantee link, secure payment — every figure from the shipping Setting) [ADAPT: 02 §4–5, 04 §8]. `[P1-core]`
 9. **Delivery & returns accordion on PDP** (dostava 2–4 dni, brezplačna nad €45, 14-dnevni odstop) [NEW — HiSmile hides this in Help; EU buyers expect it on PDP: 02 §8]. `[P1-core]`
 10. **Cross-sell block**: "Dopolni svojo rutino" — curated cards of the other 2 products + bundle with quick ATC [ADAPT: 02 §5.7 — simple curation at launch]. `[P1-core]`
     - **"Nadgradi in prihrani"** (Upgrade & Save 2-pack, replaces single in cart, with replace-notice microcopy) — needs deal-SKU layer [BASE: 02 §5.4A]. `[P2-growth]`
@@ -224,6 +227,7 @@ One template, three products; strips get the most built-out landing variant [BAS
 - **"Hot deal" cart-only add-on** (e.g. mini mouthwash €5, limit 1, auto-removed if it becomes the only cart item; gated to unlock only when cart already has a full-price item) [BASE: 04 §5 Format C]. `[P2-growth]`
 - Checkout block: big black "Na blagajno" + **payment icon strip** (Visa, MC, PayPal, Apple Pay, Google Pay, Klarna) [ADAPT: 03 §8]. `[P1-core]`
 - **Empty-cart state**: "Vaša košarica je prazna" + "Nakupuj vse izdelke" pill + best-sellers rail below (even the empty cart is a merchandising surface) [BASE: 01 §2.7]. `[P1-core]`
+- **Add-to-cart confirmation card** (2026-09-16): after any "Dodaj v košarico" the button flashes green "Dodano ✓" and one page-level card under the header names the item and its line ("1 × 34,99 €") with "Poglej košarico" and "Nadaljuj z nakupovanjem"; auto-dismissed after 5 s, Esc closes, hover pauses. A confirmation, not the drawer cart deferred to P2 (§15) [ADAPT: 03 §2, 04 §5 "where upsells render"]. `[P1-core]`
 - Persistent cart for logged-in users; session cart for guests; merge on login [standard practice]. `[P1-core]`
 
 ### 7.2 Discount entry

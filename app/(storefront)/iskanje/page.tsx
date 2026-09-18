@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { searchProducts } from "@/lib/search";
-import type { CatalogProduct } from "@/lib/catalog";
+import { lowStockUnits, type CatalogProduct } from "@/lib/catalog";
 import { getPriceReductions } from "@/lib/omnibus";
+import { getLowStockThreshold } from "@/lib/settings";
 import { buildMetadata } from "@/lib/seo";
 import { search as copy } from "@/lib/copy";
 import { CatalogCard } from "@/components/storefront/catalog/CatalogCard";
@@ -24,8 +25,8 @@ export default async function SearchPage({
   const { q = "" } = await searchParams;
   const query = q.trim();
   const results = query.length >= 2 ? await searchProducts(query, 48) : [];
-  // same Omnibus gate as every other card surface (one batched history query)
-  const reductions = await getPriceReductions(results);
+  // same Omnibus gate and low-stock rule as every other card surface (one batched history query)
+  const [reductions, lowStockThreshold] = await Promise.all([getPriceReductions(results), getLowStockThreshold()]);
 
   const cards: CatalogProduct[] = results.map((result) => ({
     slug: result.slug,
@@ -36,15 +37,18 @@ export default async function SearchPage({
     reduction: reductions.get(result.variantId) ?? null,
     stock: result.stock,
     soldOut: result.soldOut,
+    lowStock: result.soldOut ? null : lowStockUnits(result.stock, lowStockThreshold),
     backorderNote: null,
     maxCartQuantity: 5,
     imageUrl: result.imageUrl,
     imageAlt: result.imageAlt,
+    hoverImageUrl: null,
     badges: [],
     variantCount: 1,
     rating: null,
     unitPrice: null,
     isBundle: false,
+    bundleSavings: null,
     createdAt: new Date(0),
   }));
 

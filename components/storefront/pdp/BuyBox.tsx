@@ -20,6 +20,7 @@ export function BuyBox({
   maxQuantity,
   soldOut,
   testToken,
+  imageUrl = null,
 }: {
   productSlug: string;
   variantId: string;
@@ -29,6 +30,8 @@ export function BuyBox({
   maxQuantity: number;
   soldOut: boolean;
   testToken: string | null;
+  /** First gallery image, for the confirmation card. */
+  imageUrl?: string | null;
 }) {
   const [quantity, setQuantity] = useState(1);
 
@@ -58,7 +61,8 @@ export function BuyBox({
             aria-live="polite"
             className="w-8 text-center text-base font-medium text-dark-1"
           >
-            {quantity}
+            {/* keyed so each change pops the figure */}
+            <span key={quantity} className="inline-block animate-pop">{quantity}</span>
           </span>
           <button
             type="button"
@@ -78,15 +82,16 @@ export function BuyBox({
         title={title}
         priceCents={priceCents}
         quantity={quantity}
+        imageUrl={imageUrl}
         label={copy.buyBox.addToCart}
       />
 
       <Link
-        href="/garancija-vracila-denarja"
+        href={copy.trust.guaranteeHref}
         data-guarantee-link
         className="inline-flex items-center gap-2 rounded-card bg-success/15 px-3 py-2 text-xs font-medium text-dark-1 underline-offset-2 hover:underline"
       >
-        <UiIcon name="star" className="h-4 w-4 text-success" />
+        <UiIcon name="shield" className="h-4 w-4 text-success" />
         {copy.buyBox.guarantee}
       </Link>
     </div>

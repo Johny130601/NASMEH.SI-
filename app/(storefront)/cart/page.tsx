@@ -136,8 +136,9 @@ export default async function CartPage({
               aria-valuemin={0}
               aria-valuemax={100}
             >
+              {/* the fill grows from the left on load (scaleX keyframe, compositor only) */}
               <div
-                className="h-full rounded-btn bg-brand transition-all duration-500"
+                className="h-full origin-left animate-bar rounded-btn bg-brand transition-all duration-500"
                 style={{ width: `${priced.freeShipping.progressPercent}%` }}
               />
             </div>

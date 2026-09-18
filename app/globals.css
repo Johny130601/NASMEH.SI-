@@ -97,6 +97,89 @@
   --breakpoint-lg: 991px;
   --breakpoint-xl: initial;
   --breakpoint-2xl: initial;
+
+  /* Motion system (AGENTS §8.23): one easing, compositor-only keyframes
+     (transform / opacity), durations .2–.5 s, every animation a token here so
+     components never hand-roll keyframes. Depth stays soft (research 06 §5). */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --shadow-card: 0 1px 5px rgba(var(--dark-1), 0.06), 0 2px 2px rgba(var(--mid-1), 0.06);
+  --shadow-card-hover: 0 18px 32px -16px rgba(var(--dark-1), 0.22), 0 6px 12px -6px rgba(var(--mid-1), 0.14);
+  --animate-pop: ui-pop 0.45s var(--ease-out-quart) both;
+  --animate-fade-up: ui-fade-up 0.5s var(--ease-out-quart) both;
+  --animate-bar: ui-bar 0.9s var(--ease-out-quart) both;
+  --animate-pulse-dot: ui-pulse-dot 2s ease-in-out infinite;
+  --animate-toast-in: ui-toast-in 0.35s var(--ease-out-quart) both;
+  --animate-rise: ui-rise 0.45s var(--ease-out-quart) both;
+  --animate-sheet-in: ui-sheet-in 0.3s var(--ease-out-quart) both;
+
+  @keyframes ui-pop {
+    0% {
+      transform: scale(0.6);
+      opacity: 0;
+    }
+    60% {
+      transform: scale(1.12);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+  @keyframes ui-fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(0.75rem);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes ui-bar {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+  @keyframes ui-pulse-dot {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgba(var(--warning), 0.7);
+    }
+    60% {
+      box-shadow: 0 0 0 0.45rem rgba(var(--warning), 0);
+    }
+  }
+  @keyframes ui-toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(-0.5rem) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes ui-rise {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: none;
+    }
+  }
+  @keyframes ui-sheet-in {
+    from {
+      opacity: 0;
+      transform: translateY(1.5rem);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 }
 
 html {
@@ -155,6 +238,109 @@ h3 {
 @media (prefers-reduced-motion: reduce) {
   .ui-marquee__track {
     animation: none;
+  }
+}
+
+/* Scroll-driven reveal (research 06 §14 "catalog fades", modern form): a block
+   below the fold fades and rises as it enters the viewport. Pure CSS on the
+   view() timeline — no observer, no script, nothing hidden where the browser
+   lacks support (Firefox still flags it) or the visitor prefers reduced motion.
+   Never put it on the hero or anything else in the first viewport: an element
+   already in view starts fully revealed, but the LCP candidate must not animate. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .ui-reveal {
+      animation: ui-fade-up linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 35%;
+    }
+  }
+}
+
+/* Sticky header: a soft shadow line appears over the first 4rem of scroll
+   (scroll() timeline on a pseudo-element's opacity — compositor only). */
+.ui-header::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: -1px;
+  height: 1px;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: 0 10px 24px -10px rgba(var(--dark-1), 0.25);
+}
+@supports (animation-timeline: scroll()) {
+  .ui-header::after {
+    animation: ui-fade-in linear both;
+    animation-timeline: scroll(root);
+    animation-range: 0 4rem;
+  }
+}
+@keyframes ui-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Desktop nav link: underline draws in from the left on hover / focus / open. */
+.ui-navlink {
+  position: relative;
+}
+.ui-navlink::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: calc(50% - 0.95rem);
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.25s var(--ease-out-quart);
+}
+.ui-navlink:hover::after,
+.ui-navlink:focus-visible::after,
+.ui-navlink[aria-expanded="true"]::after {
+  transform: scaleX(1);
+}
+
+/* Ambient highlight drifting slowly across a brand-color block (bundle banner). */
+.ui-glow {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.ui-glow::before {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(closest-side, rgba(var(--white), 0.22), transparent 70%);
+  animation: ui-drift 16s ease-in-out infinite alternate;
+}
+@keyframes ui-drift {
+  from {
+    transform: translate(-28%, -12%);
+  }
+  to {
+    transform: translate(28%, 16%);
+  }
+}
+
+/* Reduced motion: every animation and transition finishes at once, so a
+   `both`-filled reveal simply shows its end state. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

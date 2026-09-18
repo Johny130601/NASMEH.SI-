@@ -55,7 +55,7 @@ export function MegaMenu({ items, featuredCards }: { items: MenuItem[]; featured
               aria-expanded={open === item.label}
               aria-controls={`${menuId}-panel-${index}`}
               onClick={() => setOpen(open === item.label ? null : item.label)}
-              className="flex h-full items-center gap-2 whitespace-nowrap text-sm font-medium uppercase tracking-[0.1em] text-dark-1 transition-colors hover:text-brand lg:text-base"
+              className="ui-navlink flex h-full items-center gap-2 whitespace-nowrap text-sm font-medium uppercase tracking-[0.1em] text-dark-1 transition-colors hover:text-brand lg:text-base"
             >
               {item.label}
               <UiIcon name="chevron-down" className={`h-5 w-5 transition-transform duration-200 ${open === item.label ? "rotate-180" : ""}`} />
@@ -109,7 +109,7 @@ export function MegaMenu({ items, featuredCards }: { items: MenuItem[]; featured
             <Link
               href={item.href}
               onClick={() => setOpen(null)}
-              className={`flex h-full items-center gap-2 whitespace-nowrap text-sm font-medium uppercase tracking-[0.1em] transition-colors lg:text-base ${item.color === "sale" ? "text-sale hover:opacity-80" : "text-dark-1 hover:text-brand"}`}
+              className={`ui-navlink flex h-full items-center gap-2 whitespace-nowrap text-sm font-medium uppercase tracking-[0.1em] transition-colors lg:text-base ${item.color === "sale" ? "text-sale hover:opacity-80" : "text-dark-1 hover:text-brand"}`}
             >
               {item.color === "sale" ? <UiIcon name="discount" className="h-5 w-5" /> : null}
               {item.label}

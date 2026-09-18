@@ -1,0 +1,157 @@
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/db", () => ({ db: {} }));
+
+import { bundleSavingsFor, lowStockUnits, toCatalogProduct } from "@/lib/catalog";
+import { catalog, kosForm, lowStockLine } from "@/lib/copy/catalog";
+import { trust } from "@/lib/copy/pdp";
+import { cart } from "@/lib/copy/cart";
+
+/**
+ * UI motion + sales hooks (2026-09-16): every hook on a card is computed from
+ * live data — the history-backed reduction, the bundle's component prices,
+ * the real stock under the admin's threshold — never typed content.
+ */
+
+type Row = Parameters<typeof toCatalogProduct>[0];
+
+function row(overrides: Partial<Row> = {}): Row {
+  return {
+    id: "p1",
+    slug: "izdelek",
+    title: "Izdelek",
+    badges: [{ label: "NOVO", style: "outline" }],
+    customFields: { unitPrice: { quantity: 14, unit: "na uporabo" } },
+    createdAt: new Date("2026-09-01T00:00:00Z"),
+    soldOutBehavior: "NOTIFY",
+    variants: [
+      { id: "v1", sku: "SKU-1", priceCents: 3499, compareAtPriceCents: null, stock: 100, allowBackorder: false, backorderNote: null, maxCartQuantity: 5 },
+    ],
+    media: [
+      { id: "m1", kind: "CARD", url: "/uploads/card.svg", alt: "Kartica", sortOrder: 0 },
+      { id: "m2", kind: "GALLERY", url: "/uploads/card.svg", alt: "Galerija 0", sortOrder: 0 },
+      { id: "m3", kind: "GALLERY", url: "/uploads/detail.svg", alt: "Galerija 1", sortOrder: 1 },
+    ],
+    bundle: null,
+    ...overrides,
+  } as unknown as Row;
+}
+
+const noRatings = new Map<string, { average: number; count: number }>();
+const noReductions = new Map();
+
+describe("lowStockUnits (the only source of a scarcity figure)", () => {
+  it("states the real count while the stock is 1…threshold", () => {
+    expect(lowStockUnits(3, 5)).toBe(3);
+    expect(lowStockUnits(5, 5)).toBe(5);
+    expect(lowStockUnits(1, 5)).toBe(1);
+  });
+
+  it("says nothing for a healthy stock, an empty stock or a switched-off threshold", () => {
+    expect(lowStockUnits(6, 5)).toBeNull();
+    expect(lowStockUnits(100, 5)).toBeNull();
+    expect(lowStockUnits(0, 5)).toBeNull();
+    expect(lowStockUnits(3, 0)).toBeNull();
+    expect(lowStockUnits(Number.NaN, 5)).toBeNull();
+  });
+});
+
+describe("Slovenian count forms", () => {
+  it("declines kos through singular, dual, plural and the hundreds cycle (21–24 are plural in Slovenian)", () => {
+    expect([0, 1, 2, 3, 4, 5, 11, 21, 22, 23, 25, 101, 102, 103, 105].map(kosForm)).toEqual([
+      "kosov", "kos", "kosa", "kosi", "kosi", "kosov", "kosov", "kosov", "kosov", "kosov", "kosov", "kos", "kosa", "kosi", "kosov",
+    ]);
+  });
+
+  it("renders the low-stock line with the right form and no invented words", () => {
+    expect(lowStockLine(1)).toBe("Samo še 1 kos na zalogi");
+    expect(lowStockLine(2)).toBe("Samo še 2 kosa na zalogi");
+    expect(lowStockLine(3)).toBe("Samo še 3 kosi na zalogi");
+    expect(catalog.card.lowStock).toBe(lowStockLine);
+  });
+});
+
+describe("computed hook copy", () => {
+  it("percent-off and bundle value lines carry the figures they are given", () => {
+    expect(catalog.card.percentOff(20)).toBe("−20 %");
+    expect(catalog.card.bundleValue("74,97 €", 33)).toBe("Vrednost 74,97 € · prihranite 33 %");
+    expect(cart.toast.line(2, "19,99 €")).toBe("2 × 19,99 €");
+  });
+
+  it("trust row wording comes from the shipping Setting, with honest fallbacks", () => {
+    expect(trust.delivery("2–4 delovne dni")).toBe("Dostava 2–4 delovne dni");
+    expect(trust.delivery(null)).toBe("Dostava po Sloveniji");
+    expect(trust.freeShipping("45,00 €")).toBe("Brezplačna dostava od 45,00 €");
+    expect(trust.freeShipping(null)).toBe("Brezplačna dostava pri vseh naročilih");
+    expect(trust.guaranteeHref).toBe("/garancija-vracila-denarja");
+    // no delivery or threshold figure is typed into the copy itself (the guarantee's 30 days is the policy's name)
+    expect(trust.delivery(null) + trust.freeShipping(null) + trust.securePayment + trust.securePaymentDetail + trust.label).not.toMatch(/\d/);
+  });
+});
+
+describe("bundleSavingsFor (value math from the components' current prices, §6.6)", () => {
+  it("returns the value, the saving and the whole percent when the bundle costs less", () => {
+    expect(
+      bundleSavingsFor({ priceCents: 4999, items: [{ quantity: 1, variant: { priceCents: 3499 } }, { quantity: 1, variant: { priceCents: 1999 } }, { quantity: 1, variant: { priceCents: 1999 } }] }),
+    ).toEqual({ valueCents: 7497, savingsCents: 2498, savingsPercent: 33 });
+  });
+
+  it("multiplies quantities and returns null for no bundle, no items or no saving", () => {
+    expect(bundleSavingsFor({ priceCents: 3000, items: [{ quantity: 2, variant: { priceCents: 1999 } }] })).toEqual({ valueCents: 3998, savingsCents: 998, savingsPercent: 25 });
+    expect(bundleSavingsFor(null)).toBeNull();
+    expect(bundleSavingsFor({ priceCents: 4999, items: [] })).toBeNull();
+    expect(bundleSavingsFor({ priceCents: 5000, items: [{ quantity: 1, variant: { priceCents: 2500 } }, { quantity: 1, variant: { priceCents: 2500 } }] })).toBeNull();
+  });
+});
+
+describe("toCatalogProduct", () => {
+  it("picks the card image and the first different gallery view for the hover cross-fade", () => {
+    const product = toCatalogProduct(row(), noRatings, noReductions, 5)!;
+    expect(product.imageUrl).toBe("/uploads/card.svg");
+    expect(product.imageAlt).toBe("Kartica");
+    expect(product.hoverImageUrl).toBe("/uploads/detail.svg");
+    expect(product.lowStock).toBeNull();
+    expect(product.bundleSavings).toBeNull();
+    expect(product.unitPrice).toEqual({ quantity: 14, unit: "na uporabo" });
+  });
+
+  it("has no hover image when the gallery only repeats the card image", () => {
+    const product = toCatalogProduct(
+      row({ media: [{ id: "m1", kind: "CARD", url: "/uploads/card.svg", alt: "", sortOrder: 0 }, { id: "m2", kind: "GALLERY", url: "/uploads/card.svg", alt: "", sortOrder: 0 }] } as Partial<Row>),
+      noRatings, noReductions, 5,
+    )!;
+    expect(product.hoverImageUrl).toBeNull();
+  });
+
+  it("shows the real low stock under the threshold and never for a sold-out or backorder variant", () => {
+    const low = row({ variants: [{ id: "v1", sku: "S", priceCents: 1999, compareAtPriceCents: null, stock: 3, allowBackorder: false, backorderNote: null, maxCartQuantity: 5 }] } as Partial<Row>);
+    expect(toCatalogProduct(low, noRatings, noReductions, 5)!.lowStock).toBe(3);
+    expect(toCatalogProduct(low, noRatings, noReductions, 2)!.lowStock).toBeNull();
+
+    const soldOut = row({ variants: [{ id: "v1", sku: "S", priceCents: 1999, compareAtPriceCents: null, stock: 0, allowBackorder: false, backorderNote: null, maxCartQuantity: 5 }] } as Partial<Row>);
+    const sold = toCatalogProduct(soldOut, noRatings, noReductions, 5)!;
+    expect(sold.soldOut).toBe(true);
+    expect(sold.lowStock).toBeNull();
+
+    const backorder = row({ variants: [{ id: "v1", sku: "S", priceCents: 1999, compareAtPriceCents: null, stock: 0, allowBackorder: true, backorderNote: "Pošljemo v 10 dneh", maxCartQuantity: 5 }] } as Partial<Row>);
+    const back = toCatalogProduct(backorder, noRatings, noReductions, 5)!;
+    expect(back.soldOut).toBe(false);
+    expect(back.lowStock).toBeNull();
+    expect(back.backorderNote).toBe("Pošljemo v 10 dneh");
+  });
+
+  it("carries the bundle's value math and flags it as a bundle", () => {
+    const bundle = row({
+      bundle: { id: "b1", priceCents: 4999, items: [{ quantity: 1, variant: { priceCents: 3499 } }, { quantity: 1, variant: { priceCents: 1999 } }, { quantity: 1, variant: { priceCents: 1999 } }] },
+    } as Partial<Row>);
+    const product = toCatalogProduct(bundle, noRatings, noReductions, 5)!;
+    expect(product.isBundle).toBe(true);
+    expect(product.bundleSavings).toEqual({ valueCents: 7497, savingsCents: 2498, savingsPercent: 33 });
+  });
+
+  it("keeps the reduction (the −X % pill and strikethrough) on the Omnibus gate only", () => {
+    const reductions = new Map([["v1", { priorPriceCents: 2499, priceCents: 1999, percentOff: 20 }]]);
+    expect(toCatalogProduct(row(), noRatings, reductions, 5)!.reduction).toEqual({ priorPriceCents: 2499, priceCents: 1999, percentOff: 20 });
+    expect(toCatalogProduct(row(), noRatings, noReductions, 5)!.reduction).toBeNull();
+  });
+});

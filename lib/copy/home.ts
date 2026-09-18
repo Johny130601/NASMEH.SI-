@@ -27,4 +27,9 @@ export const home = {
   },
   marqueeFallback: "Dobrodošli na Nasmeh.si",
   vatIncluded: "DDV vključen",
+  /** Trust strip under the hero; the delivery and threshold figures come from the shipping Setting. */
+  trust: {
+    label: "Zakaj Nasmeh.si",
+    vat: "Cene z DDV, brez presenečenj",
+  },
 } as const;

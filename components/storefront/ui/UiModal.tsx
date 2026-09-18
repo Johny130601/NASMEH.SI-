@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { common } from "@/lib/copy";
 
 export interface UiModalProps {
@@ -11,8 +12,11 @@ export interface UiModalProps {
 }
 
 /**
- * Bottom-sheet modal (research 06 §12): sheet on mobile, centered ≥768px.
- * Esc closes, overlay click closes, focus moves into the dialog on open.
+ * Bottom-sheet modal (research 06 §12): sheet on mobile, centered ≥768px,
+ * rising in on open. Esc closes, overlay click closes, focus moves into the
+ * dialog on open. Rendered through a portal on <body>: a trigger may sit
+ * inside a transformed ancestor (a hovered product card lifts), which would
+ * otherwise turn the fixed overlay into a box inside that ancestor.
  */
 export function UiModal({ open, onClose, title, children }: UiModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -34,7 +38,7 @@ export function UiModal({ open, onClose, title, children }: UiModalProps) {
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-5"
       onClick={onClose}
@@ -46,7 +50,7 @@ export function UiModal({ open, onClose, title, children }: UiModalProps) {
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className="relative z-10 max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-card bg-white p-6 shadow-xl outline-none md:rounded-card"
+        className="relative z-10 max-h-[85vh] w-full max-w-lg animate-sheet-in overflow-y-auto rounded-t-card bg-white p-6 shadow-xl outline-none md:rounded-card"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between gap-4">
@@ -62,6 +66,7 @@ export function UiModal({ open, onClose, title, children }: UiModalProps) {
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

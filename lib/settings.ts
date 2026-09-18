@@ -3,7 +3,8 @@ import { db } from "@/lib/db";
 import { COOKIES } from "@/lib/copy/cmp";
 import {
   companySchema, consentBannerSchema, consentCookiesSchema, consentVersionSchema, contactSettingsSchema, DEFAULT_CONSENT_VERSION, DEFAULT_FREE_THRESHOLD_CENTS,
-  DEFAULT_LEGAL_LINKS, DEFAULT_SEO_DEFAULTS, DEFAULT_STANDARD_COST_CENTS, DEFAULT_VAT_RATE_PERCENT, legalLinksSchema, maintenanceStoredSchema, seoDefaultsSchema, shippingMethodSchema,
+  DEFAULT_LEGAL_LINKS, DEFAULT_LOW_STOCK_THRESHOLD, DEFAULT_SEO_DEFAULTS, DEFAULT_STANDARD_COST_CENTS, DEFAULT_VAT_RATE_PERCENT, legalLinksSchema, lowStockThresholdSchema,
+  maintenanceStoredSchema, seoDefaultsSchema, shippingMethodSchema,
 } from "@/lib/settings-schemas";
 import { DEFAULT_CONTACT_SETTINGS } from "@/lib/support/settings-schema";
 
@@ -40,6 +41,7 @@ export const SETTING_KEYS = {
   consentCookies: "consent.cookies",
   consentBanner: "consent.banner",
   legalLinks: "legal.links",
+  lowStockThreshold: "inventory.lowStockThreshold",
 } as const;
 
 export interface CompanySetting {
@@ -139,6 +141,11 @@ export async function getShippingSettings() {
 
 export async function getFreeThresholdCents(): Promise<number> {
   return readSetting(SETTING_KEYS.freeShippingThresholdCents, z.number().int().min(0), DEFAULT_FREE_THRESHOLD_CENTS);
+}
+
+/** Storefront low-stock line threshold (the admin's §14.2 setting, `lowStockThresholdSchema`). */
+export async function getLowStockThreshold(): Promise<number> {
+  return readSetting(SETTING_KEYS.lowStockThreshold, lowStockThresholdSchema, DEFAULT_LOW_STOCK_THRESHOLD);
 }
 
 export async function getTrackingTemplates(): Promise<Partial<Record<"ps" | "gls", string>>> {

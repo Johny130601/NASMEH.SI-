@@ -99,6 +99,16 @@ export function companyPlaceholderFields(company: Pick<CompanyInput, "registrati
 
 export const invoiceFooterSchema = text(600);
 
+// ---------- inventory (§14.2) ----------
+
+/**
+ * The operator's low-stock threshold (admin product list and dashboard) also
+ * drives the storefront's "Samo še N kosov na zalogi" line on cards and the
+ * PDP: a variant with 1…threshold units shows its real count, nothing else
+ * ever does (UCPD Annex I point 7 — availability claims must be true).
+ */
+export const lowStockThresholdSchema = z.number().int().min(0).max(1000);
+
 // ---------- marketing, SEO, consent, store (§14.14) ----------
 
 const optionalId = (pattern: RegExp) => z.union([z.literal(""), z.string().trim().regex(pattern)]);
@@ -165,6 +175,7 @@ export type MaintenanceStored = z.output<typeof maintenanceStoredSchema>;
 export const DEFAULT_VAT_RATE_PERCENT = 22;
 export const DEFAULT_FREE_THRESHOLD_CENTS = 4500;
 export const DEFAULT_STANDARD_COST_CENTS = 390;
+export const DEFAULT_LOW_STOCK_THRESHOLD = 5;
 export const DEFAULT_SEO_DEFAULTS: z.output<typeof seoDefaultsSchema> = { titleTemplate: "%s | Nasmeh.si", description: "", indexable: true };
 export const DEFAULT_CONSENT_VERSION = 1;
 export const DEFAULT_LEGAL_LINKS: z.output<typeof legalLinksSchema> = {

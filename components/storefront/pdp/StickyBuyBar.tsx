@@ -5,7 +5,7 @@ import { pdp as copy } from "@/lib/copy";
 import { ObvestiteMeButton } from "../catalog/ObvestiteMeButton";
 import { AddToCartButton } from "../catalog/AddToCartButton";
 
-/** Sticky bottom buy bar (§6.15) — mirrors the buy box, always visible. */
+/** Sticky bottom buy bar (§6.15) — mirrors the buy box, always visible; rises in on load (research 06 §12 UiStickyBar). */
 export function StickyBuyBar({
   productSlug,
   variantId,
@@ -15,6 +15,7 @@ export function StickyBuyBar({
   soldOut,
   testToken,
   klarnaEnabled = false,
+  imageUrl = null,
 }: {
   productSlug: string;
   variantId: string;
@@ -24,10 +25,15 @@ export function StickyBuyBar({
   soldOut: boolean;
   testToken: string | null;
   klarnaEnabled?: boolean;
+  imageUrl?: string | null;
 }) {
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-light-2 bg-white/95 backdrop-blur">
+    <div className="fixed inset-x-0 bottom-0 z-40 animate-rise border-t border-light-2 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-(--container-wide) items-center gap-4 px-(--padding) py-3">
+        {imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={imageUrl} alt="" aria-hidden="true" className="hidden h-11 w-11 shrink-0 rounded-card bg-light-3 object-cover md:block" />
+        ) : null}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-dark-1">{title}</p>
           <p className="text-sm text-brand">
@@ -52,6 +58,7 @@ export function StickyBuyBar({
               sku={sku}
               title={title}
               priceCents={priceCents}
+              imageUrl={imageUrl}
               label={copy.buyBox.addToCart}
               fullWidth={false}
               className="!h-11 px-6"

@@ -1,4 +1,20 @@
+import { lowStockLine } from "./catalog";
 import { legal } from "./legal";
+
+/**
+ * The trust row under the buy button (shared with the homepage strip): every
+ * figure comes from the shipping Setting at render time, never typed here.
+ */
+export const trust = {
+  delivery: (estimate: string | null) => (estimate ? `Dostava ${estimate}` : "Dostava po Sloveniji"),
+  freeShipping: (threshold: string | null) =>
+    threshold === null ? "Brezplačna dostava pri vseh naročilih" : `Brezplačna dostava od ${threshold}`,
+  guarantee: "30-dnevno jamstvo vračila denarja",
+  guaranteeHref: "/garancija-vracila-denarja",
+  securePayment: "Varno plačilo",
+  securePaymentDetail: "kartica, PayPal, Apple Pay, Google Pay",
+  label: "Zakaj nakup pri nas",
+} as const;
 
 /** PDP copy (product content itself lives in DB seed). */
 export const pdp = {
@@ -27,7 +43,9 @@ export const pdp = {
     atcPhaseNote: "Nakup bo na voljo v fazi 3 — oglejte si izdelek.",
     guarantee: "30-dnevno jamstvo vračila denarja",
     vatIncluded: "DDV vključen",
+    lowStock: lowStockLine,
   },
+  trust,
   delivery: {
     /**
      * Shipping part of the accordion, rendered from the shipping Setting: the

@@ -495,8 +495,10 @@ async function seedSettings() {
         ctaHref: "/izdelek/belilni-trakci-za-zobe",
         poster: "/uploads/placeholder-hero.svg",
         imageAlt: "Belilni trakci Nasmeh.si — predstavitveni vizual",
-        promoOverlayText: "Brezplačna dostava pri naročilih nad 45 €",
-        promoOverlayHref: "/checkout",
+        // The delivery terms sit in the trust strip under the hero (from the shipping Setting),
+        // so the campaign line pushes the bundle instead of repeating them (UI motion + hooks, 2026-09-16).
+        promoOverlayText: "Vsi trije izdelki v enem paketu — Paket popolna rutina",
+        promoOverlayHref: "/izdelek/paket-popolna-rutina",
       },
     },
     { key: "analytics.gtmId", value: "" },
