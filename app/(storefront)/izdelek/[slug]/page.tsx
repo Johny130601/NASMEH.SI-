@@ -2,13 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
-import { getCatalogProducts, lowStockUnits, parseBadges } from "@/lib/catalog";
+import { bundleSavingsFor, getCatalogProducts, lowStockUnits, parseBadges } from "@/lib/catalog";
 import { getPriceReductions } from "@/lib/omnibus";
 import {
   formatEUR,
   formatUnitPrice,
   klarnaInstallmentCents,
-  bundleSavings,
   standardShippingMethod,
 } from "@/lib/pricing";
 import { getLowStockThreshold, getShippingSettings } from "@/lib/settings";
@@ -211,12 +210,9 @@ export default async function ProductPage({
     }));
 
   const bundle = product.bundle;
-  const savings = bundle
-    ? bundleSavings(
-        bundle.items.map((item) => item.variant.priceCents * item.quantity),
-        bundle.priceCents,
-      )
-    : null;
+  // the same helper the card uses: measured against the price shown below and
+  // charged (the variant's), null when there is no saving or a reduction is announced
+  const savings = bundleSavingsFor(bundle, variant.priceCents, reduction);
 
   return (
     <>
@@ -333,8 +329,9 @@ export default async function ProductPage({
             ) : null}
 
             {/* Bundle components + savings (§6.6): bundle vs its components at today's prices,
-                not an Art. 6a reduction — no strikethrough, no Omnibus line */}
-            {bundle && savings ? (
+                not an Art. 6a reduction — no strikethrough, no Omnibus line. The contents
+                always show; the value line only while there is a saving to state. */}
+            {bundle ? (
               <div className="mt-8 rounded-card border border-light-2 bg-white p-5">
                 <h2 className="text-lg">{copy.bundle.components}</h2>
                 <ul className="mt-3 flex flex-col gap-2">
@@ -353,10 +350,12 @@ export default async function ProductPage({
                     </li>
                   ))}
                 </ul>
-                <p className="mt-4 border-t border-light-3 pt-3 text-sm font-medium text-dark-1">
-                  {copy.bundle.savingsLine} {formatEUR(savings.valueCents)}{" "}
-                  {copy.bundle.savingsSave} {savings.savingsPercent} %
-                </p>
+                {savings ? (
+                  <p className="mt-4 border-t border-light-3 pt-3 text-sm font-medium text-dark-1">
+                    {copy.bundle.savingsLine} {formatEUR(savings.valueCents)}{" "}
+                    {copy.bundle.savingsSave} {savings.savingsPercent} %
+                  </p>
+                ) : null}
               </div>
             ) : null}
 
@@ -396,7 +395,7 @@ export default async function ProductPage({
               ) : null}
               {lowStock !== null ? (
                 <p className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-dark-1" data-low-stock>
-                  <span aria-hidden="true" className="h-2 w-2 animate-pulse-dot rounded-btn bg-warning" />
+                  <span aria-hidden="true" className="ui-pulse-dot h-2 w-2 rounded-btn bg-warning" />
                   {copy.buyBox.lowStock(lowStock)}
                 </p>
               ) : null}

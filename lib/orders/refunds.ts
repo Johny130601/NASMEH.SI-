@@ -11,13 +11,25 @@ import { notifyOrderStatus } from "./status-mail";
  * provider abstraction; the local order state is applied only after the
  * provider accepted the refund, keyed by the Refund row so a retry can never
  * refund twice. Restocking goes through the stock helper (rule 13).
+ *
+ * Three steps, each resumable: (1) validate under the order lock and persist
+ * the PENDING row, (2) move the money and store the provider's refund id,
+ * (3) apply totals, status, restock and timeline. A row left PENDING by a
+ * crash or a failed apply is finished by `resolvePendingRefunds` (the daily
+ * job, and the next refund or cancellation of the same order). While a row is
+ * PENDING the provider's refund webhook is deferred (`markRefunded`), so the
+ * same money is never counted twice.
  */
 
 const TX = { maxWait: 10_000, timeout: 20_000 };
+/** A PENDING row younger than this may still be an operation in flight (provider calls time out well before). */
+const IN_FLIGHT_GRACE_MS = 5 * 60_000;
 const REFUNDABLE_STATUSES: ReadonlySet<string> = new Set(["PAID", "PROCESSING", "SHIPPED", "DELIVERED"]);
 
 export type RefundError =
-  | "not_found" | "not_refundable" | "pending" | "invalid_lines" | "amount" | "provider" | "provider_unavailable";
+  | "not_found" | "not_refundable" | "pending" | "invalid_lines" | "amount" | "provider" | "provider_unavailable"
+  /** The provider accepted the refund but the local apply failed; the row keeps the provider's id and is finished later. */
+  | "deferred";
 
 export interface RefundLineInput { orderItemId: string; quantity: number }
 
@@ -113,8 +125,120 @@ function restockTargets(item: OrderItem, quantity: number): Array<{ variantId: s
   return item.variantId ? [{ variantId: item.variantId, delta: quantity }] : [];
 }
 
+interface AppliedRefund { orderId: string; amountCents: number; full: boolean; status: string; armed: number; skippedVariants: number }
+
+function timelineWith(order: Order, entries: Array<{ event: string; detail?: string }>): Prisma.InputJsonValue {
+  const result = entries.reduce<Order>(
+    (acc, entry) => ({ ...acc, timeline: timelinePush(acc, entry.event, entry.detail) as unknown as Prisma.JsonValue }),
+    order,
+  );
+  return result.timeline as Prisma.InputJsonValue;
+}
+
+/**
+ * Step 3, idempotent: applies one PENDING row whose money the provider has
+ * accepted — totals, status, restock, timeline — under the order lock. A row
+ * that is no longer PENDING is left alone, so a retry or a webhook that
+ * arrived in between never counts the money twice. A component variant
+ * deleted since the order was placed is skipped and noted in the timeline
+ * instead of failing the whole apply.
+ */
+export async function applyRefundInTx(tx: Prisma.TransactionClient, refundId: string): Promise<AppliedRefund | null> {
+  const pointer = await tx.refund.findUnique({ where: { id: refundId }, select: { orderId: true } });
+  if (!pointer) return null;
+  const current = await lockOrder(tx, pointer.orderId);
+  if (!current) return null;
+  const row = current.refunds.find((candidate) => candidate.id === refundId);
+  if (!row || row.status !== "PENDING") return null;
+  const lines = Array.isArray(row.lines) ? (row.lines as unknown as RefundLineInput[]) : [];
+  const refundedCents = Math.min(current.totalCents, current.refundedCents + row.amountCents);
+  const full = refundedCents >= current.totalCents;
+  const status = full ? (row.finalStatus === "CANCELLED" ? "CANCELLED" : "REFUNDED") : current.status;
+  await tx.refund.update({ where: { id: row.id }, data: { status: "COMPLETED", completedAt: new Date() } });
+  let armed = 0;
+  let skippedVariants = 0;
+  if (row.restock && current.stockDeducted) {
+    for (const line of lines) {
+      const item = current.items.find((candidate) => candidate.id === line.orderItemId);
+      if (!item) continue;
+      for (const target of restockTargets(item, line.quantity)) {
+        const variant = await tx.variant.findUnique({ where: { id: target.variantId }, select: { id: true } });
+        if (!variant) { skippedVariants += 1; continue; }
+        armed += (await adjustVariantStockInTx(tx, target.variantId, target.delta)).armedAlerts;
+      }
+    }
+  }
+  const event = status === "CANCELLED" ? "cancelled" : full ? "refunded" : "partially_refunded";
+  const entries = [{ event, detail: `cents:${row.amountCents}:${row.actorName}` }];
+  if (skippedVariants > 0) entries.push({ event: "restock_skipped", detail: `variants:${skippedVariants}:${row.actorName}` });
+  await tx.order.update({
+    where: { id: current.id },
+    data: {
+      refundedCents, status,
+      ...(full ? { refundRequired: false, confirmationEmailPending: false } : {}),
+      timeline: timelineWith(current, entries),
+    },
+  });
+  return { orderId: current.id, amountCents: row.amountCents, full, status, armed, skippedVariants };
+}
+
+async function afterApply(applied: AppliedRefund) {
+  if (applied.armed > 0) {
+    try { await sendPendingRestockAlerts(); } catch (error) { console.error("Restock alerts remain queued", error instanceof Error ? error.name : "unknown"); }
+  }
+  await notifyOrderStatus(applied.orderId, applied.status === "CANCELLED" ? "cancelled" : "refunded", { amountCents: applied.amountCents });
+}
+
+export interface RefundResolution { applied: number; interrupted: number; failed: number }
+
+/**
+ * Finishes operator refunds whose apply step never ran (a crash, a database
+ * error or a failed restock after the provider accepted the money). A row
+ * carrying the provider's refund id is applied; a row without one, past the
+ * in-flight grace period, is closed as FAILED (`interrupted`) with a timeline
+ * entry — this code never moved its money, and if the provider did, the
+ * refund webhook books it once the row is no longer PENDING. Money is never
+ * moved here. Called by the daily job and before every new refund or
+ * cancellation of an order.
+ */
+export async function resolvePendingRefunds(orderId?: string, now = new Date()): Promise<RefundResolution> {
+  const result: RefundResolution = { applied: 0, interrupted: 0, failed: 0 };
+  const rows = await db.refund.findMany({
+    where: { status: "PENDING", createdAt: { lt: new Date(now.getTime() - IN_FLIGHT_GRACE_MS) }, ...(orderId ? { orderId } : {}) },
+    select: { id: true, orderId: true, providerRefundId: true },
+    orderBy: { createdAt: "asc" },
+    take: 50,
+  });
+  for (const row of rows) {
+    try {
+      if (row.providerRefundId) {
+        const applied = await db.$transaction((tx) => applyRefundInTx(tx, row.id), TX);
+        if (applied) { await afterApply(applied); result.applied += 1; }
+        continue;
+      }
+      const closed = await db.$transaction(async (tx) => {
+        const current = await lockOrder(tx, row.orderId);
+        const pending = current?.refunds.find((candidate) => candidate.id === row.id);
+        if (!current || !pending || pending.status !== "PENDING") return false;
+        await tx.refund.update({ where: { id: row.id }, data: { status: "FAILED", lastError: "interrupted" } });
+        await tx.order.update({
+          where: { id: current.id },
+          data: { timeline: timelinePush(current, "refund_interrupted", `cents:${pending.amountCents}:${pending.actorName}`) },
+        });
+        return true;
+      }, TX);
+      if (closed) result.interrupted += 1;
+    } catch (error) {
+      result.failed += 1;
+      console.error("Pending refund left unresolved", error instanceof Error ? error.name : "unknown");
+    }
+  }
+  return result;
+}
+
 export async function refundOrder(orderId: string, request: RefundRequest): Promise<RefundResult> {
   const reason = request.reason.trim().slice(0, 500);
+  await resolvePendingRefunds(orderId);
   // 1. Validate under the order lock and persist the intent before any money moves.
   const prepared = await db.$transaction(async (tx) => {
     const order = await lockOrder(tx, orderId);
@@ -127,7 +251,7 @@ export async function refundOrder(orderId: string, request: RefundRequest): Prom
         orderId, provider: order.paymentProvider ?? "unknown", status: "PENDING",
         amountCents: plan.amountCents, vatCents: plan.vatCents, reason, restock: request.restock,
         shippingRefunded: request.refundShipping, lines: plan.lines as unknown as Prisma.InputJsonValue,
-        actorId: request.actorId, actorName: request.actorName,
+        actorId: request.actorId, actorName: request.actorName, finalStatus: request.finalStatus ?? null,
       },
     });
     return { ok: true as const, order, refund, plan };
@@ -152,40 +276,22 @@ export async function refundOrder(orderId: string, request: RefundRequest): Prom
     return { ok: false, reason: "provider" };
   }
 
-  // 3. Apply locally: totals, status, restock, timeline.
-  const applied = await db.$transaction(async (tx) => {
-    const current = await lockOrder(tx, orderId);
-    if (!current) throw new Error("order_vanished");
-    const refundedCents = Math.min(current.totalCents, current.refundedCents + plan.amountCents);
-    const full = refundedCents >= current.totalCents;
-    const status = full ? (request.finalStatus ?? "REFUNDED") : current.status;
-    await tx.refund.update({ where: { id: refund.id }, data: { status: "COMPLETED", providerRefundId, completedAt: new Date() } });
-    let armed = 0;
-    if (request.restock && current.stockDeducted) {
-      for (const line of plan.lines) {
-        const item = current.items.find((candidate) => candidate.id === line.orderItemId);
-        if (!item) continue;
-        for (const target of restockTargets(item, line.quantity)) {
-          armed += (await adjustVariantStockInTx(tx, target.variantId, target.delta)).armedAlerts;
-        }
-      }
-    }
-    const event = status === "CANCELLED" ? "cancelled" : full ? "refunded" : "partially_refunded";
-    await tx.order.update({
-      where: { id: orderId },
-      data: {
-        refundedCents, status,
-        ...(full ? { refundRequired: false, confirmationEmailPending: false } : {}),
-        timeline: timelinePush(current, event, `cents:${plan.amountCents}:${request.actorName}`),
-      },
-    });
-    return { full, status, armed };
-  }, TX);
-
-  if (applied.armed > 0) {
-    try { await sendPendingRestockAlerts(); } catch (error) { console.error("Restock alerts remain queued", error instanceof Error ? error.name : "unknown"); }
+  // 3. Store the provider's id, then apply locally (idempotent, see applyRefundInTx).
+  //    From here on the money has moved: a failure leaves the row PENDING for
+  //    resolvePendingRefunds instead of pretending the refund did not happen.
+  let applied: AppliedRefund | null;
+  try {
+    await db.refund.update({ where: { id: refund.id }, data: { providerRefundId } });
+    applied = await db.$transaction((tx) => applyRefundInTx(tx, refund.id), TX);
+  } catch (error) {
+    console.error("Refund accepted by the provider but not yet applied", order.number, error instanceof Error ? error.name : "unknown");
+    return { ok: false, reason: "deferred" };
   }
-  await notifyOrderStatus(orderId, applied.status === "CANCELLED" ? "cancelled" : "refunded", { amountCents: plan.amountCents });
+  if (!applied) {
+    const state = await db.order.findUnique({ where: { id: orderId }, select: { status: true, totalCents: true, refundedCents: true } });
+    return { ok: true, refundId: refund.id, amountCents: plan.amountCents, full: !!state && state.refundedCents >= state.totalCents, status: state?.status ?? "unknown" };
+  }
+  await afterApply(applied);
   return { ok: true, refundId: refund.id, amountCents: plan.amountCents, full: applied.full, status: applied.status };
 }
 
@@ -199,6 +305,7 @@ export type CancelResult =
  * Shipped or delivered orders are refunded, never cancelled.
  */
 export async function cancelOrder(orderId: string, input: { actorId: string | null; actorName: string; reason: string }): Promise<CancelResult> {
+  await resolvePendingRefunds(orderId);
   const order = await db.order.findUnique({ where: { id: orderId }, include: { items: true, refunds: true } });
   if (!order) return { ok: false, reason: "not_found" };
   const reason = input.reason.trim().slice(0, 500) || "cancelled";

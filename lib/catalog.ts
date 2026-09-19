@@ -38,9 +38,9 @@ export interface CatalogProduct {
   isBundle: boolean;
   /**
    * Fixed-bundle value math (§6.6, §9.2): the components' genuine current
-   * prices against the bundle price, only when the bundle costs less. Not an
-   * Art. 6a reduction — the card renders it as a value line, never as a
-   * strikethrough.
+   * prices against the price on this card (`priceCents`), only when the bundle
+   * costs less and no Art. 6a reduction is announced for it. Not an Art. 6a
+   * reduction — the card renders it as a value line, never as a strikethrough.
    */
   bundleSavings: BundleSavings | null;
   createdAt: Date;
@@ -100,14 +100,23 @@ export function lowStockUnits(stock: number, threshold: number): number | null {
   return stock > 0 && threshold > 0 && stock <= threshold ? stock : null;
 }
 
-/** The bundle's value line input, or null when it saves nothing (or is no bundle). */
+/**
+ * The bundle's value line input, or null when it saves nothing (or is no
+ * bundle). Measured against `priceCents` — the variant price the shopper is
+ * shown and charged, never `Bundle.priceCents`: a figure computed from a price
+ * nobody pays is a false price advantage (UCPD Art. 6(1)(d)). An announced
+ * Art. 6a reduction suppresses the line: the strikethrough and its 30-day line
+ * are the mandated display and two percentages on one card invite a misreading.
+ */
 export function bundleSavingsFor(
-  bundle: { priceCents: number; items: Array<{ quantity: number; variant: { priceCents: number } }> } | null,
+  bundle: { items: Array<{ quantity: number; variant: { priceCents: number } }> } | null,
+  priceCents: number,
+  reduction: PriceReduction | null = null,
 ): BundleSavings | null {
-  if (!bundle || bundle.items.length === 0) return null;
+  if (!bundle || bundle.items.length === 0 || reduction) return null;
   const savings = bundleSavings(
     bundle.items.map((item) => item.variant.priceCents * item.quantity),
-    bundle.priceCents,
+    priceCents,
   );
   return savings.savingsCents > 0 ? savings : null;
 }
@@ -164,13 +173,14 @@ export function toCatalogProduct(
   // the first gallery view that is not the card image itself
   const gallery = product.media.find((image) => image.kind === "GALLERY" && image.url !== card?.url) ?? null;
   const soldOut = variant.stock <= 0 && !variant.allowBackorder;
+  const reduction = reductions.get(variant.id) ?? null;
   return {
     slug: product.slug,
     title: product.title,
     variantId: variant.id,
     sku: variant.sku,
     priceCents: variant.priceCents,
-    reduction: reductions.get(variant.id) ?? null,
+    reduction,
     stock: variant.stock,
     soldOut,
     lowStock: soldOut ? null : lowStockUnits(variant.stock, lowStockThreshold),
@@ -187,7 +197,7 @@ export function toCatalogProduct(
         : null,
     unitPrice: parseUnitPrice(product.customFields),
     isBundle: product.bundle !== null,
-    bundleSavings: bundleSavingsFor(product.bundle),
+    bundleSavings: bundleSavingsFor(product.bundle, variant.priceCents, reduction),
     createdAt: product.createdAt,
   };
 }

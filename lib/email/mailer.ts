@@ -6,6 +6,7 @@ import { siteUrl } from "@/lib/seo";
 import { renderProofEmail } from "./templates/proof";
 import { renderSubscriptionUnsubscribeBlock, renderVerifySubscriptionEmail } from "./templates/verify-subscription";
 import { escapeHtml } from "./templates/layout";
+import { htmlToText } from "./text";
 import { newsletterUnsubscribePath } from "@/lib/newsletter/unsubscribe-token";
 import { renderBackInStockEmail } from "./templates/back-in-stock";
 import {
@@ -61,7 +62,7 @@ export async function sendMail({ to, subject, html, text, messageId, replyTo }: 
     html,
     messageId,
     replyTo,
-    text: text ?? html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+    text: text ?? htmlToText(html),
   });
 }
 
@@ -266,7 +267,7 @@ export async function sendMailWithAttachments(
     to: input.to,
     subject: input.subject,
     html: input.html,
-    text: input.text ?? input.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+    text: input.text ?? htmlToText(input.html),
     attachments: input.attachments,
     messageId: input.messageId,
     replyTo: input.replyTo,

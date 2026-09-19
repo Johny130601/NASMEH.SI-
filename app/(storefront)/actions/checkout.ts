@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { clientAddress } from "@/lib/client-address";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { verifyTurnstile, isTestMode } from "@/lib/turnstile";
 import { placeOrder, type PlaceOrderResult } from "@/lib/orders/create";
@@ -20,10 +21,7 @@ import { clearPurchasedCart, createPurchaserAccount } from "@/lib/orders/post-pu
 export async function checkEmailExistsAction(input: {
   email: string;
 }): Promise<{ exists: boolean }> {
-  const ip =
-    (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    (await headers()).get("x-real-ip") ??
-    "unknown";
+  const ip = clientAddress(await headers());
   const { allowed } = checkRateLimit(`email-check:${ip}`, 10, 60_000);
   if (!allowed) return { exists: false };
 

@@ -21,7 +21,7 @@ beforeEach(() => {
 
 describe("account invoice access", () => {
   it.each(["owner", "admin"])("allows the %s to download an issued invoice privately", async role => {
-    if (role === "admin") mocks.auth.mockResolvedValue({ user: { id: "operator", role: "OWNER" } });
+    if (role === "admin") mocks.auth.mockResolvedValue({ user: { id: "operator", role: "OWNER", mfaEnrolled: true } });
     const response = await download();
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/pdf");
@@ -36,6 +36,21 @@ describe("account invoice access", () => {
     mocks.auth.mockResolvedValue({ user: { id: "other", role: "CUSTOMER", email: order.email } });
     await expect(download()).rejects.toThrow("404");
     expect(mocks.data).not.toHaveBeenCalled();
+    expect(mocks.pdf).not.toHaveBeenCalled();
+  });
+  // Buyer data needs the same re-check as any admin route (§8.7): the permission AND the second factor.
+  it("refuses a staff member who has not enrolled a second factor", async () => {
+    mocks.auth.mockResolvedValue({ user: { id: "operator", role: "OWNER", mfaEnrolled: false } });
+    await expect(download()).rejects.toThrow("404");
+    expect(mocks.pdf).not.toHaveBeenCalled();
+  });
+  it.each(["OWNER", "MANAGER", "SUPPORT", "FULFILLMENT"])("allows %s, which holds orders:view, once enrolled", async role => {
+    mocks.auth.mockResolvedValue({ user: { id: "operator", role, mfaEnrolled: true } });
+    expect((await download()).status).toBe(200);
+  });
+  it("refuses a signed-in non-staff visitor who is not the buyer", async () => {
+    mocks.auth.mockResolvedValue({ user: { id: "other", role: "CUSTOMER", mfaEnrolled: true } });
+    await expect(download()).rejects.toThrow("404");
     expect(mocks.pdf).not.toHaveBeenCalled();
   });
   it("redirects anonymous users before reading any order", async () => {

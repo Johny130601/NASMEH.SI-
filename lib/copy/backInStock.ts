@@ -8,8 +8,6 @@ export const backInStock = {
   note: "S prijavo soglašate samo z enkratnim transakcijskim obvestilom o zalogi tega izdelka — ne s trženjskimi sporočili.",
   success:
     "Skoraj gotovo! Poslali smo vam potrditveno sporočilo — s klikom na povezavo potrdite obvestilo.",
-  alreadyActive:
-    "Obvestilo za ta izdelek je že aktivno — sporočilo prejmete, ko bo izdelek spet na zalogi.",
   invalidEmail: "Vnesite veljaven e-poštni naslov.",
   botCheckFailed: "Preverjanje ni uspelo. Poskusite znova.",
   genericError: "Prijava ni uspela. Poskusite znova kasneje.",

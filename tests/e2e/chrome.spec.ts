@@ -170,7 +170,8 @@ test("maintenance gate leaks NO catalog data into the HTML source (RSC payload)"
     const admin = await request.get("/admin", { maxRedirects: 0 });
     expect([302, 307]).toContain(admin.status()); // auth redirect, not the gate
 
-    // unlock via the gate → original page renders fully (URL never changed)
+    // unlock via the gate → the gate sends the visitor back to the path it held in `od`,
+    // which then renders fully (the gate redirects now, so the URL does change)
     await page.goto("/");
     await page.getByLabel("Geslo za dostop").fill(MAINTENANCE_PASSWORD);
     await page.getByRole("button", { name: "Vstopi" }).click();

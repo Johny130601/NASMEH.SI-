@@ -198,7 +198,7 @@ One template, three products; strips get the most built-out landing variant [BAS
 12. **FAQ section**: "Imate vprašanja? Imamo odgovore" — 2–4 accordions per product (usage, veneers/caps compatibility, pregnancy note), FAQPage JSON-LD [BASE: 02 §5.6]. `[P1-core]`
 13. **Reviews section** (see §10): summary + distribution + photo wall + review cards + "Napiši mnenje" [NEW]. `[P1-core]`
 14. **"Ljudje tudi kupujejo"** — 4-card row with quick ATC [BASE: 02 §5.7]. `[P1-core]`
-15. **Sticky bottom buy bar** (fixed): price + unit price + Klarna line + qty + ATC (+ guarantee pill); always visible [BASE: 02 §5.8]. `[P1-core]`
+15. **Sticky bottom buy bar** (fixed): price + unit price + Klarna line + qty + ATC (+ guarantee pill); always visible, with no entrance animation (it sits in the first viewport — AGENTS §8.23) [BASE: 02 §5.8]. `[P1-core]`
 
 **Sold-out PDP state**: page stays fully merchandised; ATC → "Obvestite me" modal; cross-sell stays active [BASE: 02 §5.9]. `[P1-core]`
 
@@ -216,7 +216,7 @@ One template, three products; strips get the most built-out landing variant [BAS
 ### 7.1 Cart page
 
 - Header: "Vaša košarica (N)" + live total [BASE: 03 §3]. `[P1-core]`
-- **Free-shipping progress bar** above items — three states with emoji, 5 % floor on empty, `ceil()` remaining amount: empty: "Odklenite brezplačno dostavo pri naročilih nad €45" → in progress: "📦 Samo še €X vas loči do brezplačne dostave" → reached: "🎉 Čestitamo! Odklenili ste brezplačno dostavo!" Threshold €45 (recommended: above hero single €34.99 and just under the €49.99 routine bundle so the bundle itself qualifies — the HiSmile trick of threshold-near-bundle [04 §14.9]); **admin-configurable** [ADAPT: 03 §4]. `[P1-core]`
+- **Free-shipping progress bar** above items — three states with emoji, 5 % floor on empty, `ceil()` remaining amount: empty: "Odklenite brezplačno dostavo pri naročilih od €45" ("od": free shipping applies at the threshold, not above it) → in progress: "📦 Samo še €X vas loči do brezplačne dostave" → reached: "🎉 Čestitamo! Odklenili ste brezplačno dostavo!" Threshold €45 (recommended: above hero single €34.99 and just under the €49.99 routine bundle so the bundle itself qualifies — the HiSmile trick of threshold-near-bundle [04 §14.9]); **admin-configurable** [ADAPT: 03 §4]. `[P1-core]`
 - **Klarna row** (desktop): "ali 3 enostavna obroka po €X s Klarna" (cart total / 3) [ADAPT: 03 §3]. `[P1-core]`
 - **Line items**: image, title, variant, price (VAT incl.), discount/offer **label pills** (BREZPLAČNO DARILO, KUPI 1 DOBI 1, PAKET), compare-at strikethrough (Omnibus-checked), **qty dropdown/stepper capped at 5** with "Največ 5 kosov na naročilo" message, trash-icon remove [ADAPT: 03 §5]. `[P1-core]`
 - **Bundle contents accordion** under bundle lines ("Prikaži vsebino paketa") [BASE: 03 §5]. `[P2-growth]`
@@ -227,7 +227,7 @@ One template, three products; strips get the most built-out landing variant [BAS
 - **"Hot deal" cart-only add-on** (e.g. mini mouthwash €5, limit 1, auto-removed if it becomes the only cart item; gated to unlock only when cart already has a full-price item) [BASE: 04 §5 Format C]. `[P2-growth]`
 - Checkout block: big black "Na blagajno" + **payment icon strip** (Visa, MC, PayPal, Apple Pay, Google Pay, Klarna) [ADAPT: 03 §8]. `[P1-core]`
 - **Empty-cart state**: "Vaša košarica je prazna" + "Nakupuj vse izdelke" pill + best-sellers rail below (even the empty cart is a merchandising surface) [BASE: 01 §2.7]. `[P1-core]`
-- **Add-to-cart confirmation card** (2026-09-16): after any "Dodaj v košarico" the button flashes green "Dodano ✓" and one page-level card under the header names the item and its line ("1 × 34,99 €") with "Poglej košarico" and "Nadaljuj z nakupovanjem"; auto-dismissed after 5 s, Esc closes, hover pauses. A confirmation, not the drawer cart deferred to P2 (§15) [ADAPT: 03 §2, 04 §5 "where upsells render"]. `[P1-core]`
+- **Add-to-cart confirmation card** (2026-09-16): after a "Dodaj v košarico" that really added units the button flashes green "Dodano ✓" and one page-level card under the header names the item and the line it really stored ("1 × 34,99 €" — the units the cap let through, not the ones asked for, which is also the figure `add_to_cart` carries) with "Poglej košarico" (one CTA plus the corner close); auto-dismissed after 5 s, Esc closes, hover pauses. An add that changed nothing — the line is already at its per-order cap — or one the server refused says so in a line under the button instead: no green state, no `add_to_cart` event, no card. A confirmation, not the drawer cart deferred to P2 (§15) [ADAPT: 03 §2, 04 §5 "where upsells render"]. `[P1-core]`
 - Persistent cart for logged-in users; session cart for guests; merge on login [standard practice]. `[P1-core]`
 
 ### 7.2 Discount entry

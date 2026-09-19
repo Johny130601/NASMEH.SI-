@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import type { Order } from "@prisma/client";
 import { z } from "zod";
+import { clientAddress } from "@/lib/client-address";
 import { db } from "@/lib/db";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { verifyTurnstile } from "@/lib/turnstile";
@@ -35,11 +36,7 @@ export type TrackingResult<T> = { ok: true; data: T } | { ok: false; error: stri
 const tokenSchema = z.string().max(2048).default("");
 
 async function clientKey(mode: "number" | "order"): Promise<string> {
-  const requestHeaders = await headers();
-  const ip = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim()
-    ?? requestHeaders.get("x-real-ip")
-    ?? "unknown";
-  return `track:${mode}:${ip}`;
+  return `track:${mode}:${clientAddress(await headers())}`;
 }
 
 /** Exceeding the limit reads exactly like a miss; a failed challenge is explicit. */

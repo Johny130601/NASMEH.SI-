@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isStaffRole } from "@/lib/admin/permissions";
+import { AdminAccessError, requirePermission } from "@/lib/admin/access";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -9,7 +9,7 @@ import { hasIssuedInvoice } from "@/lib/account/order-view";
 
 export const dynamic = "force-dynamic";
 
-/** Invoice PDF download (§11.2) — owner or admin only. */
+/** Invoice PDF download (§11.2) — the order's owner, or staff re-checked as on every admin route (§8.7). */
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ number: string }> },
@@ -25,8 +25,14 @@ export async function GET(
     include: { items: true },
   });
   if (!order) notFound();
-  if (order.userId !== session.user.id && !isStaffRole(session.user.role)) {
-    notFound();
+  if (order.userId !== session.user.id) {
+    // Buyer data for staff only with the permission and an enrolled second factor; every refusal is a 404.
+    try {
+      await requirePermission("orders:view");
+    } catch (error) {
+      if (error instanceof AdminAccessError) notFound();
+      throw error;
+    }
   }
   if (!hasIssuedInvoice(order)) notFound();
 

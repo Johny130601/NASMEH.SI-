@@ -27,9 +27,6 @@ export const home = {
   },
   marqueeFallback: "Dobrodošli na Nasmeh.si",
   vatIncluded: "DDV vključen",
-  /** Trust strip under the hero; the delivery and threshold figures come from the shipping Setting. */
-  trust: {
-    label: "Zakaj Nasmeh.si",
-    vat: "Cene z DDV, brez presenečenj",
-  },
+  // The trust strip under the hero renders through TrustRow, which carries its
+  // own copy (lib/copy/pdp `trust`) and both figures from the shipping Setting.
 } as const;

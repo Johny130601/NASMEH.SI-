@@ -1,8 +1,9 @@
 import { CredentialsSignin } from "@auth/core/errors";
 import type { Role } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { z } from "zod";
+import { requestClientAddress } from "@/lib/client-address";
 import { db } from "@/lib/db";
 import { getEnv } from "@/lib/env";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -23,14 +24,6 @@ class RateLimitedError extends CredentialsSignin { code = "rate_limited"; }
 
 /** Attempts per address and per client within a window; the TOTP step has its own limit in lib/admin/mfa.ts. */
 export const LOGIN_ATTEMPT_LIMIT = { perEmail: 10, perClient: 200, windowMs: 15 * 60_000 } as const; // per client: a shared NAT or the e2e suite must never trip it
-
-async function clientAddress(): Promise<string> {
-  try {
-    return (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  } catch {
-    return "unknown"; // outside a request scope (direct calls in tests)
-  }
-}
 
 const passwordSchema = z.object({
   email: authEmailSchema,
@@ -71,7 +64,7 @@ export async function authorizeCredentials(raw: unknown) {
 
   const parsed = passwordSchema.safeParse(raw);
   if (!parsed.success) return null;
-  const client = await clientAddress();
+  const client = await requestClientAddress();
   const perEmail = checkRateLimit(`login:${parsed.data.email}`, LOGIN_ATTEMPT_LIMIT.perEmail, LOGIN_ATTEMPT_LIMIT.windowMs);
   const perClient = checkRateLimit(`login-ip:${client}`, LOGIN_ATTEMPT_LIMIT.perClient, LOGIN_ATTEMPT_LIMIT.windowMs);
   if (!perEmail.allowed || !perClient.allowed) throw new RateLimitedError();

@@ -12,7 +12,12 @@ services:
     logging: &logging
       driver: json-file
       options: { max-size: "10m", max-file: "5" }
-    env_file: .env
+    # Literal path, resolved from the project directory — the CLI's --env-file only
+    # supplies interpolation values, so a staging project started with
+    # `--env-file .env.staging` still loaded PRODUCTION's .env into the container
+    # (live payment keys, the production origin). ENV_FILE picks the file:
+    # .env.staging sets ENV_FILE=.env.staging, the host's .env needs no line.
+    env_file: ${ENV_FILE:-.env}
     environment:
       # internal compose network — overrides the localhost URL from .env
       DATABASE_URL: postgresql://postgres:postgres@db:5432/nasmeh
@@ -73,7 +78,9 @@ services:
     profiles: ["tools"]
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      # Loopback only: a database console on the LAN reaches db with the
+      # default postgres/postgres credentials.
+      - "127.0.0.1:8080:8080"
     depends_on:
       db:
         condition: service_healthy
@@ -83,8 +90,9 @@ services:
     profiles: ["tools"]
     restart: unless-stopped
     ports:
-      - "18025:8025" # web UI (8025 avoided — commonly taken by other projects)
-      - "11025:1025" # SMTP (SMTP_HOST=localhost SMTP_PORT=11025 for local dev)
+      # Loopback only: the mailbox holds customer addresses and token links.
+      - "127.0.0.1:18025:8025" # web UI (8025 avoided — commonly taken by other projects)
+      - "127.0.0.1:11025:1025" # SMTP (SMTP_HOST=localhost SMTP_PORT=11025 for local dev)
 
 volumes:
   pgdata:

@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { db } from "@/lib/db";
 import { siteUrl } from "@/lib/seo";
+import { getMaintenance } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,14 @@ const INDEXABLE_ROUTES = ["/prijava-nezelenega-ucinka"];
  * the indexable static routes and the published content pages.
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const base = siteUrl();
+  // The middleware matcher skips file-like paths, so the maintenance gate (§3.6)
+  // is applied here: a locked store listed every ACTIVE product URL to anyone.
+  // An unreadable Setting degrades to the public map, like robots.txt does.
+  const maintenance = await getMaintenance().catch(() => ({ enabled: false }));
+  if (maintenance.enabled) {
+    return [{ url: base, lastModified: new Date(), changeFrequency: "weekly", priority: 1 }];
+  }
   const [products, pages] = await Promise.all([
     db.product.findMany({
       where: { status: "ACTIVE", visibleInCatalog: true },
@@ -31,7 +40,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       select: { slug: true, updatedAt: true },
     }),
   ]);
-  const base = siteUrl();
   const now = new Date();
   const catalogModified = products.reduce(
     (latest, product) => (product.updatedAt > latest ? product.updatedAt : latest),

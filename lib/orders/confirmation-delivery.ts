@@ -85,7 +85,9 @@ export async function buildOrderConfirmationContent(order: ConfirmationOrder, no
   const [invoicePdf, withdrawalFormPdf, legalTextsPdf] = await Promise.all([
     generateInvoicePdf(invoice),
     generateWithdrawalFormPdf(seller),
-    generateLegalTextsPdf({ orderNumber: order.number, preparedAt: now, documents }),
+    // The bodies say the seller's details are "navedeni zgoraj": the attachment carries the
+    // same identity as the invoice and the mail, so the PDF is readable on its own.
+    generateLegalTextsPdf({ orderNumber: order.number, preparedAt: now, documents, seller }),
   ]);
 
   return {

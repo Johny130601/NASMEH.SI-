@@ -15,6 +15,7 @@ import {
   withdrawalCookiePatterns,
   withdrawsConsent,
 } from "@/lib/consent";
+import { clientAddress } from "@/lib/client-address";
 import { lastLoggedCookieChoice, recordConsent } from "@/lib/consent-log";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getConsentConfig } from "@/lib/settings";
@@ -60,10 +61,7 @@ export async function saveConsentAction(input: {
   const choices = parsed.data;
   const grants = choices.analytics || choices.marketing;
 
-  const requestHeaders = await headers();
-  const client = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim()
-    || requestHeaders.get("x-real-ip")
-    || "unknown";
+  const client = clientAddress(await headers());
   const jar = await cookies();
   const stored = jar.get(CONSENT_COOKIE)?.value;
   const withdrawal = withdrawsConsent(storedCategoriesFromCookie(stored), choices);

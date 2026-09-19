@@ -72,6 +72,8 @@ Observed, not changed: the checkout's contact-step notice is rendered on the cli
 
 The five review agents (the four step 4 areas and one for the steps 5–6 changes) were launched twice today and refused both times by the API session limit before reading a file. The step 4 changes were reviewed by hand in the step 4 record; the steps 5–6 changes are small and were written with their tests and rehearsals in the same session. **The agent pass stays open**: run it first thing in the next session (the prompts are in this session's transcript and the memory notes name the areas).
 
+> **Closed 2026-09-19** — the pass ran with six reviewers (the four step 4 areas, the steps 5–6 changes, and the 2026-09-16 storefront pass as a sixth), and its findings are repaired: [phase-9-review-pass-2026-09-19.md](phase-9-review-pass-2026-09-19.md). Nothing it found contradicts this record; it did find two refund defects, an invoice authorization gap and a staging deployment hazard that hand review had missed.
+
 ## 6. Verification summary
 
 | Gate | Result |
@@ -87,4 +89,4 @@ The five review agents (the four step 4 areas and one for the steps 5–6 change
 
 ## 7. What this leaves
 
-Nothing further can be built or verified on the workstation. The remaining items are the go-live checklist rows (external gates, the host) and the agent review pass above. See [docs/testing/go-live-checklist.md](go-live-checklist.md).
+Nothing further can be built or verified on the workstation. The remaining items are the go-live checklist rows (external gates, the host) and the agent review pass above — which ran on 2026-09-19 and is [recorded separately](phase-9-review-pass-2026-09-19.md), leaving only the checklist. See [docs/testing/go-live-checklist.md](go-live-checklist.md).

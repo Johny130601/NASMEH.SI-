@@ -83,6 +83,22 @@ describe("ensureOwnerAccount", () => {
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining("another account"));
   });
 
+  it("reports a lost start race as an existing owner, not as a taken address", async () => {
+    mocks.count.mockResolvedValueOnce(0).mockResolvedValueOnce(1); // the winner's row landed between the count and the create
+    mocks.create.mockRejectedValue(new Prisma.PrismaClientKnownRequestError("unique", { code: "P2002", clientVersion: "test" }));
+    setEnv({ SEED_ADMIN_PASSWORD: "another strong password" });
+    expect(await ensureOwnerAccount()).toEqual({ created: false, reason: "exists" });
+    expect(console.error).not.toHaveBeenCalled();
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining("concurrent start"));
+  });
+
+  it("treats a blanked SEED_ADMIN_PASSWORD as absent — the runbook's 'remove the password' step must not fail the env parse", async () => {
+    mocks.count.mockResolvedValue(0);
+    mocks.create.mockResolvedValue({});
+    setEnv({ SEED_ADMIN_PASSWORD: "" });
+    await expect(ensureOwnerAccount()).resolves.toEqual({ created: true });
+  });
+
   it("propagates other database errors to the caller", async () => {
     mocks.count.mockRejectedValue(new Error("connection refused"));
     await expect(ensureOwnerAccount()).rejects.toThrow("connection refused");

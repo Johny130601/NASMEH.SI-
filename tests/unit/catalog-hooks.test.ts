@@ -76,6 +76,8 @@ describe("computed hook copy", () => {
     expect(catalog.card.percentOff(20)).toBe("−20 %");
     expect(catalog.card.bundleValue("74,97 €", 33)).toBe("Vrednost 74,97 € · prihranite 33 %");
     expect(cart.toast.line(2, "19,99 €")).toBe("2 × 19,99 €");
+    // the cap is per variant, so the notice for a full line never states a number
+    expect(catalog.card.atCap).not.toMatch(/\d/);
   });
 
   it("trust row wording comes from the shipping Setting, with honest fallbacks", () => {
@@ -92,15 +94,22 @@ describe("computed hook copy", () => {
 describe("bundleSavingsFor (value math from the components' current prices, §6.6)", () => {
   it("returns the value, the saving and the whole percent when the bundle costs less", () => {
     expect(
-      bundleSavingsFor({ priceCents: 4999, items: [{ quantity: 1, variant: { priceCents: 3499 } }, { quantity: 1, variant: { priceCents: 1999 } }, { quantity: 1, variant: { priceCents: 1999 } }] }),
+      bundleSavingsFor({ items: [{ quantity: 1, variant: { priceCents: 3499 } }, { quantity: 1, variant: { priceCents: 1999 } }, { quantity: 1, variant: { priceCents: 1999 } }] }, 4999),
     ).toEqual({ valueCents: 7497, savingsCents: 2498, savingsPercent: 33 });
   });
 
   it("multiplies quantities and returns null for no bundle, no items or no saving", () => {
-    expect(bundleSavingsFor({ priceCents: 3000, items: [{ quantity: 2, variant: { priceCents: 1999 } }] })).toEqual({ valueCents: 3998, savingsCents: 998, savingsPercent: 25 });
-    expect(bundleSavingsFor(null)).toBeNull();
-    expect(bundleSavingsFor({ priceCents: 4999, items: [] })).toBeNull();
-    expect(bundleSavingsFor({ priceCents: 5000, items: [{ quantity: 1, variant: { priceCents: 2500 } }, { quantity: 1, variant: { priceCents: 2500 } }] })).toBeNull();
+    // 998/3998 is 24,96 %: floored like the Omnibus percent, so a saving is never overstated.
+    expect(bundleSavingsFor({ items: [{ quantity: 2, variant: { priceCents: 1999 } }] }, 3000)).toEqual({ valueCents: 3998, savingsCents: 998, savingsPercent: 24 });
+    expect(bundleSavingsFor(null, 4999)).toBeNull();
+    expect(bundleSavingsFor({ items: [] }, 4999)).toBeNull();
+    expect(bundleSavingsFor({ items: [{ quantity: 1, variant: { priceCents: 2500 } }, { quantity: 1, variant: { priceCents: 2500 } }] }, 5000)).toBeNull();
+  });
+
+  it("stands down while an announced reduction is on the card (the strikethrough is the mandated display)", () => {
+    const items = [{ quantity: 1, variant: { priceCents: 3499 } }, { quantity: 1, variant: { priceCents: 1999 } }];
+    expect(bundleSavingsFor({ items }, 4999, { priorPriceCents: 5999, priceCents: 4999, percentOff: 16 })).toBeNull();
+    expect(bundleSavingsFor({ items }, 4999, null)).not.toBeNull();
   });
 });
 
@@ -146,7 +155,8 @@ describe("toCatalogProduct", () => {
     } as Partial<Row>);
     const product = toCatalogProduct(bundle, noRatings, noReductions, 5)!;
     expect(product.isBundle).toBe(true);
-    expect(product.bundleSavings).toEqual({ valueCents: 7497, savingsCents: 2498, savingsPercent: 33 });
+    // measured against the price on the card (the variant, 34,99 €) — never Bundle.priceCents, which nobody pays here
+    expect(product.bundleSavings).toEqual({ valueCents: 7497, savingsCents: 3998, savingsPercent: 53 });
   });
 
   it("keeps the reduction (the −X % pill and strikethrough) on the Omnibus gate only", () => {

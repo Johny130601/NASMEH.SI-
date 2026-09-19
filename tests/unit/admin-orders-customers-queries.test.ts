@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ orderFindMany: vi.fn(), orderCount: vi.fn(), userFindMany: vi.fn(), subscriberFindMany: vi.fn() }));
+const mocks = vi.hoisted(() => ({ orderFindMany: vi.fn(), orderCount: vi.fn(), userFindMany: vi.fn(), subscriberFindMany: vi.fn(), queryRaw: vi.fn() }));
 vi.mock("@/lib/db", () => ({ db: {
   order: { findMany: mocks.orderFindMany, count: mocks.orderCount }, user: { findMany: mocks.userFindMany },
-  subscriber: { findMany: mocks.subscriberFindMany },
+  subscriber: { findMany: mocks.subscriberFindMany }, $queryRaw: mocks.queryRaw,
 } }));
 vi.mock("@/lib/orders/refunds", () => ({ refundedQuantities: () => new Map() }));
 vi.mock("@/lib/support/photos", () => ({ removeSupportPhotos: vi.fn() }));
@@ -22,15 +22,24 @@ describe("order filters", () => {
     expect(parseOrderFilters({ status: "nope", provider: "cash", country: "slo", stran: "-1", od: "yesterday" })).toMatchObject({ status: null, provider: null, country: null, page: 1, from: null });
   });
 
-  it("builds the where clause across number, e-mail, tracking and recipient name", () => {
-    const where = orderWhere(parseOrderFilters({ q: "ana k", status: "SHIPPED", country: "SI" }));
+  it("builds the where clause across number, e-mail, tracking and the ids a name search matched", () => {
+    const filters = parseOrderFilters({ q: "ana k", status: "SHIPPED", country: "SI" });
+    // The recipient name lives in JSON, whose Prisma filter takes no `mode` and so renders a
+    // case-sensitive LIKE. The name is matched by a separate ILIKE statement and fed back as ids.
+    const where = orderWhere(filters, ["order-a", "order-b"]);
     expect(where.OR).toEqual([
       { number: { contains: "ana k", mode: "insensitive" } },
       { email: { contains: "ana k", mode: "insensitive" } },
       { trackingNumber: { contains: "ANAK" } },
-      { shippingAddress: { path: ["fullName"], string_contains: "ana k" } },
+      { id: { in: ["order-a", "order-b"] } },
     ]);
     expect(where).toMatchObject({ status: "SHIPPED", shippingAddress: { path: ["country"], equals: "SI" } });
+  });
+
+  it("omits the id term when no recipient name matched, so the other three still search", () => {
+    const where = orderWhere(parseOrderFilters({ q: "ana k" }), []);
+    expect(where.OR).toHaveLength(3);
+    expect(where.OR).not.toContainEqual(expect.objectContaining({ id: expect.anything() }));
   });
 
   it("exports a BOM-prefixed semicolon CSV with quoted cells", async () => {
@@ -89,6 +98,28 @@ describe("customer list", () => {
     expect(mocks.orderFindMany.mock.calls[0][0].select).not.toHaveProperty("marketingOptIn");
     expect((await listCustomers(parseCustomerFilters({ enovice: "da" }))).rows.map((row) => row.email)).toEqual(["potrjen@test.si"]);
     expect((await listCustomers(parseCustomerFilters({ enovice: "ne" }))).rows.map((row) => row.email)).toEqual(["zahteva@test.si"]);
+  });
+
+  it("finds a guest by name whatever the case staff type", async () => {
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.queryRaw.mockResolvedValue([
+      { email: "janez@test.si", status: "PAID", totalCents: 1000, refundedCents: 0, createdAt: new Date("2026-09-05"), shippingAddress: { fullName: "Janez Novak" }, anonymizedAt: null },
+    ]);
+    const found = await listCustomers(parseCustomerFilters({ q: "Novak" }));
+    expect(found.rows.map((row) => [row.name, row.email])).toEqual([["Janez Novak", "janez@test.si"]]);
+    // Prisma's JSON filter takes no `mode` and renders a case-sensitive LIKE, which no
+    // capitalised name ever matches, so the guest scan runs as one ILIKE statement.
+    expect(mocks.orderFindMany).not.toHaveBeenCalled();
+    const [strings, ...values] = mocks.queryRaw.mock.calls[0] as [string[], ...unknown[]];
+    expect(strings.join("?").replace(/\s+/g, " ")).toContain(`"email" ILIKE ? OR ("shippingAddress"->>'fullName') ILIKE ?`);
+    expect(values).toEqual(["%novak%", "%novak%", 5000]);
+  });
+
+  it("treats LIKE wildcards in the query as literal characters", async () => {
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.queryRaw.mockResolvedValue([]);
+    await listCustomers(parseCustomerFilters({ q: "50%_a" }));
+    expect(mocks.queryRaw.mock.calls[0][1]).toBe("%50\\%\\_a%");
   });
 
   it("paginates the merged list in pages of fifty", async () => {

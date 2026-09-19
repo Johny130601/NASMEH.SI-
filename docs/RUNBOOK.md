@@ -2,7 +2,7 @@
 
 Operations reference for the compose stack in this repository (`docker-compose.yml`: `app` + `db`, optional `adminer`/`mailpit` under the `tools` profile). Conventions and environment variables: AGENTS.md §6. Written in Phase 9 step 3 ([record](testing/phase-9-step-3-2026-09-12.md)); the host section came with step 5 ([record](testing/phase-9-step-5-2026-09-15.md)); release tags and the go-live section with step 6 ([record](testing/phase-9-step-6-2026-09-15.md), [checklist](testing/go-live-checklist.md)).
 
-All commands run on the host, from the directory that holds `docker-compose.yml` and the host's `.env`. Production never uses `docker-compose.override.yml` (it publishes Postgres for local development): keep it out of the server checkout, and pass `-f docker-compose.yml` when in doubt.
+All commands run on the host, from the directory that holds `docker-compose.yml` and the host's `.env`. Production never uses `docker-compose.override.yml` (it publishes Postgres for local development): keep it out of the server checkout, and pass `-f docker-compose.yml` on **every** command that touches the stack — compose merges the override silently whenever the file exists, and a bare `docker compose up -d app` would recreate `db` with a published port.
 
 ## Host
 
@@ -20,9 +20,11 @@ The shape below was rehearsed on the workstation on 2026-09-15 — the productio
 |---|---|
 | `PORT` | a free host port; the app is published on `127.0.0.1:PORT` only, the proxy reaches it over the network |
 | `PROXY_NETWORK` | the proxy's docker network (default `proxy`) |
+| `IMAGE_TAG` | the release the stack runs (`nasmeh-app:<tag>`); `latest` on the first build, then the git short sha the deploy writes — without the line, `up -d` starts the last untagged build |
+| `ENV_FILE` | the file the app container loads (compose `env_file`); absent or `.env` on the host, `.env.staging` **inside `.env.staging`** — see Staging |
 | `NEXT_PUBLIC_SITE_URL`, `AUTH_URL` | `https://nasmeh.si` — read at request time, never baked into the image: every absolute link (sitemap, canonicals, mails, coupon links, PDF links) and every auth callback comes from here |
 | `AUTH_SECRET`, `JOBS_SECRET` | long random strings (`openssl rand -base64 48`), different on staging |
-| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | the owner's address and a strong one-time password for the first start (below); delete the password line after the first sign-in |
+| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | the owner's address and a strong one-time password for the first start (below); after the first sign-in delete the password line **or** leave it empty — both count as removed, and the existing OWNER is never touched again |
 | `DATABASE_URL` | keep the example value: compose wires the app to the `db` container itself |
 | `STRIPE_*`, `PAYPAL_*`, `SMTP_*`, `EMAIL_FROM`, `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | the live credentials (step 6); staging keeps test keys |
 | `CSP_ENFORCE` | `false` until a full browser pass on the host logs no `[csp]` lines, then `true` (no rebuild) |
@@ -61,13 +63,15 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $remote_addr;   # OVERWRITE, never $proxy_add_x_forwarded_for
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $http_host;
     }
 }
 server { listen 80; server_name nasmeh.si; return 301 https://$host$request_uri; }
 ```
+
+The proxy **must overwrite** both `X-Real-IP` and `X-Forwarded-For` with the address it sees: nginx's `$proxy_add_x_forwarded_for` *appends* to whatever the client sent, so a client that sends its own `X-Forwarded-For` picks the address the app reads and rotates every rate-limit bucket at will (login attempts, coupon-link lookups, the unlock gate). This proxy is the only hop in front of the app, so there is nothing to preserve.
 
 An nginx installed on the host itself proxies to `http://127.0.0.1:PORT` instead and needs no `resolver` line (and no proxy compose file).
 
@@ -78,7 +82,7 @@ services:
   app:
     labels:
       traefik.enable: "true"
-      traefik.docker.network: proxy
+      traefik.docker.network: ${PROXY_NETWORK:-proxy}
       traefik.http.routers.nasmeh.rule: Host(`nasmeh.si`)
       traefik.http.routers.nasmeh.entrypoints: websecure
       traefik.http.routers.nasmeh.tls.certresolver: letsencrypt
@@ -88,17 +92,23 @@ services:
       traefik.http.routers.nasmeh.middlewares: nasmeh-hsts
 ```
 
-The app takes none of its own URLs from the proxy headers (`NEXT_PUBLIC_SITE_URL` and `AUTH_URL` decide, redirects stay on the request origin), so a misconfigured proxy cannot send users elsewhere; `X-Forwarded-For` / `X-Real-IP` feed only the rate limits.
+Traefik overwrites the forwarded headers by itself as long as the entrypoint keeps its default empty `forwardedHeaders.trustedIPs` (and no `insecure: true`): with a trusted-IP list it *preserves* what the client sent, which is exactly what must not happen here.
+
+The app takes none of its own URLs from the proxy headers (`NEXT_PUBLIC_SITE_URL` and `AUTH_URL` decide, redirects stay on the request origin), so a misconfigured proxy cannot send users elsewhere. `X-Forwarded-For` / `X-Real-IP` are the client address the rate limits are counted per, so a proxy that lets a client's own value through hands every attacker a fresh bucket per request — overwrite both, as above.
 
 ### Staging
 
-Same image, a second compose project with its own `.env.staging` (`PORT=3001`, `NEXT_PUBLIC_SITE_URL`/`AUTH_URL` `https://staging.nasmeh.si`, its own `AUTH_SECRET`/`JOBS_SECRET`, test payment keys):
+Same image, a second compose project with its own `.env.staging` (`PORT=3001`, `NEXT_PUBLIC_SITE_URL`/`AUTH_URL` `https://staging.nasmeh.si`, its own `AUTH_SECRET`/`JOBS_SECRET`, test payment keys) — and an `ENV_FILE=.env.staging` line of its own:
 
 ```sh
+grep -qx 'ENV_FILE=.env.staging' .env.staging || { sed -i '/^ENV_FILE=/d' .env.staging; echo 'ENV_FILE=.env.staging' >> .env.staging; }  # a copied .env carries ENV_FILE=.env: check the value, not the key
 docker compose -p nasmeh-staging --env-file .env.staging -f docker-compose.yml -f docker-compose.proxy.yml up -d
+scripts/launch-check.sh https://staging.nasmeh.si --staging     # the origin rows prove which .env the container loaded
 ```
 
-The proxy reaches it as `nasmeh-staging-app-1:3000` under `staging.nasmeh.si`. After the first sign-in switch **maintenance mode on** (with a password for reviewers) and **indexing off** on `/admin/nastavitve/trzenje`: robots.txt then disallows everything, every page carries noindex, and visitors see the maintenance page while `/prijava`, `/admin` and the consent links stay reachable. Preview links are the storefront itself behind the password. Staging owns its volumes (`nasmeh-staging_*`) and database — nothing is shared with production — and gets no daily-job cron.
+`--env-file` only supplies the values compose interpolates (`PORT`, `PROXY_NETWORK`, `IMAGE_TAG`, `ENV_FILE`); the file the *container* reads is the compose `env_file` entry, `${ENV_FILE:-.env}`. Without the `ENV_FILE` line staging comes up on production's `.env`: the production origin in every canonical, sitemap and auth callback, the production `AUTH_SECRET`/`JOBS_SECRET`, and a "test checkout" that creates **live** PaymentIntents. The launch check's origin rows are what catches it.
+
+The proxy reaches it as `nasmeh-staging-app-1:3000` under `staging.nasmeh.si`. After the first sign-in switch **maintenance mode on** (with a password for reviewers) and **indexing off** on `/admin/nastavitve/trzenje`: robots.txt then disallows everything, every page carries noindex, the sitemap shrinks to the homepage and instant search answers nothing, while `/prijava`, `/admin` and the consent links stay reachable. A locked read is redirected to the gate at `/vzdrzevanje?od=<the address asked for>` (the unlock sends the visitor back there), and every non-GET request outside the allow-list is answered `503`, so the storefront's own Server Actions (add to cart, checkout, place order) are no longer reachable at the address they are invoked from. They are not *unreachable*: a Next-Action id is dispatched from the global action manifest whatever the path, so a POST aimed at one of the allow-listed paths still runs the action it names. The gate is a wall against visitors and crawlers, not an authorization boundary — staging still needs its own database, its own secrets and test payment keys. Preview links are the storefront itself behind the password. Staging owns its volumes (`nasmeh-staging_*`) and database — nothing is shared with production — and gets no daily-job cron.
 
 ## Deploy
 
@@ -106,6 +116,7 @@ The proxy reaches it as `nasmeh-staging-app-1:3000` under `staging.nasmeh.si`. A
 git pull                                                                          # the tagged release
 NEW=$(git rev-parse --short HEAD)
 IMAGE_TAG=$NEW docker compose -f docker-compose.yml -f docker-compose.proxy.yml build # builds and tags nasmeh-app:$NEW
+grep -q '^IMAGE_TAG=' .env || echo "IMAGE_TAG=" >> .env                               # without the key the sed below is a silent no-op and `up -d` starts nasmeh-app:latest, the last untagged build
 sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=$NEW/" .env                                        # the release the stack runs
 docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d              # app + db; the entrypoint applies prisma migrate deploy, then starts the server
 curl -fsS http://127.0.0.1:${PORT:-3000}/api/health                               # {"status":"ok","db":"up",...}
@@ -160,7 +171,7 @@ docker compose -p nasmeh-restore -f docker-compose.yml down -v    # when done
 
 The script prints the health JSON, the migration and order counts, the file count per media directory and the number of private files found under `public/uploads` (must be 0): private photos are restored into their private volumes only and are served through the moderation-aware routes, never as public files.
 
-The restored stack reads the **same host `.env`** as the live one (`env_file: .env`), so it comes up holding the live SMTP and payment credentials — it is a working store on port 3100, not a sandbox. Never point the scheduler or a proxy at it, do not run `/api/jobs/daily` against it, and tear it down when the drill is over. Nothing in the drill touches the live project: the restore has its own compose project name, volumes and network, and refuses to start if that project already has containers.
+The restored stack reads the **same host `.env`** as the live one (`env_file: ${ENV_FILE:-.env}`, and the drill passes no `--env-file`), so it comes up holding the live SMTP and payment credentials — it is a working store on port 3100, not a sandbox. Never point the scheduler or a proxy at it, do not run `/api/jobs/daily` against it, and tear it down when the drill is over. Nothing in the drill touches the live project: the restore has its own compose project name, volumes and network, and refuses to start if that project already has containers.
 
 To promote a restored stack after a disaster: stop the live project (`docker compose -f docker-compose.yml down`), point the reverse proxy at the restored project's port (or start the live project again and restore into it: load the dump with the `psql` line from the rollback section and unpack the four archives with the `docker run --volumes-from … tar xzf` commands the script uses).
 
@@ -201,9 +212,9 @@ Backups keep erased data for up to 14 daily and 8 weekly copies (see Backups); a
 
 | Symptom | Check | Action |
 |---|---|---|
-| Health 503 `db: down` | `docker compose -f docker-compose.yml ps` — is `db` up? `docker compose logs db` | `docker compose -f docker-compose.yml up -d db`; the app reconnects by itself (Prisma pool). Disk full → free space, then restart `db`. |
-| Health unreachable (connection refused) | `docker compose ps` — app restarting? `docker compose logs --tail 100 app` | Entrypoint refusals (media guard, migration failure) are printed first; fix the cause, `up -d app`. |
-| Site up, orders not confirmed by mail | `docker compose logs app | grep -i mail`, the daily job's last run | Mail retries ride the daily job; run it by hand with the `curl` line above. |
+| Health 503 `db: down` | `docker compose -f docker-compose.yml ps` — is `db` up? `docker compose -f docker-compose.yml logs db` | `docker compose -f docker-compose.yml up -d db`; the app reconnects by itself (Prisma pool). Disk full → free space, then restart `db`. |
+| Health unreachable (connection refused) | `docker compose -f docker-compose.yml ps` — app restarting? `docker compose -f docker-compose.yml logs --tail 100 app` | Entrypoint refusals (media guard, migration failure) are printed first; fix the cause, `docker compose -f docker-compose.yml up -d app`. |
+| Site up, orders not confirmed by mail | `docker compose -f docker-compose.yml logs app | grep -i mail`, the daily job's last run | Mail retries ride the daily job; run it by hand with the `curl` line above. |
 | Store in maintenance unexpectedly | admin → Nastavitve → Trženje (maintenance switch) | Disable; the password hash never unlocks by itself. |
 | Restore needed | latest backup manifest | Restore drill section; promote when verified. |
 

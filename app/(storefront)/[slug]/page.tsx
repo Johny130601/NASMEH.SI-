@@ -4,6 +4,9 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { buildMetadata } from "@/lib/seo";
 import { legal } from "@/lib/copy";
+import { sellerBlockLines } from "@/lib/copy/legal";
+import { getCompany } from "@/lib/settings";
+import { companyPlaceholderFields } from "@/lib/settings-schemas";
 
 export const dynamic = "force-dynamic";
 
@@ -29,9 +32,12 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 /** ContentPage rendering (§12.5): DEFAULT, LEGAL (draft notice), CONTACT (form link), LANDING (wide, no date). */
 export default async function ContentPageRoute({ params }: Params) {
   const { slug } = await params;
-  const page = await getPage(slug);
+  const [page, company] = await Promise.all([getPage(slug), getCompany()]);
   if (!page) notFound();
   const landing = page.template === "LANDING";
+  // The legal bodies name the seller "zgoraj" (terms §1/§2, privacy §1/§16), so
+  // the block has to be here (ZVPot-1 pre-contract identity), server-rendered.
+  const sellerLines = sellerBlockLines(company, companyPlaceholderFields(company));
 
   return (
     <article className={`mx-auto ${landing ? "max-w-(--container-wide)" : "max-w-(--container-narrow)"} px-(--padding) py-16`} data-content-template={page.template}>
@@ -56,6 +62,21 @@ export default async function ContentPageRoute({ params }: Params) {
           })}
         </p>
       )}
+
+      {page.template === "LEGAL" ? (
+        <section className="mt-6 rounded-card border border-light-2 bg-white p-4" data-seller-block>
+          <h2 className="text-sm font-medium text-dark-1">{legal.seller.title}</h2>
+          {sellerLines ? (
+            <address className="mt-2 text-xs not-italic leading-6 text-mid-1">
+              {sellerLines.map((line) => (
+                <span key={line} className="block">{line}</span>
+              ))}
+            </address>
+          ) : (
+            <p className="mt-2 text-xs text-mid-2">{legal.seller.missing}</p>
+          )}
+        </section>
+      ) : null}
 
       {/* Admin-authored trusted content (Phase 7 editor) */}
       <div

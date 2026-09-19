@@ -76,7 +76,7 @@ export async function POST(request: Request) {
       : event.event_type === "PAYMENT.CAPTURE.REFUNDED"
         ? await markRefunded("paypal", event.id, orderId, details)
         : await markPaymentFailed("paypal", event.id, orderId);
-    return NextResponse.json({ received: true, result }, { status: ["not_found", "payment_mismatch"].includes(result.outcome) ? 409 : 200 });
+    return NextResponse.json({ received: true, result }, { status: ["not_found", "payment_mismatch", "refund_in_flight"].includes(result.outcome) ? 409 : 200 });
   } catch {
     console.error("PayPal webhook transition failed", event.id);
     return NextResponse.json({ error: "retry_required" }, { status: 500 });

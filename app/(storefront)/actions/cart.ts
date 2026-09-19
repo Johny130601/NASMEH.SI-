@@ -15,6 +15,14 @@ export interface CartActionResult {
   ok: boolean;
   count: number;
   message?: string;
+  /** The line already sat at its per-order cap: nothing was added. */
+  capped?: boolean;
+  /**
+   * Units this add really stored, which is less than the quantity asked for
+   * when the cap clamped it. Only the add path sets it; it is what may be
+   * announced to the shopper and reported to analytics.
+   */
+  addedQuantity?: number;
 }
 
 /**
@@ -49,12 +57,14 @@ export async function addToCartAction(input: unknown): Promise<CartActionResult>
   if (!variant || (variant.stock <= 0 && !variant.allowBackorder)) return { ok: false, count: 0 };
 
   const session = await auth();
-  const lines = await addToCart(
+  const { lines, addedQuantity } = await addToCart(
     session?.user?.id ?? null,
     parsed.data,
     variant.maxCartQuantity,
   );
-  return { ok: true, count: countOf(lines) };
+  // The cap clamps silently: an add that changed nothing must not answer ok.
+  if (addedQuantity <= 0) return { ok: false, count: countOf(lines), capped: true };
+  return { ok: true, count: countOf(lines), addedQuantity };
 }
 
 export async function updateCartLineAction(input: unknown): Promise<CartActionResult> {

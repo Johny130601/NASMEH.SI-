@@ -46,8 +46,15 @@ export async function moderateReviewAction(input: {
       ...(photos.length ? { photos: [] } : {}),
     },
   });
-  // Access is revoked by the DB commit; a failed unlink leaves an orphan file and is logged without its path.
-  if (photos.length) await removeReviewPhotos(photos).catch(() => console.error("Rejected review photos remain on disk"));
+  // Access is revoked by the DB commit. A failed unlink is logged without its path and the
+  // reference put back, so the daily retention run retries it instead of leaving a photo on
+  // disk that no row names any more; the review stays rejected, so it is shown to nobody.
+  if (photos.length) {
+    await removeReviewPhotos(photos).catch(async () => {
+      console.error("Rejected review photos remain on disk");
+      await db.review.update({ where: { id: parsed.data.reviewId }, data: { photos } }).catch(() => undefined);
+    });
+  }
   refreshReviews(review.product.slug);
   return { ok: true };
 }

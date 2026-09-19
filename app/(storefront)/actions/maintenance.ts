@@ -3,6 +3,7 @@
 import bcrypt from "bcryptjs";
 import { cookies, headers } from "next/headers";
 import { z } from "zod";
+import { clientAddress } from "@/lib/client-address";
 import { getEnv } from "@/lib/env";
 import {
   MAINTENANCE_COOKIE,
@@ -32,7 +33,7 @@ export async function unlockMaintenanceAction(input: {
 
   const parsed = inputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: copy.wrongPassword };
-  const client = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const client = clientAddress(await headers());
   if (!checkRateLimit(`maintenance-unlock:${client}`, 10, 10 * 60_000).allowed) {
     return { ok: false, message: copy.wrongPassword };
   }

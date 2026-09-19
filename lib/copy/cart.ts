@@ -2,7 +2,9 @@
 export const cart = {
   title: "Vaša košarica",
   progress: {
-    empty: "Odklenite brezplačno dostavo pri naročilih nad 45 €",
+    // "od": free shipping applies AT the threshold (>=), and the page swaps
+    // "45 €" for the formatted Setting — the figure is never typed copy.
+    empty: "Odklenite brezplačno dostavo pri naročilih od 45 €",
     inProgress: "📦 Samo še €X vas loči do brezplačne dostave",
     reached: "🎉 Čestitamo! Odklenili ste brezplačno dostavo!",
   },

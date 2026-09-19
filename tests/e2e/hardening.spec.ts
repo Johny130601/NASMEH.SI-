@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { expect, test } from "@playwright/test";
-import { dismissCookieBanner, prisma } from "./helpers";
+import { MAINTENANCE_PASSWORD, dismissCookieBanner, prisma, setMaintenanceEnabled } from "./helpers";
 
 /** Phase 9 step 1: no-JavaScript login (B14), security headers with a nonce-based CSP, the report sink, login and /koda limits. */
 
@@ -79,6 +79,55 @@ test("every page carries the static headers and a nonce-based CSP (report-only o
   expect(api.headers()["x-content-type-options"]).toBe("nosniff");
   expect(api.headers()["x-frame-options"]).toBe("DENY");
   expect(violations, violations.join(" | ")).toEqual([]); // a report-only policy still logs to the console
+});
+
+test("a deep unknown path — the shape of a bot probe — serves the 404 with the request's nonce and hydrates", async ({ page }) => {
+  const violations: string[] = [];
+  page.on("console", (message) => { if (/content security policy|csp/i.test(message.text())) violations.push(message.text()); });
+  // Two segments or more match no route and no storefront layout: this is the GLOBAL
+  // not-found. Prerendered, its script tags carry no nonce and 'strict-dynamic' refuses
+  // every one of them — no hydration and one [csp] report per tag, the very signal the
+  // enforced policy is judged by (go-live row E2).
+  const response = await page.goto("/ni-take-strani/sploh-ne");
+  expect(response!.status()).toBe(404);
+  const csp = response!.headers()[CSP_HEADER];
+  const nonce = /'nonce-([^']+)'/.exec(csp!)?.[1];
+  expect(nonce).toBeTruthy();
+  const html = await response!.text();
+  expect(html).toContain(`nonce="${nonce}"`);
+  expect(html).not.toMatch(/<script(?![^>]*\bnonce=)[^>]*\bsrc=/); // every script is nonced
+  await expect(page.locator("[data-countdown]")).not.toHaveText("10", { timeout: 5_000 }); // the counter ticks down: hydration ran under the policy
+  expect(violations, violations.join(" | ")).toEqual([]);
+});
+
+test("a locked store refuses Server Actions on every gated path: the gate keeps its own address and the unlock still works", async ({ page, request }) => {
+  await setMaintenanceEnabled(true);
+  try {
+    const gate = await request.get("/trgovina", { maxRedirects: 0 });
+    expect(gate.status()).toBe(307);
+    expect(gate.headers()["location"]).toContain("/vzdrzevanje?od=%2Ftrgovina");
+    // A rewrite left the gate on /trgovina, and a POST carrying a Next-Action id is
+    // dispatched from the action manifest whatever the path: add-to-cart, the checkout
+    // capture and place-order stayed callable behind the wall. The redirect shrinks that
+    // POST surface to ALLOWED_WHEN_LOCKED — the paths that must keep working while
+    // locked — which is as far as the middleware can go: only the action id says which
+    // action runs, and it cannot resolve it.
+    const action = await request.post("/trgovina", {
+      headers: { "next-action": "0".repeat(40), "content-type": "text/plain;charset=UTF-8" },
+      data: "[]",
+      maxRedirects: 0,
+    });
+    expect(action.status()).toBe(503);
+    // …while the gate's own unlock posts to /vzdrzevanje, which the allow-list lets through.
+    await page.goto("/trgovina");
+    await expect(page).toHaveURL(/\/vzdrzevanje\?od=/);
+    await page.getByLabel("Geslo za dostop").fill(MAINTENANCE_PASSWORD);
+    await page.getByRole("button", { name: "Vstopi" }).click();
+    await expect(page.getByRole("heading", { name: "Trgovina se pripravlja" })).toBeHidden({ timeout: 15_000 });
+    await expect(page.locator("[data-cart-link]")).toBeVisible();
+  } finally {
+    await setMaintenanceEnabled(false);
+  }
 });
 
 test("the CSP report sink accepts browser reports and refuses junk", async ({ request }) => {

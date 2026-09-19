@@ -200,6 +200,46 @@ describe("anonymisation", () => {
     expect(c.consentLog.create).not.toHaveBeenCalled();
     expect(c.subscriber.deleteMany).toHaveBeenCalledWith({ where: { email: "gost@test.si" } });
     expect(mocks.removeSupportPhotos).toHaveBeenCalledWith([{ filename: "p.webp" }]);
+    // The file goes before the row that names it: a failed unlink aborts the erasure and the
+    // retry reads the same name again, instead of leaving health-data photos nothing can find.
+    expect(mocks.removeSupportPhotos.mock.invocationCallOrder[0]).toBeLessThan(c.ticketAttachment.deleteMany.mock.invocationCallOrder[0]);
+  });
+
+  it("aborts the whole erasure when a support photo cannot be unlinked", async () => {
+    c.ticket.findFirst.mockResolvedValue({ id: "t1" });
+    c.ticket.findMany.mockResolvedValue([{ id: "t1", attachments: [{ filename: "p.webp" }] }]);
+    mocks.removeSupportPhotos.mockRejectedValue(new Error("EACCES"));
+    await expect(anonymiseCustomer({ email: "gost@test.si" }, "support@nasmeh.si")).rejects.toThrow();
+    expect(c.ticketAttachment.deleteMany).not.toHaveBeenCalled();
+    expect(c.ticket.update).not.toHaveBeenCalled();
+  });
+
+  it("refuses a guest e-mail that belongs to an account, so the account is not left holding the name", async () => {
+    c.order.findFirst.mockResolvedValue({ id: "o1" });
+    c.user.findUnique.mockResolvedValue({ id: "u1" });
+    expect(await anonymiseCustomer({ email: "ana@test.si" }, "support@nasmeh.si")).toEqual({ ok: false, reason: "account" });
+    expect(c.order.findMany).not.toHaveBeenCalled();
+    expect(c.order.update).not.toHaveBeenCalled();
+    expect(c.subscriber.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it.each(["PENDING", "PAID", "PROCESSING"])("refuses a subject whose order is still open (%s)", async (status) => {
+    c.user.findUnique.mockResolvedValue({ id: "u1", email: "ana@test.si", role: "CUSTOMER", marketingOptIn: true });
+    c.order.findMany.mockResolvedValue([{ id: "o1", number: "NS-1", status, shippingAddress: {}, billingAddress: null }]);
+    // A late payment webhook would invoice a scrubbed buyer; a paid parcel has no address left.
+    expect(await anonymiseCustomer({ userId: "u1" }, "support@nasmeh.si")).toEqual({ ok: false, reason: "open_order" });
+    expect(c.consentLog.create).not.toHaveBeenCalled();
+    expect(c.user.update).not.toHaveBeenCalled();
+    expect(c.order.update).not.toHaveBeenCalled();
+  });
+
+  it("erases a subject whose orders are all settled", async () => {
+    c.user.findUnique.mockResolvedValue({ id: "u1", email: "ana@test.si", role: "CUSTOMER", marketingOptIn: false });
+    c.order.findMany.mockResolvedValue([
+      { id: "o1", number: "NS-1", status: "DELIVERED", shippingAddress: {}, billingAddress: null },
+      { id: "o2", number: "NS-2", status: "REFUNDED", shippingAddress: {}, billingAddress: null },
+    ]);
+    expect(await anonymiseCustomer({ userId: "u1" }, "support@nasmeh.si")).toEqual({ ok: true, orders: 2, tickets: 0 });
   });
 
   it("logs the end of an account's opt-in, scrubs notes and keeps the invoice snapshot", async () => {

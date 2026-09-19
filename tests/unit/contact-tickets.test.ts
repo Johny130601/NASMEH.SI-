@@ -96,10 +96,15 @@ describe("durable contact tickets", () => {
     });
   });
 
-  it("still refuses an unmatched order on the adverse form", async () => {
+  // A vigilance notice is never lost to an optional field: a carer may report for the buyer,
+  // so the stated number is kept as a claim and the ticket is recorded unlinked.
+  it("records an adverse report with an unmatched order number as unlinked, keeping the claim", async () => {
     const details = { kind: "adverse" as const, batchNumber: "LOT 1" };
-    expect(await createContactTicket({ ...input, topic: "ADVERSE", reason: "REACTION", orderNumber: "NS-2026-00001", orderEmail: input.email, details }, [], null)).toEqual({ ok: false, error: "orderNotFound" });
-    expect(mocks.create).not.toHaveBeenCalled();
+    const result = await createContactTicket({ ...input, topic: "ADVERSE", reason: "REACTION", orderNumber: "NS-2026-00001", orderEmail: input.email, details }, [], null);
+    expect(result).toMatchObject({ ok: true, orderLinked: false });
+    expect(mocks.create).toHaveBeenCalledOnce();
+    expect(mocks.create.mock.calls[0][0].data).toMatchObject({ orderId: null, topic: "ADVERSE" });
+    expect(mocks.create.mock.calls[0][0].data.details).toMatchObject({ kind: "adverse", batchNumber: "LOT 1", claimedOrderNumber: "NS-2026-00001" });
   });
   it.each(["ACCOUNT", "EMAIL_NUMBER"])("attaches a verified %s context without changing order state", async proof => {
     mocks.order.mockResolvedValue({ id: "o", number: "NS-2026-00001", userId: "owner", email: "Buyer@Example.Test" });

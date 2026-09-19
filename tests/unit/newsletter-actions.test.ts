@@ -30,15 +30,21 @@ import {
 import { marketingVersion } from "@/lib/consent-log";
 import { signNewsletterUnsubscribeToken } from "@/lib/newsletter/unsubscribe-token";
 import { unsubscribeLinkState } from "@/lib/newsletter/subscriber-consent";
+import { __resetRateLimits } from "@/lib/rate-limit";
 import { newsletter as copy } from "@/lib/copy";
 
 const SUBSCRIBER_ID = "cmf0newslettersubscriber1";
 const TOKEN = "a".repeat(48);
 const tx = { subscriber: mocks.subscriber, user: mocks.user, consentLog: { create: mocks.consent } };
-const pending = { id: SUBSCRIBER_ID, email: "ana@test.si", status: "PENDING", source: "welcome-popup", confirmToken: TOKEN };
+/** `updatedAt` is older than the re-send cooldown, so a mail is not suppressed unless a test says so. */
+const pending = {
+  id: SUBSCRIBER_ID, email: "ana@test.si", status: "PENDING", source: "welcome-popup", confirmToken: TOKEN,
+  updatedAt: new Date(Date.now() - 60 * 60_000),
+};
 
 beforeEach(() => {
   vi.resetAllMocks();
+  __resetRateLimits();
   mocks.human.mockResolvedValue(true);
   mocks.transaction.mockImplementation(async (operation: (client: typeof tx) => unknown) => operation(tx));
   mocks.dbSubscriber.findUnique.mockResolvedValue(null);
@@ -120,6 +126,20 @@ describe("subscribeNewsletterAction", () => {
     mocks.dbSubscriber.createManyAndReturn.mockResolvedValueOnce([]);
     expect(await subscribeNewsletterAction({ email: "ana@test.si", turnstileToken: "human", source: "footer" })).toEqual({ ok: true, message: copy.success });
     expect(mocks.sendMail).toHaveBeenCalledWith("ana@test.si", TOKEN, SUBSCRIBER_ID);
+  });
+
+  it("does not re-mail a pending subscriber whose mail just went out (finding A4)", async () => {
+    mocks.dbSubscriber.findUnique.mockResolvedValue({ ...pending, updatedAt: new Date() });
+    expect(await subscribeNewsletterAction({ email: "ana@test.si", turnstileToken: "human", source: "footer" })).toEqual({ ok: true, message: copy.success });
+    expect(mocks.dbSubscriber.updateMany).not.toHaveBeenCalled();
+    expect(mocks.sendMail).not.toHaveBeenCalled();
+  });
+
+  it("bounds the verification mails per address and still answers uniformly (finding A4)", async () => {
+    for (let index = 0; index < 5; index += 1) {
+      expect(await subscribeNewsletterAction({ email: "ana@test.si", turnstileToken: "human", source: "footer" })).toEqual({ ok: true, message: copy.success });
+    }
+    expect(mocks.sendMail).toHaveBeenCalledTimes(3);
   });
 
   it("repeated lost races end in the generic error instead of an unconditional write", async () => {

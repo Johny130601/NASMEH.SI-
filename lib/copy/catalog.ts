@@ -37,6 +37,10 @@ export const catalog = {
     addToCart: "Dodaj v košarico",
     adding: "Dodajam …",
     added: "Dodano ✓",
+    /** The line is already at its per-order cap, so the add changed nothing (no figure: the cap is per variant). */
+    atCap: "V košarici je že največja dovoljena količina.",
+    /** The add did not go through: sold out meanwhile, refused, or the request failed. */
+    addFailed: "Dodajanje ni uspelo. Poskusite znova.",
     buildBundle: "Sestavi paket",
     notifyMe: "Obvestite me",
     soldOut: "Razprodano",

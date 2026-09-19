@@ -103,8 +103,9 @@ import { anonymiseCustomer, exportCustomerData, loadCustomer, loadGuest } from "
 
 const ids = (rows: unknown) => (rows as Row[]).map((row) => row.id).sort();
 const runDaily = () => dailyJob(new Request("https://nasmeh.example/api/jobs/daily", { method: "POST", headers: { authorization: "Bearer jobs-secret" } }));
+// Settled by default: erasure refuses a subject who still has an open order (PENDING/PAID/PROCESSING).
 const orderBase = {
-  phone: "040123456", shippingAddress: { fullName: "Oseba", country: "SI" }, billingAddress: null, anonymizedAt: null, timeline: [], status: "PAID", totalCents: 1000, refundedCents: 0,
+  phone: "040123456", shippingAddress: { fullName: "Oseba", country: "SI" }, billingAddress: null, anonymizedAt: null, timeline: [], status: "DELIVERED", totalCents: 1000, refundedCents: 0,
   confirmationEmailPending: false, confirmationEmailSentAt: null, confirmationEmailLeaseUntil: null, shippedEmailPending: false, shippedEmailSentAt: null, shippedEmailLeaseUntil: null,
 };
 
@@ -187,7 +188,7 @@ describe("erasure and the daily delivery job (S10, I0)", () => {
   const EMAIL = "gost@test.si";
   beforeEach(() => {
     store.tables.order = [
-      // Paid while SMTP was down: the confirmation is still queued.
+      // Paid while SMTP was down and since delivered: the confirmation is still queued.
       { ...orderBase, id: "o1", number: "NS-1", userId: null, email: EMAIL, confirmationEmailPending: true },
       // Shipped while SMTP was down: the shipment mail is still queued.
       { ...orderBase, id: "o2", number: "NS-2", userId: null, email: EMAIL, status: "SHIPPED", trackingNumber: "GLS1", shippedEmailPending: true },
@@ -209,6 +210,23 @@ describe("erasure and the daily delivery job (S10, I0)", () => {
     expect(response.status).toBe(200);
     for (const key of ["ticketRetries", "confirmationRetries", "shippedRetries"]) expect(body[key]).toMatchObject({ processed: 0, failed: 0 });
     expect(store.sendMail).not.toHaveBeenCalled();
+  });
+
+  it("refuses while an order is still open, so no late webhook invoices a scrubbed buyer", async () => {
+    store.tables.order[0].status = "PENDING";
+    expect(await anonymiseCustomer({ email: EMAIL }, "support@nasmeh.si")).toEqual({ ok: false, reason: "open_order" });
+    expect(store.tables.order[0]).toMatchObject({ email: EMAIL, phone: "040123456", anonymizedAt: null });
+    expect(store.tables.ticket[0]).toMatchObject({ email: EMAIL, name: "Gost" });
+    // Settled again: the erasure goes through.
+    store.tables.order[0].status = "CANCELLED";
+    expect(await anonymiseCustomer({ email: EMAIL }, "support@nasmeh.si")).toMatchObject({ ok: true });
+  });
+
+  it("refuses a guest e-mail that a registered account also uses", async () => {
+    store.tables.user = [{ id: "u9", email: EMAIL, role: "CUSTOMER", marketingOptIn: false, name: "Gost", tags: [], adminNotes: null, anonymizedAt: null }];
+    expect(await anonymiseCustomer({ email: EMAIL }, "support@nasmeh.si")).toEqual({ ok: false, reason: "account" });
+    expect(store.tables.order[0]).toMatchObject({ email: EMAIL, anonymizedAt: null });
+    expect(store.tables.user[0]).toMatchObject({ email: EMAIL, name: "Gost" });
   });
 
   it("keeps sent delivery history, without the customer's address", async () => {

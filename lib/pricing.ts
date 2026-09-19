@@ -296,10 +296,11 @@ export interface BundleSavings {
 
 /**
  * Fixed-bundle savings (§6.6): sum of genuine current component prices vs
- * bundle price. Percent rounded to whole points; 0 when there is no saving.
- * This compares the bundle with buying its components separately today; it
- * is not a price reduction measured against PriceHistory (no Omnibus prior
- * price applies), and its legal classification is a D4 question.
+ * bundle price. Percent floored, like `priceReduction`, so a price-advantage
+ * claim is never overstated; 0 when there is no saving. This compares the
+ * bundle with buying its components separately today; it is not a price
+ * reduction measured against PriceHistory (no Omnibus prior price applies),
+ * and its legal classification is a D4 question.
  */
 export function bundleSavings(
   componentPriceCents: number[],
@@ -309,7 +310,7 @@ export function bundleSavings(
   assertCents(bundlePriceCents);
   const savingsCents = Math.max(0, valueCents - bundlePriceCents);
   const savingsPercent =
-    valueCents > 0 ? Math.round((savingsCents / valueCents) * 100) : 0;
+    valueCents > 0 ? Math.floor((savingsCents * 100) / valueCents) : 0;
   return { valueCents, savingsCents, savingsPercent };
 }
 

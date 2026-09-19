@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       if (!object.payment_intent || object.amount_refunded === undefined || !object.currency) return NextResponse.json({ error: "invalid_refund" }, { status: 400 });
       result = await markRefunded("stripe", event.id, object.payment_intent, { amountCents: object.amount_refunded, currency: object.currency, totalRefundedCents: object.amount_refunded });
     }
-    return NextResponse.json({ received: true, result }, { status: ["not_found", "payment_mismatch"].includes(result.outcome) ? 409 : 200 });
+    return NextResponse.json({ received: true, result }, { status: ["not_found", "payment_mismatch", "refund_in_flight"].includes(result.outcome) ? 409 : 200 });
   } catch {
     console.error("Stripe webhook transition failed", event.id);
     return NextResponse.json({ error: "retry_required" }, { status: 500 });

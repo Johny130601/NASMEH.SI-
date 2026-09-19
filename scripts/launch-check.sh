@@ -29,7 +29,7 @@ echo "=== launch check: $ORIGIN ${MODE:+($MODE)} ==="
 req "$ORIGIN/api/health"
 check "health" "$([ "$code" = 200 ] && has '"db":"up"' && echo 1)" "$code $(cut -c1-80 < "$BODY")"
 
-req "$ORIGIN/"
+req -L "$ORIGIN/"   # -L: a locked store redirects to the maintenance gate at /vzdrzevanje
 case "$ORIGIN" in
   https://*) check "HSTS at the proxy" "$(hdr strict-transport-security | grep -q max-age && echo 1)" "$(hdr strict-transport-security)";;
   *) echo "skip HSTS (plain http origin)";;
@@ -38,12 +38,12 @@ if hdr content-security-policy | grep -q "nonce-"; then ok "CSP enforced" "Conte
 elif hdr content-security-policy-report-only | grep -q "nonce-"; then ok "CSP present (report-only)" "switch CSP_ENFORCE=true once the host logs no [csp] lines"
 else fail "CSP header" "neither Content-Security-Policy nor -Report-Only"; fi
 check "security headers" "$(hdr x-content-type-options | grep -qi nosniff && hdr referrer-policy | grep -q . && hdr x-frame-options | grep -q . && echo 1)" "$(hdr x-content-type-options) | $(hdr referrer-policy) | $(hdr x-frame-options)"
+canonical=$(grep -o 'rel="canonical" href="[^"]*"' "$BODY" | head -1)
 if [ "$MODE" = "--staging" ]; then
   check "staging: maintenance page or noindex" "$( { has "Trgovina se pripravlja" || grep -qi 'name="robots" content="noindex' "$BODY"; } && echo 1)" "$code"
 else
   check "home serves the store (maintenance off)" "$([ "$code" = 200 ] && ! has "Trgovina se pripravlja" && echo 1)" "$code"
   check "home is indexable (index switch on)" "$(! grep -qi 'name="robots" content="noindex' "$BODY" && echo 1)" ""
-  canonical=$(grep -o 'rel="canonical" href="[^"]*"' "$BODY" | head -1)
   check "canonical on the public origin" "$(echo "$canonical" | grep -q "\"$ORIGIN" && echo 1)" "$canonical"
   check "G4 company data (no seed placeholders in the footer)" "$(! has "Trg nasmeha 1" && ! has "SI00000000" && ! has "0000000000" && echo 1)" ""
 fi
@@ -60,10 +60,18 @@ locs=$(grep -o "<loc>[^<]*</loc>" "$BODY" | wc -l | tr -d ' ')
 foreign=$(grep -o "<loc>[^<]*</loc>" "$BODY" | grep -vc "<loc>$ORIGIN" | tr -d ' ')
 products=$(grep -c "<loc>$ORIGIN/izdelek/" "$BODY" | tr -d ' ')
 check "sitemap on the public origin" "$([ "$code" = 200 ] && [ "$locs" -gt 0 ] && [ "$foreign" = 0 ] && echo 1)" "$locs urls, $foreign on another origin"
-check "D2 catalogue published (product pages in the sitemap)" "$([ "$products" -gt 0 ] && echo 1)" "$products product urls"
+if [ "$MODE" = "--staging" ]; then
+  # A8: canonicals and sitemap URLs come from the container's own NEXT_PUBLIC_SITE_URL,
+  # i.e. from the file `env_file: ${ENV_FILE:-.env}` names. A staging project started
+  # without ENV_FILE=.env.staging loads production's .env and names production here —
+  # with production's secrets and live payment keys behind it (docs/RUNBOOK.md, Staging).
+  check "A8 staging serves its own origin (ENV_FILE=.env.staging loaded)" "$([ "$foreign" = 0 ] && [ -n "$canonical" ] && echo "$canonical" | grep -q "\"$ORIGIN" && echo 1)" "$foreign foreign sitemap urls | $canonical"
+else
+  check "D2 catalogue published (product pages in the sitemap)" "$([ "$products" -gt 0 ] && echo 1)" "$products product urls"
+fi
 
 for p in /pogoji-poslovanja /politika-zasebnosti /politika-piskotkov /odstop-od-pogodbe /reklamacije /garancija-vracila-denarja; do
-  req "$ORIGIN$p"
+  req -L "$ORIGIN$p"   # -L: the gate redirect while the store is locked
   if [ "$MODE" = "--staging" ] && has "Trgovina se pripravlja"; then ok "legal page $p" "behind the maintenance gate"; continue; fi
   check "legal page $p served" "$([ "$code" = 200 ] && echo 1)" "$code"
   check "D4 legal page $p reviewed (no draft notice)" "$(! has "Osnutek dokumenta" && echo 1)" ""

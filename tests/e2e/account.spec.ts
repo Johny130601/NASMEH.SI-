@@ -196,7 +196,8 @@ test("address create/edit/default/delete and marketing withdrawal keep an audit 
     create: { email: fixture.owner.email.toLowerCase(), status: "CONFIRMED", confirmedAt: new Date(), source: "footer", confirmToken: `acct-${Date.now()}` },
   });
   await page.locator("[data-marketing-toggle]").check();
-  await expect(page.getByRole("status")).toHaveText("Nastavitve shranjene.");
+  // The storefront keeps a second, empty status region for the add-to-cart confirmation (CartToast), so pick the account's.
+  await expect(page.getByRole("status").filter({ hasText: "Nastavitve shranjene." })).toBeVisible();
   await expect.poll(async () => (await prisma.user.findUniqueOrThrow({ where: { id: fixture.owner.id } })).marketingOptIn).toBe(true);
   await expect(page.locator("[data-marketing-toggle]")).toBeChecked();
   expect((await prisma.subscriber.findUniqueOrThrow({ where: { id: subscriber.id } })).status).toBe("CONFIRMED");

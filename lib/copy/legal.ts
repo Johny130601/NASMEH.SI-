@@ -23,3 +23,37 @@ export const legal = {
     missing: "Podatki o prodajalcu trenutno niso na voljo.",
   },
 } as const;
+
+/** The `company` Setting fields the seller block prints (`companySchema` in lib/settings-schemas.ts). */
+export interface SellerIdentity {
+  name: string;
+  address: string;
+  registrationNumber: string;
+  vatId: string;
+  email: string;
+  phone?: string;
+}
+
+/**
+ * The seller block above a legal body (the bodies say the details are "navedeni
+ * zgoraj"): name, address, registration and VAT id, e-mail and the telephone
+ * when one is set. Null — the page prints `seller.missing` instead — when the
+ * Setting is absent or still holds seed placeholders, so no page claims an
+ * identity the store does not have. The caller passes
+ * `companyPlaceholderFields(company)` (lib/settings-schemas.ts), which keeps
+ * the schemas out of this copy module and its client bundles.
+ */
+export function sellerBlockLines(
+  seller: SellerIdentity | null,
+  placeholderFields: readonly string[] = [],
+): string[] | null {
+  if (!seller || placeholderFields.length > 0) return null;
+  const phone = seller.phone?.trim();
+  return [
+    seller.name,
+    seller.address,
+    `${legal.seller.registration}: ${seller.registrationNumber} · ${legal.seller.vatId}: ${seller.vatId}`,
+    `${legal.seller.email}: ${seller.email}`,
+    ...(phone ? [`${legal.seller.phone}: ${phone}`] : []),
+  ];
+}

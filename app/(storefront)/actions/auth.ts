@@ -32,6 +32,7 @@ export async function registerAction(input: unknown): Promise<AuthFormResult> {
     if (user?.emailVerified) return { ok: true };
     const passwordHash = await bcrypt.hash(password, 10);
     const activation = { passwordHash, name: `${firstName} ${lastName}`, marketingOptIn };
+    let logged = false;
     if (!user) {
       try {
         user = await db.$transaction(async tx => {
@@ -44,6 +45,7 @@ export async function registerAction(input: unknown): Promise<AuthFormResult> {
           });
           return created;
         });
+        logged = true;
       } catch (error) {
         if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") throw error;
         // Concurrent registration for the same email receives the same outcome.
@@ -51,6 +53,14 @@ export async function registerAction(input: unknown): Promise<AuthFormResult> {
       }
     }
     if (user && !user.emailVerified) {
+      // The new snapshot replaces the opt-in activation will apply, so this submitter's
+      // choice is logged first too — never a register:false then an activation:true.
+      if (!logged) {
+        await recordConsent(db, {
+          userId: user.id, kind: "marketing-register", version: marketingVersion("marketing-register"),
+          choices: { marketing: marketingOptIn, pendingVerification: true, source: "register" },
+        });
+      }
       const token = await issueAuthToken(user.id, "VERIFY_EMAIL", activation);
       await sendVerifyAccountEmail(email, token);
     }

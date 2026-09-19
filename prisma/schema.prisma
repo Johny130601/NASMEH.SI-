@@ -808,6 +808,8 @@ model Refund {
   restock          Boolean      @default(false)
   shippingRefunded Boolean      @default(false)
   lines            Json // [{ orderItemId, quantity }]
+  /** The status a full refund ends in: NULL = REFUNDED, "CANCELLED" for an operator cancellation (kept for a resumed apply). */
+  finalStatus      String?
   actorId          String?
   actorName        String
   lastError        String?

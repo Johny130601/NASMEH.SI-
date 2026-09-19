@@ -45,6 +45,14 @@ export async function ensureOwnerAccount(now = new Date()): Promise<EnsureOwnerR
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      // Two starts against one empty database both counted zero owners; the
+      // loser lands here and the address belongs to no one else. The count is
+      // re-read: anything above zero now can only be the winner's row, because
+      // the call above already returned when an OWNER existed.
+      if ((await db.user.count({ where: { role: "OWNER" } })) > 0) {
+        console.log("[bootstrap] OWNER account was created by a concurrent start; nothing to do");
+        return { created: false, reason: "exists" };
+      }
       console.error("[bootstrap] no OWNER account exists but SEED_ADMIN_EMAIL already belongs to another account; choose another address");
       return { created: false, reason: "email-taken" };
     }

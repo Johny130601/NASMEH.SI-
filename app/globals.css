@@ -100,16 +100,19 @@
 
   /* Motion system (AGENTS §8.23): one easing, compositor-only keyframes
      (transform / opacity), durations .2–.5 s, every animation a token here so
-     components never hand-roll keyframes. Depth stays soft (research 06 §5). */
+     components never hand-roll keyframes. Depth stays soft (research 06 §5).
+     The .2–.5 s rule governs interaction feedback — what answers a click, a
+     hover or an element arriving. Ambient and progress animations are the
+     deliberate exception and run longer: the cart's progress bar (.9 s, once),
+     the low-stock ring (2 s, ambient), the marquee (10 s) and the bundle
+     banner's drift (16 s). */
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   --shadow-card: 0 1px 5px rgba(var(--dark-1), 0.06), 0 2px 2px rgba(var(--mid-1), 0.06);
   --shadow-card-hover: 0 18px 32px -16px rgba(var(--dark-1), 0.22), 0 6px 12px -6px rgba(var(--mid-1), 0.14);
   --animate-pop: ui-pop 0.45s var(--ease-out-quart) both;
   --animate-fade-up: ui-fade-up 0.5s var(--ease-out-quart) both;
   --animate-bar: ui-bar 0.9s var(--ease-out-quart) both;
-  --animate-pulse-dot: ui-pulse-dot 2s ease-in-out infinite;
   --animate-toast-in: ui-toast-in 0.35s var(--ease-out-quart) both;
-  --animate-rise: ui-rise 0.45s var(--ease-out-quart) both;
   --animate-sheet-in: ui-sheet-in 0.3s var(--ease-out-quart) both;
 
   @keyframes ui-pop {
@@ -143,15 +146,6 @@
       transform: scaleX(1);
     }
   }
-  @keyframes ui-pulse-dot {
-    0%,
-    100% {
-      box-shadow: 0 0 0 0 rgba(var(--warning), 0.7);
-    }
-    60% {
-      box-shadow: 0 0 0 0.45rem rgba(var(--warning), 0);
-    }
-  }
   @keyframes ui-toast-in {
     from {
       opacity: 0;
@@ -159,14 +153,6 @@
     }
     to {
       opacity: 1;
-      transform: none;
-    }
-  }
-  @keyframes ui-rise {
-    from {
-      transform: translateY(100%);
-    }
-    to {
       transform: none;
     }
   }
@@ -282,6 +268,37 @@ h3 {
   }
   to {
     opacity: 1;
+  }
+}
+
+/* Sticky buy bar: no entrance animation at all. It is fixed in the first
+   viewport, where §8.23 allows neither an on-load reveal nor a scroll-driven
+   one, and §6.15 makes it an always-available buy affordance — an animation
+   that starts it off-screen would make a P1 control unusable at scroll 0. */
+
+/* Low-stock dot: an ambient ring pulses out of the dot on a pseudo-element —
+   scale and opacity only, so the loop never paints or lays out (§8.23). */
+.ui-pulse-dot {
+  position: relative;
+}
+.ui-pulse-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgb(var(--warning));
+  pointer-events: none;
+  animation: ui-pulse-dot 2s ease-in-out infinite;
+}
+@keyframes ui-pulse-dot {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  60% {
+    transform: scale(3.4);
+    opacity: 0;
   }
 }
 

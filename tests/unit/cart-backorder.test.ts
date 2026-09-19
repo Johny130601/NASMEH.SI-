@@ -17,7 +17,8 @@ const variant = (stock: number, allowBackorder: boolean) => ({
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.auth.mockResolvedValue(null);
-  mocks.addToCart.mockResolvedValue([{ quantity: 1 }]);
+  // addToCart reports the units it actually applied, so a silent cap cannot answer ok (§7.1).
+  mocks.addToCart.mockResolvedValue({ lines: [{ quantity: 1 }], addedQuantity: 1 });
 });
 
 describe("addToCartAction stock rule", () => {
@@ -29,9 +30,9 @@ describe("addToCartAction stock rule", () => {
 
   it("accepts a sold-out variant that allows backorders and a stocked one", async () => {
     mocks.findUnique.mockResolvedValue(variant(0, true));
-    expect(await addToCartAction({ variantId, quantity: 1 })).toEqual({ ok: true, count: 1 });
+    expect(await addToCartAction({ variantId, quantity: 1 })).toEqual({ ok: true, count: 1, addedQuantity: 1 });
     mocks.findUnique.mockResolvedValue(variant(3, false));
-    expect(await addToCartAction({ variantId, quantity: 1 })).toEqual({ ok: true, count: 1 });
+    expect(await addToCartAction({ variantId, quantity: 1 })).toEqual({ ok: true, count: 1, addedQuantity: 1 });
     expect(mocks.addToCart).toHaveBeenCalledTimes(2);
     expect(mocks.addToCart).toHaveBeenLastCalledWith(null, { variantId, quantity: 1 }, 5);
   });

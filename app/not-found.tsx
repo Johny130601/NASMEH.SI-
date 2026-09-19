@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { notFound as copy, common } from "@/lib/copy";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { RedirectCountdown } from "@/components/storefront/RedirectCountdown";
@@ -6,7 +7,12 @@ import { RedirectCountdown } from "@/components/storefront/RedirectCountdown";
 export const metadata: Metadata = { title: copy.title };
 
 /** 404 (§3.6): copy + auto-redirect countdown to home. */
-export default function NotFound() {
+export default async function NotFound() {
+  // Rendered per request, never prerendered: any unknown path of two or more
+  // segments lands here (outside the dynamic storefront layout), and a
+  // prerendered page carries scripts without the request's nonce — under the
+  // enforced 'strict-dynamic' policy every one of them is refused and reported.
+  await connection();
   return (
     <main className="flex min-h-[60vh] items-center justify-center px-(--padding)">
       <section className="max-w-md text-center">

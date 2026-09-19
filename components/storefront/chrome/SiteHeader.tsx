@@ -6,6 +6,7 @@ import { getMenu, getSetting, SETTING_KEYS } from "@/lib/settings";
 import { chrome as copy, home } from "@/lib/copy";
 import { UiMarquee } from "../ui/UiMarquee";
 import { UiIcon } from "../ui/UiIcon";
+import { CartBadge } from "./CartBadge";
 import { MegaMenu, type FeaturedCardData } from "./MegaMenu";
 import { MobileDrawer } from "./MobileDrawer";
 import { SearchOverlay } from "./SearchOverlay";
@@ -108,16 +109,7 @@ export async function SiteHeader() {
               className="relative flex h-11 w-11 items-center justify-center rounded-btn text-dark-1 transition-colors hover:bg-light-3"
             >
               <UiIcon name="cart" className="h-5 w-5" />
-              {cartCount > 0 ? (
-                // keyed by the count so every change pops the badge (research 06 §10 cart dot)
-                <span
-                  key={cartCount}
-                  data-cart-badge
-                  className="absolute right-0 top-0 flex h-5 min-w-5 animate-pop items-center justify-center rounded-btn bg-brand px-1 text-xs font-medium leading-none text-white"
-                >
-                  {cartCount}
-                </span>
-              ) : null}
+              <CartBadge count={cartCount} />
             </Link>
           </div>
         </div>

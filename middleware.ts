@@ -20,12 +20,25 @@ const withAuth = NextAuth(authConfig).auth;
 // a person must be able to confirm or withdraw a subscription at any time.
 const ALLOWED_WHEN_LOCKED = ["/vzdrzevanje", "/prijava", "/admin", "/potrdi", "/potrdi-zalogo", "/odjava-novice", "/odjava-zaloga"];
 
+/** Carries the address a locked visitor asked for across the gate. */
+const RETURN_PARAM = "od";
+
 /**
  * Per page request (Node.js runtime, Prisma lookup):
  * 1. drain the body tee (Next 15.5 body race, see below);
  * 2. maintenance gate (spec §3.6): when the Setting is enabled and the request
- *    carries no valid unlock cookie, REWRITE to /vzdrzevanje — the gated page
- *    never executes and nothing from the catalog reaches the RSC payload;
+ *    carries no valid unlock cookie, a read is REDIRECTED to /vzdrzevanje (the
+ *    address asked for travels in `od`) — the gated page never executes and
+ *    nothing from the catalog reaches the RSC payload — and every other method
+ *    is refused with 503. A rewrite left the gate on the original path, so
+ *    EVERY gated path stayed a POST target, and a Next-Action id is dispatched
+ *    from the action manifest whatever the path: add-to-cart, the checkout
+ *    capture and place-order were callable behind the wall. The redirect leaves
+ *    only ALLOWED_WHEN_LOCKED as POST surface, which is the smallest the
+ *    middleware can make it — the gate's own unlock is a Server Action posted
+ *    to /vzdrzevanje, sign-in, consent confirmation and withdrawal post to
+ *    theirs — but those paths remain action-dispatch points, because only the
+ *    action id says which action runs and the middleware cannot resolve it;
  * 3. Auth.js authorization (staff for /admin, a session for /racun). With a
  *    custom handler Auth.js only evaluates `callbacks.authorized` and ignores
  *    its boolean, so the handler applies the same callback itself and
@@ -46,10 +59,11 @@ export default async function middleware(request: NextRequest) {
   requestHeaders.set(cspHeaderName(enforce), csp);
 
   let response: Response;
-  if (await isMaintenanceLocked(request)) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/vzdrzevanje";
-    response = NextResponse.rewrite(url, { request: { headers: requestHeaders } });
+  const returning = maintenanceReturn(request);
+  if (returning) {
+    response = returning;
+  } else if (await isMaintenanceLocked(request)) {
+    response = maintenanceResponse(request);
   } else {
     const handled = await withAuth((req) => {
       if (!authConfig.callbacks.authorized({ auth: req.auth, request: req })) {
@@ -68,6 +82,49 @@ export default async function middleware(request: NextRequest) {
   }
   applySecurityHeaders(response.headers, csp, enforce);
   return response;
+}
+
+/**
+ * The gate answers at its own address: a Server Action posts to the page's own
+ * URL, so the unlock is only reachable when the browser sits on an allow-listed
+ * path — a rewrite left it on the locked one. The address the visitor asked for
+ * travels in `od` (the RSC cache-buster is not part of it); the redirect stays
+ * on the request's own origin for the reason below.
+ */
+function maintenanceResponse(request: NextRequest): NextResponse {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new NextResponse(null, { status: 503, headers: { "retry-after": "3600" } });
+  }
+  const query = new URLSearchParams(request.nextUrl.search);
+  query.delete("_rsc");
+  const search = query.toString();
+  const url = request.nextUrl.clone();
+  url.pathname = "/vzdrzevanje";
+  url.search = "";
+  url.searchParams.set(RETURN_PARAM, `${request.nextUrl.pathname}${search ? `?${search}` : ""}`);
+  return NextResponse.redirect(url);
+}
+
+/**
+ * Unlocked at the gate: the page has nothing left to show, so the refresh that
+ * follows the unlock sends the visitor to the address they asked for. A
+ * same-origin path only — never a host, a scheme or a protocol-relative URL.
+ */
+function maintenanceReturn(request: NextRequest): NextResponse | null {
+  // Reads only: the unlock itself is a POST to this same URL, and a 307 would
+  // replay it — body, Next-Action header and all — against the address in `od`.
+  if (request.method !== "GET" && request.method !== "HEAD") return null;
+  if (request.nextUrl.pathname !== "/vzdrzevanje") return null;
+  const back = request.nextUrl.searchParams.get(RETURN_PARAM);
+  if (!back || !back.startsWith("/") || back.startsWith("//") || back.startsWith("/\\")) return null;
+  if (!isValidMaintenanceCookie(request.cookies.get(MAINTENANCE_COOKIE)?.value, getEnv().AUTH_SECRET)) {
+    return null;
+  }
+  const [pathname, search = ""] = back.split("?");
+  const url = request.nextUrl.clone();
+  url.pathname = pathname;
+  url.search = search;
+  return NextResponse.redirect(url);
 }
 
 /**

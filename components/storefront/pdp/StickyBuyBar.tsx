@@ -5,7 +5,7 @@ import { pdp as copy } from "@/lib/copy";
 import { ObvestiteMeButton } from "../catalog/ObvestiteMeButton";
 import { AddToCartButton } from "../catalog/AddToCartButton";
 
-/** Sticky bottom buy bar (§6.15) — mirrors the buy box, always visible; rises in on load (research 06 §12 UiStickyBar). */
+/** Sticky bottom buy bar (§6.15) — mirrors the buy box, always visible; it sits in the first viewport, so nothing animates it in (AGENTS §8.20, §8.23). */
 export function StickyBuyBar({
   productSlug,
   variantId,
@@ -28,7 +28,7 @@ export function StickyBuyBar({
   imageUrl?: string | null;
 }) {
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 animate-rise border-t border-light-2 bg-white/95 backdrop-blur">
+    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-light-2 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-(--container-wide) items-center gap-4 px-(--padding) py-3">
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element

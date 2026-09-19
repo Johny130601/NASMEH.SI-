@@ -429,7 +429,9 @@ async function seedSettings() {
     { key: "vat.ratePercent", value: VAT_RATE_PERCENT },
     {
       key: "marquee.text",
-      value: "Brezplačna dostava pri naročilih nad 45 €",
+      // "od", not "nad": the cart grants free shipping AT the threshold (>=),
+      // and this is a price claim — see lib/copy/pdp `trust.freeShipping`.
+      value: "Brezplačna dostava pri naročilih od 45 €",
     },
     { key: "marquee.href", value: "/checkout" },
     { key: "marquee.active", value: true },

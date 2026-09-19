@@ -6,4 +6,7 @@
 services:
   db:
     ports:
-      - "5543:5432"
+      # Loopback only: this file is tracked, so every checkout carries it — on a
+      # host that merged it by accident, Postgres would answer the internet with
+      # the default postgres/postgres credentials.
+      - "127.0.0.1:5543:5432"

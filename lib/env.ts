@@ -13,7 +13,10 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
 
   SEED_ADMIN_EMAIL: z.email().default("admin@nasmeh.si"),
-  SEED_ADMIN_PASSWORD: z.string().min(8).default("ChangeMe123!"),
+  // Blank counts as absent: the runbook's "remove SEED_ADMIN_PASSWORD" step is
+  // as often an emptied line as a deleted one, and an empty string would fail
+  // min(8) and boot-loop a store that has its OWNER already.
+  SEED_ADMIN_PASSWORD: z.preprocess(emptyToUndefined, z.string().min(8).default("ChangeMe123!")),
 
   STRIPE_SECRET_KEY: optionalString,
   STRIPE_WEBHOOK_SECRET: optionalString,

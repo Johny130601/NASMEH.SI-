@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { clientAddress } from "@/lib/client-address";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -53,8 +54,7 @@ function reportUri(value: string | undefined, fallback: string): string {
  * Never echoes the body, never stores it, rate-limited per client.
  */
 export async function POST(request: Request): Promise<Response> {
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? request.headers.get("x-real-ip") ?? "unknown";
-  if (!checkRateLimit(`csp-report:${ip}`, 60, 60_000).allowed) return new Response(null, { status: 429 });
+  if (!checkRateLimit(`csp-report:${clientAddress(request.headers)}`, 60, 60_000).allowed) return new Response(null, { status: 429 });
   const length = Number(request.headers.get("content-length") ?? 0);
   if (length > MAX_BYTES) return new Response(null, { status: 413 });
   let parsed;

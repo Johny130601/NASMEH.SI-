@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getEnv } from "@/lib/env";
 import { retryPendingOrderConfirmations } from "@/lib/orders/confirmation-delivery";
+import { resolvePendingRefunds } from "@/lib/orders/refunds";
 import { retryPendingShippedEmails } from "@/lib/orders/shipped-delivery";
 import { sendDueReviewRequests } from "@/lib/jobs/review-requests";
 import { sendPendingRestockAlerts } from "@/lib/jobs/restock-alerts";
@@ -21,13 +22,14 @@ export async function POST(request: Request) {
 
   try {
     const confirmationRetries = await retryPendingOrderConfirmations();
+    const refundResolution = await resolvePendingRefunds();
     const shippedRetries = await retryPendingShippedEmails();
     const reviews = await sendDueReviewRequests();
     const restockAlerts = await sendPendingRestockAlerts();
     const ticketRetries = await retryPendingTicketEmails();
     const retention = await runRetention();
-    return NextResponse.json({ ...reviews, confirmationRetries, shippedRetries, restockAlerts, ticketRetries, retention }, {
-      status: reviews.failed || confirmationRetries.failed || shippedRetries.failed || restockAlerts.failed || ticketRetries.failed || retention.failed ? 503 : 200,
+    return NextResponse.json({ ...reviews, confirmationRetries, refundResolution, shippedRetries, restockAlerts, ticketRetries, retention }, {
+      status: reviews.failed || confirmationRetries.failed || refundResolution.failed || shippedRetries.failed || restockAlerts.failed || ticketRetries.failed || retention.failed ? 503 : 200,
     });
   } catch {
     console.error("Daily delivery job requires retry");

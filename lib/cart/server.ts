@@ -67,39 +67,62 @@ export async function getCartLines(userId: string | null): Promise<CartLine[]> {
   }));
 }
 
+export interface AddToCartOutcome {
+  lines: CartLine[];
+  /**
+   * Units this write really added — 0 when the line already sat at
+   * maxCartQuantity. The cap is applied silently, so only the difference the
+   * write made may be confirmed to the shopper (a "Dodano" over an unchanged
+   * cart is a false confirmation).
+   */
+  addedQuantity: number;
+}
+
 export async function addToCart(
   userId: string | null,
   line: CartLine,
   maxCartQuantity: number,
-): Promise<CartLine[]> {
+): Promise<AddToCartOutcome> {
   const quantity = Math.min(line.quantity, maxCartQuantity);
   if (userId) {
-    await db.$transaction(async (tx) => {
+    const addedQuantity = await db.$transaction(async (tx) => {
       const cart = await getOrCreateDbCart(userId, tx);
+      // The prior quantity is read under the row lock the add below takes, so
+      // a concurrent add cannot make the reported difference lie.
+      const [prior] = await tx.$queryRaw<Array<{ quantity: number }>>`
+        SELECT "quantity" FROM "CartItem"
+        WHERE "cartId" = ${cart.id} AND "variantId" = ${line.variantId}
+        FOR UPDATE
+      `;
+      const before = prior?.quantity ?? 0;
       // One PostgreSQL statement holds the conflicting row lock while adding
       // and applying the cap. A read/modify/upsert loses concurrent additions;
       // a plain increment can exceed maxCartQuantity.
-      await tx.$executeRaw`
+      const [written] = await tx.$queryRaw<Array<{ quantity: number }>>`
         INSERT INTO "CartItem" ("id", "cartId", "variantId", "quantity")
         VALUES (${randomUUID()}, ${cart.id}, ${line.variantId}, ${quantity})
         ON CONFLICT ("cartId", "variantId") DO UPDATE
         SET "quantity" = LEAST("CartItem"."quantity" + EXCLUDED."quantity", ${maxCartQuantity})
+        RETURNING "quantity"
       `;
+      return (written?.quantity ?? before) - before;
     });
-    return getCartLines(userId);
+    return { lines: await getCartLines(userId), addedQuantity };
   }
 
   const lines = await readGuestCart();
   const existing = lines.find((l) => l.variantId === line.variantId);
+  const before = existing?.quantity ?? 0;
+  const after = existing
+    ? Math.min(before + line.quantity, maxCartQuantity)
+    : quantity;
   const next = existing
     ? lines.map((l) =>
-        l.variantId === line.variantId
-          ? { ...l, quantity: Math.min(l.quantity + line.quantity, maxCartQuantity) }
-          : l,
+        l.variantId === line.variantId ? { ...l, quantity: after } : l,
       )
     : [...lines, { variantId: line.variantId, quantity }];
   await writeGuestCart(next);
-  return next;
+  return { lines: next, addedQuantity: after - before };
 }
 
 export async function setLineQuantity(

@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/db", () => ({ db: {} }));
+
+import { bundleSavingsFor } from "@/lib/catalog";
 import { cart } from "@/lib/copy/cart";
 import { pdp } from "@/lib/copy/pdp";
 import {
@@ -323,5 +327,46 @@ describe("bundleSavings", () => {
       savingsCents: 0,
       savingsPercent: 0,
     });
+  });
+
+  it("floors the percent like priceReduction, so 33,5 % is never announced as 34 %", () => {
+    expect(bundleSavings([10000], 6650)).toEqual({
+      valueCents: 10000,
+      savingsCents: 3350,
+      savingsPercent: 33,
+    });
+  });
+});
+
+describe("bundleSavingsFor (the value line the card and the PDP render)", () => {
+  const items = [
+    { quantity: 1, variant: { priceCents: 3499 } },
+    { quantity: 1, variant: { priceCents: 1999 } },
+    { quantity: 1, variant: { priceCents: 1999 } },
+  ];
+
+  it("measures against the price shown and charged, not against Bundle.priceCents", () => {
+    // the variant edited to 59,99 € in the product editor: the line follows the
+    // price next to it (a saving under 20 %), it does not keep claiming 33 %
+    expect(bundleSavingsFor({ items }, 5999)).toEqual({ valueCents: 7497, savingsCents: 1498, savingsPercent: 19 });
+    expect(bundleSavingsFor({ items }, 4999)).toEqual({ valueCents: 7497, savingsCents: 2498, savingsPercent: 33 });
+    expect(bundleSavingsFor({ items: [{ quantity: 2, variant: { priceCents: 1999 } }] }, 3000)).toEqual({
+      valueCents: 3998,
+      savingsCents: 998,
+      savingsPercent: 24,
+    });
+  });
+
+  it("says nothing for no bundle, no items or no saving (never 'prihranite 0 %')", () => {
+    expect(bundleSavingsFor(null, 4999)).toBeNull();
+    expect(bundleSavingsFor({ items: [] }, 4999)).toBeNull();
+    expect(bundleSavingsFor({ items }, 7497)).toBeNull();
+    expect(bundleSavingsFor({ items }, 8000)).toBeNull();
+  });
+
+  it("stands down while an Art. 6a reduction is announced (the strikethrough wins)", () => {
+    expect(
+      bundleSavingsFor({ items }, 5999, { priorPriceCents: 7499, priceCents: 5999, percentOff: 20 }),
+    ).toBeNull();
   });
 });

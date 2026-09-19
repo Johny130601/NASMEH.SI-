@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { anonymiseCustomerAction, saveCustomerNotesAction } from "@/app/admin/(shell)/stranke/[id]/actions";
+import { anonymiseCustomerAction, saveCustomerNotesAction, type CustomerActionResult } from "@/app/admin/(shell)/stranke/[id]/actions";
 import { admin as copy } from "@/lib/copy";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiInput } from "@/components/storefront/ui/UiInput";
@@ -17,6 +17,13 @@ const textareaClass = "w-full resize-y rounded-input border border-light-1 bg-wh
  */
 export function anonymiseDestination(target: { userId: string } | { email: string }, result: { ok: boolean }): string | null {
   return result.ok && !("userId" in target) ? "/admin/stranke?anonimizirano=1" : null;
+}
+
+/** A refusal the operator can act on says why; anything else is the generic failure. */
+export function anonymiseMessage(result: CustomerActionResult): string {
+  if (result.ok) return copy.common.done;
+  const refusals: Record<string, string> = copy.customers.detail.anonymiseRefused;
+  return refusals[result.error] ?? copy.common.error;
 }
 
 export function CustomerActions({
@@ -96,7 +103,7 @@ export function CustomerActions({
                         router.push(destination);
                         return;
                       }
-                      setMessage(result.ok ? copy.common.done : copy.common.error);
+                      setMessage(anonymiseMessage(result));
                       router.refresh();
                     } catch {
                       setMessage(copy.common.error);

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { clientAddress } from "@/lib/client-address";
 import { applyKodaCode } from "@/lib/koda";
 import { checkRateLimit } from "@/lib/rate-limit";
 
@@ -12,8 +13,7 @@ export async function GET(
   { params }: { params: Promise<{ code: string }> },
 ) {
   // Codes are short operator strings: bound existence probing per client (Phase 9 step 1).
-  const client = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? request.headers.get("x-real-ip") ?? "unknown";
-  const limit = checkRateLimit(`koda:${client}`, 30, 10 * 60_000);
+  const limit = checkRateLimit(`koda:${clientAddress(request.headers)}`, 30, 10 * 60_000);
   if (!limit.allowed) return new Response(null, { status: 429, headers: { "retry-after": String(Math.ceil(limit.retryAfterMs / 1000)) } });
   const { code } = await params;
   const result = await applyKodaCode(code);

@@ -253,6 +253,16 @@ test("support exports and anonymises a customer, and handles a ticket", async ({
     expect(json.subscriptions[0].confirmToken).toBeUndefined();
     expect(Array.isArray(json.consents) && Array.isArray(json.abandonedCheckouts)).toBe(true);
 
+    // An open order is refused: erasing the buyer now would leave a paid parcel with no
+    // address to ship to, and a late webhook issuing an invoice for a scrubbed name.
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.locator("[data-customer-anonymise]").click();
+    await expect(page.getByText("Oseba ima odprto naročilo", { exact: false })).toBeVisible();
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: customer.id } })).toMatchObject({ email: customer.email, anonymizedAt: null });
+
+    // Settled, the erasure goes through: the order keeps its financials, loses its person.
+    await prisma.order.update({ where: { id: fixture.order.id }, data: { status: "DELIVERED" } });
+    await page.reload();
     page.once("dialog", (dialog) => dialog.accept());
     await page.locator("[data-customer-anonymise]").click();
     await expect(page.locator("[data-customer-anonymised]")).toBeVisible();
@@ -262,7 +272,7 @@ test("support exports and anonymises a customer, and handles a ticket", async ({
     expect(user.passwordHash).toBeNull();
     expect(user.addresses).toHaveLength(0);
     const order = await prisma.order.findUniqueOrThrow({ where: { id: fixture.order.id } });
-    expect(order).toMatchObject({ email: `anonymised-${customer.id}@invalid`, totalCents: 3490, status: "PAID", anonymizedAt: expect.any(Date) });
+    expect(order).toMatchObject({ email: `anonymised-${customer.id}@invalid`, totalCents: 3490, status: "DELIVERED", anonymizedAt: expect.any(Date) });
     expect(order.shippingAddress).toEqual({ country: "SI", anonymized: true });
     const scrubbed = await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } });
     expect(scrubbed).toMatchObject({ message: "[anonimizirano]", name: "—" });

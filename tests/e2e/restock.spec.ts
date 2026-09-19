@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { subscribeBackInStockAction } from "@/app/(storefront)/actions/backInStock";
 import { setVariantStock } from "@/lib/inventory/restock";
 import { db } from "@/lib/db";
+import { backInStock as copy } from "@/lib/copy";
 import { prisma, MAILPIT_URL, waitForMailMessage } from "./helpers";
 
 /** Phase 6 step 5 (§13.1–13.2): restock alerts end to end. */
@@ -71,8 +72,9 @@ test("restock arms only confirmed, un-notified subscribers, mails once with PDP 
     await setVariantStock(variant.id, 0);
     expect((await setVariantStock(variant.id, 5)).armedAlerts).toBe(0);
     // ...until they ask again: a confirmed address re-arms without a new confirmation mail.
+    // The answer is the uniform one (finding A1); only the row shows what happened.
     expect(await subscribeBackInStockAction({ email: emails.confirmed, productSlug: product.slug, turnstileToken: "e2e-turnstile-token" }))
-      .toEqual({ ok: true, message: expect.stringContaining("že aktivno") });
+      .toEqual({ ok: true, message: copy.success });
     const rearmed = await prisma.backInStockSubscription.findUniqueOrThrow({ where: where(emails.confirmed) });
     expect(rearmed).toMatchObject({ status: "CONFIRMED", notifiedAt: null, confirmToken: `a-${key}` });
     expect(await messagesTo(emails.confirmed)).toHaveLength(1);
@@ -105,7 +107,7 @@ test("restock arms only confirmed, un-notified subscribers, mails once with PDP 
   }
 });
 
-test("an already-confirmed address re-arms from the sold-out PDP without a new confirmation mail", async ({ page }) => {
+test("an already-confirmed address re-arms from the sold-out PDP without a new confirmation mail, and the form says nothing about it", async ({ page }) => {
   const seeded = await prisma.product.findUniqueOrThrow({ where: { slug: "belilni-trakci-potovalni-7" }, include: { variants: true } });
   const email = `restock-ui-${randomUUID()}@test.si`;
   await prisma.backInStockSubscription.create({ data: {
@@ -119,7 +121,9 @@ test("an already-confirmed address re-arms from the sold-out PDP without a new c
     const dialog = page.getByRole("dialog", { name: "Obvestite me, ko bo spet na zalogi" });
     await dialog.getByLabel("E-pošta").fill(email);
     await dialog.getByRole("button", { name: "Obvestite me" }).click();
-    await expect(dialog.getByText(/že aktivno/)).toBeVisible();
+    // Anyone can type anyone's address here, so the answer must not reveal the confirmed alert.
+    await expect(dialog.getByText(copy.success)).toBeVisible();
+    await expect(dialog.getByText(/aktivno/)).toBeHidden();
     const row = await prisma.backInStockSubscription.findUniqueOrThrow({ where: { email_productId: { email, productId: seeded.id } } });
     expect(row.status).toBe("CONFIRMED");
     expect(row.notifiedAt).toBeNull();

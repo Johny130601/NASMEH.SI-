@@ -46,6 +46,34 @@ function addressName(value: unknown): string | null {
 export const CUSTOMER_SCAN_LIMIT = 2000;
 const GUEST_ORDER_SCAN_LIMIT = 5000;
 
+interface GuestOrderRow {
+  email: string; status: string; totalCents: number; refundedCents: number;
+  createdAt: Date; shippingAddress: Prisma.JsonValue; anonymizedAt: Date | null;
+}
+
+const guestOrderSelect = {
+  email: true, status: true, totalCents: true, refundedCents: true, createdAt: true, shippingAddress: true, anonymizedAt: true,
+} satisfies Prisma.OrderSelect;
+
+/** % and _ are literal characters of a typed name, never wildcards. */
+const likeEscaped = (value: string) => value.replace(/[\\%_]/g, (character) => `\\${character}`);
+
+/**
+ * Guest purchasers, newest first, capped like the account scan. The name lives
+ * in the shippingAddress JSON, and Prisma's JSON filter takes no `mode`, so
+ * `string_contains` renders a case-sensitive LIKE that no capitalised name ever
+ * matches: the search runs as one ILIKE statement over both columns instead.
+ */
+function scanGuestOrders(q: string): Promise<GuestOrderRow[]> {
+  if (!q) {
+    return db.order.findMany({ where: { userId: null }, select: guestOrderSelect, orderBy: { createdAt: "desc" }, take: GUEST_ORDER_SCAN_LIMIT });
+  }
+  const pattern = `%${likeEscaped(q)}%`;
+  return db.$queryRaw<GuestOrderRow[]>`SELECT "email", "status", "totalCents", "refundedCents", "createdAt", "shippingAddress", "anonymizedAt"
+FROM "Order" WHERE "userId" IS NULL AND ("email" ILIKE ${pattern} OR ("shippingAddress"->>'fullName') ILIKE ${pattern})
+ORDER BY "createdAt" DESC LIMIT ${GUEST_ORDER_SCAN_LIMIT}`;
+}
+
 export async function listCustomers(filters: CustomerFilters): Promise<{ rows: CustomerRow[]; total: number; page: number; pages: number; truncated: boolean }> {
   const [users, guestOrders] = await Promise.all([
     db.user.findMany({
@@ -61,12 +89,7 @@ export async function listCustomers(filters: CustomerFilters): Promise<{ rows: C
       orderBy: { createdAt: "desc" },
       take: CUSTOMER_SCAN_LIMIT,
     }),
-    db.order.findMany({
-      where: { userId: null, ...(filters.q ? { OR: [{ email: { contains: filters.q, mode: "insensitive" } }, { shippingAddress: { path: ["fullName"], string_contains: filters.q } }] } : {}) },
-      select: { email: true, status: true, totalCents: true, refundedCents: true, createdAt: true, shippingAddress: true, anonymizedAt: true },
-      orderBy: { createdAt: "desc" },
-      take: GUEST_ORDER_SCAN_LIMIT,
-    }),
+    scanGuestOrders(filters.q),
   ]);
   const truncated = users.length >= CUSTOMER_SCAN_LIMIT || guestOrders.length >= GUEST_ORDER_SCAN_LIMIT;
 
@@ -122,7 +145,8 @@ export type CustomerTarget = { userId: string } | { email: string };
  * by ANY row that carries the e-mail without an account link: a guest order or
  * ticket, a newsletter or back-in-stock subscription, or an abandoned checkout.
  * Lookup, export and anonymisation all resolve through here and match rows with
- * the same where-builders, so an export covers every row anonymisation touches.
+ * the same where-builders, so the export reads the same rows the erasure writes —
+ * bar the secrets and internal staff text `exportCustomerData` lists as left out.
  */
 export type CustomerSubject =
   | { type: "account"; userId: string; email: string; role: Role; marketingOptIn: boolean }
@@ -353,22 +377,37 @@ function scrubbedAddress(value: unknown): Prisma.InputJsonValue {
 const ANONYMISED_TEXT = "[anonimizirano]";
 
 /**
+ * An order still waiting for a decision. Erasing its buyer would leave a late
+ * payment webhook issuing an invoice for a scrubbed name and queueing a
+ * confirmation with no recipient, and a paid parcel with no address to ship to.
+ */
+const OPEN_ORDER_STATUSES: ReadonlySet<string> = new Set(["PENDING", "PAID", "PROCESSING"]);
+
+export type AnonymiseRefusal = "not_found" | "staff" | "account" | "open_order";
+
+/**
  * Anonymisation (§14.8): PII is replaced or deleted. Kept: order financials,
  * refunds, the issued invoice snapshot (tax retention), consent records (proof)
  * and review content. A withdrawal row is logged when the person had opted in
  * to marketing. Irreversible; sessions are revoked.
  */
-export async function anonymiseCustomer(target: CustomerTarget, actorName: string): Promise<{ ok: true; orders: number; tickets: number } | { ok: false; reason: "not_found" | "staff" }> {
+export async function anonymiseCustomer(target: CustomerTarget, actorName: string): Promise<{ ok: true; orders: number; tickets: number } | { ok: false; reason: AnonymiseRefusal }> {
   const now = new Date();
-  const attachmentsToRemove: Array<{ filename: string }> = [];
   const result = await db.$transaction(async (tx) => {
     const subject = await resolveCustomerSubject(tx, target);
     if (!subject) return { ok: false as const, reason: "not_found" as const };
     if (subject.type === "account" && subject.role !== "CUSTOMER") return { ok: false as const, reason: "staff" as const };
     const { email, userId } = subject;
+    // An address that has an account is one person: erasing the guest rows alone would
+    // leave the account holding the name and the e-mail. The account page does both.
+    if (subject.type === "guest") {
+      const account = await tx.user.findUnique({ where: { email }, select: { id: true } });
+      if (account) return { ok: false as const, reason: "account" as const };
+    }
     const orders = await tx.order.findMany({
-      where: subjectOrderWhere(subject), select: { id: true, number: true, shippingAddress: true, billingAddress: true }, orderBy: { createdAt: "desc" },
+      where: subjectOrderWhere(subject), select: { id: true, number: true, status: true, shippingAddress: true, billingAddress: true }, orderBy: { createdAt: "desc" },
     });
+    if (orders.some((order) => OPEN_ORDER_STATUSES.has(order.status))) return { ok: false as const, reason: "open_order" as const };
     const subscriber = await tx.subscriber.findUnique({ where: { email }, select: { id: true, status: true } });
 
     // Consent proof stays; the end of an active opt-in is appended like any other withdrawal.
@@ -427,8 +466,13 @@ export async function anonymiseCustomer(target: CustomerTarget, actorName: strin
       await tx.refund.updateMany({ where: { orderId: { in: orderIds }, reason: { contains: email, mode: "insensitive" } }, data: { reason: ANONYMISED_TEXT } });
     }
     const tickets = await tx.ticket.findMany({ where: subjectTicketWhere(subject), select: { id: true, attachments: { select: { filename: true } } } });
+    // The photos go before the rows that name them. Deleting the rows first and unlinking
+    // after the commit loses the file names on any error, leaving health-data photos on disk
+    // and in backups with nothing left to find them by; this way a failure aborts the whole
+    // erasure and the retry reads the same names again (a missing file is already tolerated).
+    const attachments = tickets.flatMap((ticket) => ticket.attachments);
+    if (attachments.length) await removeSupportPhotos(attachments);
     for (const ticket of tickets) {
-      attachmentsToRemove.push(...ticket.attachments);
       await tx.ticketAttachment.deleteMany({ where: { ticketId: ticket.id } });
       // Unsent mail is voided: a receipt must never go out to the old address, and a staff alert
       // would carry only the scrubbed text while its reply-to is no longer deliverable, so the daily
@@ -445,6 +489,5 @@ export async function anonymiseCustomer(target: CustomerTarget, actorName: strin
     await tx.backInStockSubscription.deleteMany({ where: { email } });
     return { ok: true as const, orders: orders.length, tickets: tickets.length };
   }, { maxWait: 10_000, timeout: 30_000 });
-  if (result.ok && attachmentsToRemove.length) await removeSupportPhotos(attachmentsToRemove);
   return result;
 }

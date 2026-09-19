@@ -4,9 +4,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/admin/access";
-import { anonymiseCustomer } from "@/lib/admin/customers";
+import { anonymiseCustomer, type AnonymiseRefusal } from "@/lib/admin/customers";
 
-export type CustomerActionResult = { ok: true } | { ok: false; error: "invalid" | "not_found" | "staff" };
+export type CustomerActionResult = { ok: true } | { ok: false; error: "invalid" | AnonymiseRefusal };
 
 export async function saveCustomerNotesAction(input: { userId: string; tags: string; adminNotes: string }): Promise<CustomerActionResult> {
   await requirePermission("customers:view");

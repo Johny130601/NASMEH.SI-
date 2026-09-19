@@ -6,6 +6,10 @@
 #   docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d
 #   docker compose -p nasmeh-staging --env-file .env.staging -f docker-compose.yml -f docker-compose.proxy.yml up -d
 #
+# `--env-file` only feeds compose's interpolation; the container's own file is
+# `env_file: ${ENV_FILE:-.env}`, so .env.staging must itself set
+# ENV_FILE=.env.staging or staging starts on production's .env (docs/RUNBOOK.md).
+#
 # The proxy reaches the app as <project>-app-1:3000 (compose container name:
 # nasmeh-app-1, nasmeh-staging-app-1); the app itself stays published on
 # 127.0.0.1 only (docker-compose.yml). Nothing here touches db. Proxy snippets

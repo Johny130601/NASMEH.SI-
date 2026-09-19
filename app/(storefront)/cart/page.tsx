@@ -69,9 +69,11 @@ export default async function CartPage({
       ? curated
       : catalogProducts.filter((product) => !inCartSlugs.has(product.slug));
 
-  // Omnibus-backed reductions for the cart lines (one batched history query;
-  // the rail cards carry theirs from getCatalogProducts)
-  const reductions = await getPriceReductions(hydrated);
+  // Struck-through figures for the lines the hydration already gated as reduced
+  // (`line.reduced`, the same Omnibus query): the display can never announce a
+  // reduction the coupon terms did not exclude, and a cart without a reduced
+  // line asks the history for nothing.
+  const reductions = await getPriceReductions(hydrated.filter((line) => line.reduced));
 
   const env = getEnv();
   const testToken = isTestMode() ? (env.TURNSTILE_TEST_TOKEN ?? null) : null;

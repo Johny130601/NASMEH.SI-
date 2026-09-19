@@ -8,7 +8,8 @@ test("GET / — chrome + homepage copy in initial HTML", async ({ request }) => 
   const html = await response.text();
 
   // marquee + header
-  expect(html).toContain("Brezplačna dostava pri naročilih nad 45");
+  // "od", not "nad": free shipping applies AT the threshold, and the marquee is a price claim.
+  expect(html).toContain("Brezplačna dostava pri naročilih od 45");
   expect(html).toContain("TRGOVINA");
   expect(html).not.toContain("RAZIŠČI");
   expect(html).toContain("PAKETI &amp; PRIHRANKI");

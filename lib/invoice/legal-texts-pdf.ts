@@ -1,6 +1,7 @@
 import PDFDocument from "pdfkit";
 import { z } from "zod";
 import { legalTexts as copy } from "@/lib/copy/invoice";
+import { legal, sellerBlockLines, type SellerIdentity } from "@/lib/copy/legal";
 import { sha256Hex } from "@/lib/orders/legal-acceptance";
 import { PDF_FONT_PATH } from "./pdf";
 
@@ -215,7 +216,21 @@ export function legalTextSource(document: LegalTextDocument): LegalTextSource {
   return { title: document.title, body: null, updatedAt: null, origin: "missing", changedSinceAcceptance: false };
 }
 
-export async function generateLegalTextsPdf(input: { orderNumber: string; preparedAt: Date; documents: LegalTextDocument[] }): Promise<Buffer> {
+export async function generateLegalTextsPdf(input: {
+  orderNumber: string;
+  preparedAt: Date;
+  documents: LegalTextDocument[];
+  /**
+   * The seller the texts point at ("navedeni zgoraj"): the invoice snapshot's
+   * company, as the mail and the invoice print it. Omitting the key prints no
+   * block at all — `buildOrderConfirmationContent` refuses to build a
+   * confirmation without a valid company Setting, so a PDF that stated the
+   * seller was "not available" would be saying something that cannot be true
+   * of a sent order. Passing null (or a seed-placeholder identity) is the
+   * honest missing case and does print the line.
+   */
+  seller?: SellerIdentity | null;
+}): Promise<Buffer> {
   const doc = new PDFDocument({ size: "A4", margin: 50, font: PDF_FONT_PATH, info: { Title: `${copy.title} — ${input.orderNumber}` } });
   const chunks: Buffer[] = [];
   doc.on("data", (chunk: Buffer) => chunks.push(chunk));
@@ -229,6 +244,15 @@ export async function generateLegalTextsPdf(input: { orderNumber: string; prepar
   doc.fontSize(9).text(copy.order(input.orderNumber));
   doc.text(copy.preparedAt(input.preparedAt));
   doc.text(copy.intro);
+
+  // The seller block the bodies refer to (ZVPot-1 / CRD Art. 6(1)(b)-(c)): the
+  // attached texts identify the trader even when the page around them is gone.
+  if (input.seller !== undefined) {
+    doc.moveDown(0.8);
+    doc.fontSize(11).text(legal.seller.title);
+    doc.fontSize(9);
+    for (const line of sellerBlockLines(input.seller) ?? [legal.seller.missing]) doc.text(line);
+  }
 
   input.documents.forEach((document, index) => {
     if (index > 0) doc.addPage();

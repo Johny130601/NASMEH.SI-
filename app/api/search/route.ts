@@ -1,5 +1,9 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { getEnv } from "@/lib/env";
+import { MAINTENANCE_COOKIE, isValidMaintenanceCookie } from "@/lib/maintenance";
 import { parseSearchQuery, searchProducts } from "@/lib/search";
+import { getMaintenance } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +12,16 @@ export async function GET(request: Request) {
   const query = parseSearchQuery(
     new URL(request.url).searchParams.get("q"),
   );
-  const results = query.length < 2 ? [] : await searchProducts(query, 6);
+  // The middleware matcher skips /api, so the maintenance gate (§3.6) is applied
+  // here: a locked store answers no catalog questions — slug, title, price and
+  // stock for a two-letter query were public on a "locked" staging.
+  const results = query.length < 2 || (await isLocked()) ? [] : await searchProducts(query, 6);
   return NextResponse.json({ results });
+}
+
+/** Locked for everyone but a visitor who passed the gate (same check as the middleware). */
+async function isLocked(): Promise<boolean> {
+  if (!(await getMaintenance()).enabled) return false;
+  const token = (await cookies()).get(MAINTENANCE_COOKIE)?.value;
+  return !isValidMaintenanceCookie(token, getEnv().AUTH_SECRET);
 }

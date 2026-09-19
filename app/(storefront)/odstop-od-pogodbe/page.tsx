@@ -7,8 +7,10 @@ import { getAuthChallengeProps } from "@/lib/auth-challenge";
 import { db } from "@/lib/db";
 import { buildMetadata } from "@/lib/seo";
 import { legal } from "@/lib/copy";
+import { sellerBlockLines } from "@/lib/copy/legal";
 import { returns } from "@/lib/copy/returns";
-import { getLegalLinks } from "@/lib/settings";
+import { getCompany, getLegalLinks } from "@/lib/settings";
+import { companyPlaceholderFields } from "@/lib/settings-schemas";
 import { WithdrawalForm } from "@/components/storefront/support/WithdrawalForm";
 
 export const dynamic = "force-dynamic";
@@ -26,13 +28,16 @@ export async function generateMetadata(): Promise<Metadata> {
 
 /** Withdrawal page (§12.4): CMS legal body + online model form + downloadable PDF. */
 export default async function WithdrawalPage() {
-  const [page, session, legalLinks] = await Promise.all([
+  const [page, session, legalLinks, company] = await Promise.all([
     db.contentPage.findFirst({ where: { slug: SLUG, published: true } }),
     auth(),
     getLegalLinks(),
+    getCompany(),
   ]);
   if (!page) notFound();
   const copy = returns.withdrawal;
+  // The body's §1 tells the consumer whom to notify "zgoraj" (CRD Annex I(A)).
+  const sellerLines = sellerBlockLines(company, companyPlaceholderFields(company));
 
   return (
     <article className="mx-auto max-w-(--container-narrow) px-(--padding) py-16">
@@ -42,6 +47,20 @@ export default async function WithdrawalPage() {
           {legal.draftNotice}
         </p>
       ) : null}
+
+      <section className="mt-6 rounded-card border border-light-2 bg-white p-4" data-seller-block>
+        <h2 className="text-sm font-medium text-dark-1">{legal.seller.title}</h2>
+        {sellerLines ? (
+          <address className="mt-2 text-xs not-italic leading-6 text-mid-1">
+            {sellerLines.map((line) => (
+              <span key={line} className="block">{line}</span>
+            ))}
+          </address>
+        ) : (
+          <p className="mt-2 text-xs text-mid-2">{legal.seller.missing}</p>
+        )}
+      </section>
+
       <div className="content-prose mt-8" dangerouslySetInnerHTML={{ __html: page.body }} />
 
       <section aria-labelledby="withdrawal-form-title" className="mt-12 border-t border-light-2 pt-10" data-withdrawal-section>

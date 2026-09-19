@@ -53,14 +53,34 @@ export function parseOrderFilters(query: Query): OrderFilters {
   return { q: parsed.q, status: parsed.status, from: parsed.od, to: parsed.do, provider: parsed.provider, country: parsed.country, page: parsed.stran };
 }
 
-export function orderWhere(filters: OrderFilters): Prisma.OrderWhereInput {
+/** % and _ are literal characters of a typed name, never wildcards. */
+const likeEscaped = (value: string) => value.replace(/[\\%_]/g, (character) => `\\${character}`);
+const NAME_MATCH_LIMIT = 5000;
+
+/**
+ * Order ids whose buyer name matches, case-insensitively. The name lives in the
+ * shippingAddress JSON and Prisma's JSON filter takes no `mode`, so
+ * `string_contains` renders a case-sensitive LIKE that no capitalised name ever
+ * matches — staff typing "Novak" found nothing. One bounded ILIKE statement
+ * feeds the ids back into the ordinary filter (the same repair as the customer
+ * list in lib/admin/customers.ts).
+ */
+export async function orderNameMatchIds(q: string): Promise<string[]> {
+  if (!q) return [];
+  const pattern = `%${likeEscaped(q)}%`;
+  const rows = await db.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "Order"
+WHERE ("shippingAddress"->>'fullName') ILIKE ${pattern} ORDER BY "createdAt" DESC LIMIT ${NAME_MATCH_LIMIT}`;
+  return rows.map((row) => row.id);
+}
+
+export function orderWhere(filters: OrderFilters, nameMatchIds: string[] = []): Prisma.OrderWhereInput {
   const where: Prisma.OrderWhereInput = {};
   if (filters.q) {
     where.OR = [
       { number: { contains: filters.q, mode: "insensitive" } },
       { email: { contains: filters.q, mode: "insensitive" } },
       { trackingNumber: { contains: filters.q.replace(/\s+/g, "").toUpperCase() } },
-      { shippingAddress: { path: ["fullName"], string_contains: filters.q } },
+      ...(nameMatchIds.length > 0 ? [{ id: { in: nameMatchIds } }] : []),
     ];
   }
   if (filters.status) where.status = filters.status;
@@ -92,7 +112,7 @@ function addressField(value: unknown, key: string): string {
 }
 
 export async function listOrders(filters: OrderFilters): Promise<{ rows: OrderListRow[]; total: number; page: number; pages: number }> {
-  const where = orderWhere(filters);
+  const where = orderWhere(filters, await orderNameMatchIds(filters.q));
   const total = await db.order.count({ where });
   const pages = Math.max(1, Math.ceil(total / ORDER_PAGE_SIZE));
   const page = Math.min(filters.page, pages);
@@ -151,7 +171,7 @@ function csvCell(value: string | number): string {
 /** UTF-8 with BOM so spreadsheet tools read Slovenian characters; one row per order. */
 export async function ordersCsv(filters: OrderFilters): Promise<string> {
   const orders = await db.order.findMany({
-    where: orderWhere(filters), orderBy: { createdAt: "desc" }, take: 5000,
+    where: orderWhere(filters, await orderNameMatchIds(filters.q)), orderBy: { createdAt: "desc" }, take: 5000,
     select: {
       number: true, createdAt: true, status: true, email: true, shippingAddress: true, totalCents: true,
       refundedCents: true, paymentProvider: true, trackingNumber: true, carrier: true, items: { select: { quantity: true } },

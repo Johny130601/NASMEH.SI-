@@ -4,7 +4,8 @@ const mocks = vi.hoisted(() => ({
   issue: vi.fn(), apply: vi.fn(), verifyMail: vi.fn(), resetMail: vi.fn(), update: vi.fn(),
   txUser: vi.fn(), subscriber: vi.fn(),
 }));
-vi.mock("@/lib/db", () => ({ db: { user: { findUnique: mocks.find }, $transaction: mocks.transaction } }));
+// A re-issued activation records its own marketing-register row, so the client itself writes consent.
+vi.mock("@/lib/db", () => ({ db: { user: { findUnique: mocks.find }, $transaction: mocks.transaction, consentLog: { create: mocks.consent } } }));
 vi.mock("@/lib/turnstile", () => ({ verifyTurnstile: mocks.human }));
 vi.mock("bcryptjs", () => ({ default: { hash: mocks.hash } }));
 vi.mock("@/lib/auth-tokens", () => ({ issueAuthToken: mocks.issue, applyAuthToken: mocks.apply }));
@@ -49,6 +50,12 @@ describe("auth actions", () => {
     expect(await registerAction(input)).toEqual({ ok: true });
     expect(mocks.create).not.toHaveBeenCalled();
     expect(mocks.issue).toHaveBeenCalledWith("u", "VERIFY_EMAIL", activation);
+    // The re-issue changes the opt-in activation will apply, so it leaves its own row:
+    // without it the log could read register:false then activation:true with nothing between.
+    expect(mocks.consent).toHaveBeenCalledWith({ data: expect.objectContaining({
+      userId: "u", kind: "marketing-register", version: marketingVersion("marketing-register"),
+      choices: { marketing: false, pendingVerification: true, source: "register" },
+    }) });
   });
   it("does not alter or resend activation for an existing verified account", async () => {
     mocks.find.mockResolvedValue({ id: "u", emailVerified: new Date() });

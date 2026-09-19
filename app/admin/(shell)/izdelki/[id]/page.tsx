@@ -55,6 +55,7 @@ export default async function AdminProductEditorPage({ params }: { params: Promi
         <div className="mt-4">
           <VariantEditor
             productId={product.id}
+            isBundle={product.bundle !== null}
             variants={product.variants.map((variant) => ({
               id: variant.id, title: variant.title, sku: variant.sku, priceCents: variant.priceCents, compareAtPriceCents: variant.compareAtPriceCents,
               costCents: variant.costCents, barcode: variant.barcode, weightGrams: variant.weightGrams, stock: variant.stock,

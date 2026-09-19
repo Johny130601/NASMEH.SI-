@@ -16,7 +16,7 @@ import { changeVariantPriceInTx, recordInitialPriceInTx } from "@/lib/price-hist
 
 export type CatalogActionResult =
   | { ok: true; id?: string; armed?: number; sent?: number; failed?: number }
-  | { ok: false; error: "invalid" | "not_found" | "slugTaken" | "skuTaken" | "extraJson" | "lastVariant" | "inBundle" | "media" | "noStock" };
+  | { ok: false; error: "invalid" | "not_found" | "slugTaken" | "skuTaken" | "extraJson" | "lastVariant" | "inBundle" | "bundlePrice" | "media" | "noStock" };
 
 const idSchema = z.string().min(1).max(64);
 
@@ -96,8 +96,17 @@ export async function saveVariantAction(input: { productId: string; variantId: s
   const parsed = z.object({ productId: idSchema, variantId: idSchema.nullable(), variant: variantSchema }).safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid" };
   const { productId, variantId, variant } = parsed.data;
-  const product = await db.product.findUnique({ where: { id: productId }, select: { slug: true } });
+  const product = await db.product.findUnique({ where: { id: productId }, select: { slug: true, bundle: { select: { priceCents: true } } } });
   if (!product) return { ok: false, error: "not_found" };
+  // A bundle sells at its bundle price (saveBundleAction keeps every variant in
+  // step): a price edit here would leave the value line — "vrednost X €,
+  // prihranite Y %" — measured against a price the shopper never pays.
+  if (product.bundle) {
+    const stored = variantId
+      ? await db.variant.findFirst({ where: { id: variantId, productId }, select: { priceCents: true } })
+      : null;
+    if (variant.priceCents !== (stored?.priceCents ?? product.bundle.priceCents)) return { ok: false, error: "bundlePrice" };
+  }
   const fields = {
     title: variant.title, sku: variant.sku, costCents: variant.costCents, barcode: variant.barcode, weightGrams: variant.weightGrams,
     maxCartQuantity: variant.maxCartQuantity, allowBackorder: variant.allowBackorder, backorderNote: variant.backorderNote,

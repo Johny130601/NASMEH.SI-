@@ -16,7 +16,7 @@ export interface RefundDetails extends PaymentDetails { totalRefundedCents?: num
 
 export type TransitionResult =
   | { outcome: "paid" | "stockout"; orderNumber: string }
-  | { outcome: "already_processed" | "already_paid" | "not_found" | "ignored" | "payment_mismatch" };
+  | { outcome: "already_processed" | "already_paid" | "not_found" | "ignored" | "payment_mismatch" | "refund_in_flight" };
 
 class RetryableTransition extends Error {
   constructor(readonly result: TransitionResult) {
@@ -114,6 +114,22 @@ export async function markOrderPaid(
           refundRequired: true,
           fulfillmentIssue: "payment_received_after_cancellation",
           timeline: timelinePush(order, "payment_received_refund_required", "payment_received_after_cancellation"),
+        },
+      });
+      return { outcome: "stockout", orderNumber: order.number };
+    }
+    // The buyer was erased while this order was still open (the admin refuses that now,
+    // but an older erasure can still be met here). Issuing an invoice would freeze a
+    // scrubbed buyer into the snapshot and queue a confirmation to nobody, so take the
+    // money's arrival on the record and leave the money owed explicit instead.
+    if (order.anonymizedAt) {
+      await tx.order.update({
+        where: { id: order.id },
+        data: {
+          paidAt: new Date(),
+          refundRequired: true,
+          fulfillmentIssue: "payment_received_after_anonymisation",
+          timeline: timelinePush(order, "payment_received_refund_required", "payment_received_after_anonymisation"),
         },
       });
       return { outcome: "stockout", orderNumber: order.number };
@@ -336,6 +352,11 @@ export async function markRefunded(
     if ((!details && !isTestMode()) || (details && !validMoney(details, order))) {
       throw new RetryableTransition({ outcome: "payment_mismatch" });
     }
+    // An operator refund between its provider call and its local apply (lib/orders/refunds.ts
+    // step 3) would be counted twice: defer the event, the provider retries it later, and by
+    // then the row is COMPLETED (Stripe totals are cumulative, PayPal ids are skipped) or closed.
+    const inFlight = await tx.refund.findFirst({ where: { orderId: order.id, status: "PENDING" }, select: { id: true } });
+    if (inFlight) throw new RetryableTransition({ outcome: "refund_in_flight" });
     const refundedCents = details
       ? details.totalRefundedCents === undefined
         ? order.refundedCents + details.amountCents

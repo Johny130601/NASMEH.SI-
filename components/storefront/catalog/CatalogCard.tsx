@@ -130,7 +130,7 @@ export function CatalogCard({
 
       {product.lowStock !== null ? (
         <p className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-dark-1" data-low-stock>
-          <span aria-hidden="true" className="h-1.5 w-1.5 animate-pulse-dot rounded-btn bg-warning" />
+          <span aria-hidden="true" className="ui-pulse-dot h-1.5 w-1.5 rounded-btn bg-warning" />
           {catalog.card.lowStock(product.lowStock)}
         </p>
       ) : null}

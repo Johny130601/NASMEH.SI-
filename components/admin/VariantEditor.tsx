@@ -38,7 +38,7 @@ function readForm(data: FormData): VariantInput {
   };
 }
 
-function VariantForm({ productId, variant, onDone, deletable }: { productId: string; variant: VariantRow; onDone: (result: CatalogActionResult) => void; deletable: boolean }) {
+function VariantForm({ productId, variant, onDone, deletable, priceLocked }: { productId: string; variant: VariantRow; onDone: (result: CatalogActionResult) => void; deletable: boolean; priceLocked: boolean }) {
   const [pending, startTransition] = useTransition();
   const label = (name: string) => `${name}${variant.id ? ` (${variant.sku})` : ""}`;
   // UiInput derives ids from names; several variant forms share names on one page.
@@ -64,7 +64,9 @@ function VariantForm({ productId, variant, onDone, deletable }: { productId: str
     >
       <UiInput id={`${prefix}-title`} label={label(c.title)} name="title" defaultValue={variant.title} maxLength={120} />
       <UiInput id={`${prefix}-sku`} label={label(c.sku)} name="sku" defaultValue={variant.sku} required maxLength={40} />
-      <UiInput id={`${prefix}-price`} label={label(c.price)} name="priceCents" type="number" min={0} step={1} defaultValue={variant.priceCents} required />
+      {/* A bundle sells at its bundle price: the field stays (and still submits
+          the current value) but is edited in the bundle editor, never here. */}
+      <UiInput id={`${prefix}-price`} label={label(c.price)} name="priceCents" type="number" min={0} step={1} defaultValue={variant.priceCents} required readOnly={priceLocked} />
       <UiInput id={`${prefix}-compare`} label={label(c.compareAt)} name="compareAtPriceCents" type="number" min={0} step={1} defaultValue={variant.compareAtPriceCents ?? ""} />
       <UiInput id={`${prefix}-cost`} label={label(c.cost)} name="costCents" type="number" min={0} step={1} defaultValue={variant.costCents ?? ""} />
       <UiInput id={`${prefix}-barcode`} label={label(c.barcode)} name="barcode" defaultValue={variant.barcode ?? ""} maxLength={40} />
@@ -101,7 +103,8 @@ function VariantForm({ productId, variant, onDone, deletable }: { productId: str
   );
 }
 
-export function VariantEditor({ productId, variants }: { productId: string; variants: VariantRow[] }) {
+/** `isBundle`: this product IS a bundle, so its price belongs to the bundle editor (saveVariantAction refuses it here). */
+export function VariantEditor({ productId, variants, isBundle = false }: { productId: string; variants: VariantRow[]; isBundle?: boolean }) {
   const router = useRouter();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const onDone = (result: CatalogActionResult) => {
@@ -109,7 +112,8 @@ export function VariantEditor({ productId, variants }: { productId: string; vari
       setMessage({ ok: true, text: result.armed ? `${c.saved} ${c.armed.replace("{count}", String(result.armed))}` : c.saved });
       router.refresh();
     } else {
-      const text = result.error === "skuTaken" ? c.skuTaken : result.error === "lastVariant" ? c.lastVariant : result.error === "inBundle" ? c.inBundle : copy.catalog.editor.invalid;
+      const text = result.error === "skuTaken" ? c.skuTaken : result.error === "lastVariant" ? c.lastVariant
+        : result.error === "inBundle" ? c.inBundle : result.error === "bundlePrice" ? c.bundlePrice : copy.catalog.editor.invalid;
       setMessage({ ok: false, text });
     }
   };
@@ -117,8 +121,15 @@ export function VariantEditor({ productId, variants }: { productId: string; vari
     <div className="flex flex-col gap-4" data-variant-editor>
       <p className="text-sm text-mid-1">{c.priceHint}</p>
       {message ? <p role="status" className={`text-sm ${message.ok ? "text-success" : "text-error"}`} data-variant-message>{message.text}</p> : null}
-      {variants.map((variant) => <VariantForm key={variant.id} productId={productId} variant={variant} onDone={onDone} deletable={variants.length > 1 && variant.bundleItems === 0} />)}
-      <VariantForm productId={productId} variant={{ ...EMPTY, id: null, orderItems: 0, bundleItems: 0 }} onDone={onDone} deletable={false} />
+      {variants.map((variant) => <VariantForm key={variant.id} productId={productId} variant={variant} onDone={onDone} deletable={variants.length > 1 && variant.bundleItems === 0} priceLocked={isBundle} />)}
+      {/* a new variant of a bundle starts at the bundle price the existing ones already carry */}
+      <VariantForm
+        productId={productId}
+        variant={{ ...EMPTY, priceCents: isBundle ? (variants[0]?.priceCents ?? 0) : EMPTY.priceCents, id: null, orderItems: 0, bundleItems: 0 }}
+        onDone={onDone}
+        deletable={false}
+        priceLocked={isBundle}
+      />
     </div>
   );
 }

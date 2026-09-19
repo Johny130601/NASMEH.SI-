@@ -1,4 +1,4 @@
-import { mkdir, open, unlink } from "node:fs/promises";
+import { mkdir, open, readdir, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { MAX_REVIEW_PHOTOS, validatePhotoBatch } from "@/lib/reviews/photos";
@@ -39,6 +39,33 @@ export async function removeSupportPhotos(rows: Array<{ filename: string }>): Pr
     try { await unlink(path.join(SUPPORT_UPLOAD_DIR, row.filename)); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   }));
+}
+
+/**
+ * Candidates for the retention sweep: stored file names old enough that a
+ * submission in flight cannot be caught (the file is written before its
+ * TicketAttachment row). Bounded per run; anything else in the directory is
+ * left alone, as the cleanup itself is.
+ */
+export async function agedSupportPhotoFiles(before: Date, limit: number): Promise<string[]> {
+  let entries: string[];
+  try { entries = await readdir(SUPPORT_UPLOAD_DIR); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  const aged: string[] = [];
+  for (const filename of entries) {
+    if (aged.length >= limit) break;
+    if (!SUPPORT_PHOTO_FILENAME.test(filename)) continue;
+    try {
+      const info = await stat(path.join(SUPPORT_UPLOAD_DIR, filename));
+      if (info.mtimeMs < before.getTime()) aged.push(filename);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  return aged;
 }
 
 /** Each created file is tracked only after an exclusive open succeeds. If a

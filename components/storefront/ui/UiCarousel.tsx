@@ -44,7 +44,9 @@ export function UiCarousel({ label, children }: UiCarouselProps) {
         ref={trackRef}
         tabIndex={0}
         onKeyDown={onKeyDown}
-        className="flex snap-x snap-mandatory gap-5 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        // overflow-x-auto clips vertically too: the padding gives the cards'
+        // hover lift and shadow room, the negative margin keeps the layout
+        className="-my-6 flex snap-x snap-mandatory gap-5 overflow-x-auto scroll-smooth py-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {children}
       </div>
