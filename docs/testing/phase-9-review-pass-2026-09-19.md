@@ -12,7 +12,7 @@ Three stages, because a review that only reads finds different things from one t
 2. **Five fix agents**, one per cluster of files, with **disjoint file ownership** so they could run at once in one working tree. A fix needing a file another cluster owned was not made: it was reported, and I made it afterwards (§4). Each then **re-read its own diff** hunting for breakage it had introduced — changed signatures with un-updated callers, stale assertions, conventions broken — and fixed what it found.
 3. **Me**, for the findings that fell between cluster boundaries, the refund work, and the four unit tests whose assertions the fixes made stale.
 
-Ownership was the mechanism that made stage 2 safe, and it is also its cost: five agents reported a total of eleven fixes they could not complete because the last file belonged to someone else. Those are §4.
+Ownership was the mechanism that made stage 2 safe, and it is also its cost: across the five clusters, fifteen items came back as "I could not finish this, the last file belongs to someone else" — a PDF caller, a copy key, a component prop, the twin of a repaired query on another page. Section 4 collects those, together with what I found myself while wiring them up.
 
 ## 2. What the reviewers found
 
@@ -47,7 +47,7 @@ No reviewer found a defect in the money arithmetic, the VAT split, the order-num
 
 ## 4. Fixes that crossed a cluster boundary
 
-Made by me after the agents finished, each reported by the agent that could not reach the file.
+Made by me after the agents finished. Items 1 to 3 and 11 were reported by an agent that could not reach the file; the rest I found while wiring those up or reading the merged diff.
 
 | # | Fix | Files |
 |---|---|---|
@@ -74,6 +74,23 @@ Made by me after the agents finished, each reported by the agent that could not 
 | New unit coverage | refund apply and resume (12 cases), the webhook deferral (3), the client-address key (6), the plain-text mail conversion (5), the capped add (5), the seller block (5), the bundle price guard (4), and 9 new cases for back-in-stock arming, whose action had no unit test at all before |
 | Playwright, full suite | **156 passed of 156**, on the rebuilt tree against a fresh database. Two earlier runs each ended with a failure, both corrected rather than excused — see below |
 | Docker build and container smoke | image rebuilt from the review tree (221 s); container smoke **19 of 19**, with the entrypoint applying all 28 migrations, both containers healthy, the app running as `node`, the four named volumes mounted and writable, the admin gate redirecting, the job route refusing without its secret and answering with six streams including the new `refundResolution` |
+| Lighthouse | desktop meets every budget, performance 100 on all four templates; mobile 96–97 with the same four LCP assertion failures the closure established. Reports under `docs/testing/lighthouse/2026-09-19/`. See below |
+| Playwright with `CSP_ENFORCE=true` | **156 of 156**, and exactly one `[csp]` line in the server log — the synthetic report the hardening test posts to its own sink on purpose, byte-identical to the closure run's. No browser-originated violation. This pass changed the middleware and made the global 404 render per request, so go-live row E2's local evidence is re-established on the current tree |
+
+### Lighthouse against the 2026-09-16 run
+
+Same protocol as before: the standalone build in the e2e environment, a signed one-line cart cookie regenerated for the new database, three runs per template, the median asserted. Desktop is unchanged — performance 100 everywhere, LCP 560–607 ms against 558–618 ms. Mobile keeps failing LCP on all four templates for the reason the closure record established and this pass did not touch: the largest text is counted only once its web font renders, and the throttled lab puts the 38 kB font at 2.5–2.7 s. `lhci` exits 1 as before.
+
+| Mobile LCP, ms | 2026-09-16 | 2026-09-19 |
+|---|---|---|
+| / | 2592 | 2521 |
+| /izdelek/belilni-trakci-za-zobe | 2576 | 2763 |
+| /cart | 2592 | 2611 |
+| /checkout | 2509 | 2522 |
+
+Three templates sit within the 80–160 ms run-to-run spread the closure measured on an unchanged tree. The product page is 187 ms slower, at the edge of it; its Speed Index (2399 ms) lands between the two modes the closure recorded for that metric, which is the same font-arrival bimodality rather than a new cost.
+
+**Total blocking time roughly doubled and is worth naming**: 55–79 ms against 18–46 ms, on a 200 ms budget it still clears with a wide margin. The client JavaScript this pass added is small and confined to the add-to-cart button's notice state and the split-out cart badge. It is recorded here so the D2 re-measurement with real media has a baseline to compare against, not because it threatens a budget.
 
 **The two browser failures, and why only one was a defect in the tests.**
 
@@ -104,4 +121,4 @@ Reported and deliberately not changed: the newsletter and back-in-stock actions 
 
 **Two things this pass could not test, stated plainly.** The challenge-timeout fix (§4 item 11) cannot be exercised by the browser suite: the e2e environment supplies a test token, which makes the hook skip the widget entirely, so the suite proves only that the change leaves that path byte-identical. Its logic mirrors the lazy capture controller, which *is* unit-tested. And `NASMEH_E2E` has no boot guard: a host `.env` copied from the e2e environment would accept the fixed, repo-visible test token on every protected form and enable the test payment driver. A `NODE_ENV`-keyed refusal would break the e2e harness, which runs a production build with the flag on purpose. Go-live row A3 already checks for it (`grep -c NASMEH_E2E .env` = 0); that check is the mitigation, and it should stay on the checklist rather than become a boot refusal.
 
-The launch still waits on exactly what it waited on before: the [go-live checklist](go-live-checklist.md), top to bottom. Nothing in this pass changed that list.
+The launch still waits on exactly what it waited on before: the [go-live checklist](go-live-checklist.md), top to bottom. Nothing in this pass changed that list, and two of its rows now have fresher local evidence behind them: E2 (the policy enforced through a full browser run on this tree) and A8 (the staging origin, which `launch-check.sh --staging` now actually asserts).
