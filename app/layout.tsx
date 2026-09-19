@@ -24,7 +24,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="sl">
       <head>
         {/* Preloading the font takes it off the critical chain (Phase 9 step 2);
-            the file is served immutable (next.config.ts). */}
+            the file is served immutable (next.config.ts). Keep it: the 2026-09-19
+            diagnosis showed dropping it buys nothing — the stylesheet references the
+            face either way, so it stays on the measured path — while costing every
+            first-time visitor a page view in the fallback, with no metrics overrides
+            declared to match it. The mobile LCP is not the font's arrival. */}
         {FONT_FILES.map((href) => (
           <link key={href} rel="preload" href={href} as="font" type="font/woff2" crossOrigin="anonymous" />
         ))}

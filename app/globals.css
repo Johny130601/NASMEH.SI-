@@ -7,8 +7,14 @@
    Google subsets (49 kB, two requests); preloaded from the root layout.
    font-display: optional (Phase 9 closure): the preloaded face is used when it
    arrives within the block period, otherwise the fallback face for that view;
-   text paints at first paint and never shifts. With swap, every template's
-   mobile LCP was the font's arrival time in the throttled lab (2.4-2.7 s). */
+   text paints at first paint and never shifts.
+
+   The closure record blamed the throttled lab's mobile LCP on this font's
+   arrival. That was wrong, and the 2026-09-19 diagnosis retired it: on the home
+   and product templates the LCP element is an image, not text, and the simulated
+   figure tracks when the last script finishes evaluating, not when any face
+   paints. The font lands 42-72 ms into the real load. Do not tune it for LCP —
+   tune the JavaScript on the first-load path. */
 @font-face {
   font-family: "Plus Jakarta Sans";
   font-style: normal;
