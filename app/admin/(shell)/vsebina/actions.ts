@@ -5,12 +5,12 @@ import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/admin/access";
 import { saveSettingValue } from "@/lib/admin/cms";
 import {
-  bundleBannerSchema, heroSchema, homeSectionsSchema, marqueeSchema, routineBannerSchema, welcomePopupSchema,
-  type BundleBannerInput, type HeroInput, type HomeSectionsInput, type MarqueeInput, type RoutineBannerInput, type WelcomePopupInput,
+  bundleBannerSchema, bundleBuilderSchema, heroSchema, homeSectionsSchema, marqueeSchema, routineBannerSchema, welcomePopupSchema,
+  type BundleBannerInput, type BundleBuilderInput, type HeroInput, type HomeSectionsInput, type MarqueeInput, type RoutineBannerInput, type WelcomePopupInput,
 } from "@/lib/admin/cms-schemas";
 import { SETTING_KEYS } from "@/lib/settings";
 
-export type CmsActionResult = { ok: true } | { ok: false; error: "invalid" | "couponUnknown" };
+export type CmsActionResult = { ok: true } | { ok: false; error: "invalid" | "couponUnknown" | "productUnknown" };
 
 function refreshHome() {
   revalidatePath("/");
@@ -80,5 +80,33 @@ export async function savePopupAction(input: WelcomePopupInput): Promise<CmsActi
   await saveSettingValue("welcomePopup", parsed.data);
   revalidatePath("/", "layout");
   revalidatePath("/admin/vsebina/popup");
+  return { ok: true };
+}
+
+/**
+ * Bundle builder (/sestavi-paket). The module holds no figure of its own: the
+ * discount line it shows is whatever the promo engine decides for this code
+ * and this selection, so a code checkout would refuse must never be storable —
+ * it has to exist, be active and be PERCENT. The add-on slugs must name active
+ * products for the same reason: a slug that resolves to nothing silently
+ * empties the add-on row.
+ */
+export async function saveBundleBuilderAction(input: BundleBuilderInput): Promise<CmsActionResult> {
+  await requirePermission("content:manage");
+  const parsed = bundleBuilderSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "invalid" };
+  if (parsed.data.couponCode) {
+    const coupon = await db.coupon.findUnique({ where: { code: parsed.data.couponCode }, select: { active: true, type: true } });
+    if (!coupon?.active || coupon.type !== "PERCENT") return { ok: false, error: "couponUnknown" };
+  }
+  const slugs = [...new Set(parsed.data.addOnSlugs)];
+  if (slugs.length > 0) {
+    const products = await db.product.findMany({ where: { slug: { in: slugs }, status: "ACTIVE" }, select: { slug: true } });
+    if (products.length !== slugs.length) return { ok: false, error: "productUnknown" };
+  }
+  await saveSettingValue(SETTING_KEYS.bundleBuilder, parsed.data);
+  // Every product page reads the setting to decide whether it hands off here.
+  revalidatePath("/", "layout");
+  revalidatePath("/admin/vsebina/paket");
   return { ok: true };
 }

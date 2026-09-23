@@ -15,6 +15,7 @@ export { pdp } from "./pdp";
 export { search } from "./search";
 export { backInStock } from "./backInStock";
 export { cart } from "./cart";
+export { bundle } from "./bundle";
 export { checkout, orders } from "./checkout";
 export { account } from "./account";
 export { reviews } from "./reviews";

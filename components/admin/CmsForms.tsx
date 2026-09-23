@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { saveMarqueeAction, savePopupAction, type CmsActionResult } from "@/app/admin/(shell)/vsebina/actions";
-import type { MarqueeInput, WelcomePopupInput } from "@/lib/admin/cms-schemas";
+import { saveBundleBuilderAction, saveMarqueeAction, savePopupAction, type CmsActionResult } from "@/app/admin/(shell)/vsebina/actions";
+import type { BundleBuilderInput, MarqueeInput, WelcomePopupInput } from "@/lib/admin/cms-schemas";
 import { admin as copy } from "@/lib/copy";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiInput } from "@/components/storefront/ui/UiInput";
@@ -79,6 +79,48 @@ export function PopupForm({ initial }: { initial: WelcomePopupInput }) {
       </label>
       <div className="flex items-center gap-3">
         <UiButton type="submit" variant="primary" disabled={pending} data-popup-save>{c.save}</UiButton>
+        {status}
+      </div>
+    </form>
+  );
+}
+
+/** Switch with its own explanation underneath; the bundle-builder switches both need one. */
+function SwitchRow({ label, hint, checked, onChange, marker }: { label: string; hint: string; checked: boolean; onChange: (checked: boolean) => void; marker: string }) {
+  return (
+    <label className="flex items-start gap-3 text-sm">
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="mt-1 size-4 accent-brand" data-bundle-switch={marker} />
+      <span className="font-medium">
+        {label}
+        <span className="mt-1 block text-xs font-normal text-mid-2">{hint}</span>
+      </span>
+    </label>
+  );
+}
+
+/** Comma- or space-separated entries, like the featured slugs in the menu editor. */
+const entries = (value: string) => value.split(/[\s,]+/).map((entry) => entry.trim()).filter(Boolean);
+
+export function BundleBuilderForm({ initial }: { initial: BundleBuilderInput }) {
+  const c = copy.content.bundle;
+  const [values, setValues] = useState(initial);
+  // The two list fields stay raw text while typing; they become arrays on submit.
+  const [offerUnits, setOfferUnits] = useState(initial.offerUnits.join(", "));
+  const [addOnSlugs, setAddOnSlugs] = useState(initial.addOnSlugs.join(", "));
+  const { pending, run, status } = useSave(c.invalid, { couponUnknown: c.couponUnknown, productUnknown: c.productUnknown });
+  const save = () => run(() => saveBundleBuilderAction({ ...values, offerUnits: entries(offerUnits).map(Number), addOnSlugs: entries(addOnSlugs) }), c.saved);
+  return (
+    <form className="flex flex-col gap-4 rounded-card border border-light-2 bg-white p-5" data-bundle-form onSubmit={(event) => { event.preventDefault(); save(); }}>
+      <p className="text-sm text-mid-1">{c.intro}</p>
+      <SwitchRow marker="enabled" label={c.fields.enabled} hint={c.hints.enabled} checked={values.enabled} onChange={(enabled) => setValues({ ...values, enabled })} />
+      <SwitchRow marker="subscription" label={c.fields.subscriptionRow} hint={c.hints.subscriptionRow} checked={values.subscriptionRow} onChange={(subscriptionRow) => setValues({ ...values, subscriptionRow })} />
+      <div className="grid gap-4 md:grid-cols-2">
+        <UiInput label={c.fields.offerUnits} name="offerUnits" hint={c.hints.offerUnits} required maxLength={20} inputMode="numeric" value={offerUnits} onChange={(event) => setOfferUnits(event.target.value)} />
+        <UiInput label={c.fields.couponCode} name="bundleCouponCode" hint={c.hints.couponCode} maxLength={24} value={values.couponCode} onChange={(event) => setValues({ ...values, couponCode: event.target.value })} />
+      </div>
+      <UiInput label={c.fields.addOnSlugs} name="addOnSlugs" hint={c.hints.addOnSlugs} maxLength={200} value={addOnSlugs} onChange={(event) => setAddOnSlugs(event.target.value)} />
+      <div className="flex items-center gap-3">
+        <UiButton type="submit" variant="primary" disabled={pending} data-bundle-save>{c.save}</UiButton>
         {status}
       </div>
     </form>

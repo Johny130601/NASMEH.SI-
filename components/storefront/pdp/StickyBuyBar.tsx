@@ -16,6 +16,7 @@ export function StickyBuyBar({
   testToken,
   klarnaEnabled = false,
   imageUrl = null,
+  nextHref = null,
 }: {
   productSlug: string;
   variantId: string;
@@ -26,6 +27,8 @@ export function StickyBuyBar({
   testToken: string | null;
   klarnaEnabled?: boolean;
   imageUrl?: string | null;
+  /** Where a clean add continues to (the bundle builder); null confirms in place. */
+  nextHref?: string | null;
 }) {
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-light-2 bg-white/95 backdrop-blur">
@@ -62,6 +65,7 @@ export function StickyBuyBar({
               label={copy.buyBox.addToCart}
               fullWidth={false}
               className="!h-11 px-6"
+              nextHref={nextHref}
             />
           )}
         </div>

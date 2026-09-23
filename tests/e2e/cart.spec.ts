@@ -81,12 +81,17 @@ test("ATC from PDP + sticky bar → badge count → cart line", async ({ page })
   await page.goto("/izdelek/belilni-trakci-za-zobe");
   await dismissCmp(page);
 
+  // A clean add from a non-bundle PDP hands off to the bundle builder (§7.1)
+  // instead of confirming in place; the add is still what this test is about,
+  // so it follows the hand-off and comes back for the sticky-bar add.
   await page.locator("[data-buy-box]").getByRole("button", { name: "Dodaj v košarico" }).click();
-  await expect(page.locator("[data-buy-box]").getByRole("button", { name: "Dodano ✓" })).toBeVisible();
+  await expect(page).toHaveURL(/\/sestavi-paket\?izdelek=belilni-trakci-za-zobe$/);
   await expect(page.locator("[data-cart-badge]")).toHaveText("1");
 
-  // sticky bar ATC adds one more
+  // sticky bar ATC adds one more, and hands off the same way
+  await page.goto("/izdelek/belilni-trakci-za-zobe");
   await page.locator("div.fixed").getByRole("button", { name: "Dodaj v košarico" }).click();
+  await expect(page).toHaveURL(/\/sestavi-paket\?izdelek=belilni-trakci-za-zobe$/);
   await expect(page.locator("[data-cart-badge]")).toHaveText("2");
 
   await page.goto("/cart");

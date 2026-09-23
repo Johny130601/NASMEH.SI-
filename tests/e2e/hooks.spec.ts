@@ -182,24 +182,28 @@ test("low-stock line: the real count at or under the admin threshold, nothing ab
 });
 
 test("add to cart: the button confirms, the card names the item and leads to the cart, Esc dismisses", async ({ page }) => {
-  const strips = await prisma.variant.findUniqueOrThrow({
-    where: { sku: "NAS-TRK-14" },
-    select: { priceCents: true, product: { select: { title: true } } },
+  // The confirmation card is the subject here, so the fixture is the bundle
+  // PDP: a non-bundle product page hands a clean add off to the bundle builder
+  // (§7.1) and has no card to show. A bundle is already a fixed selection, so
+  // it never hands off.
+  const routine = await prisma.variant.findUniqueOrThrow({
+    where: { sku: "NAS-PAK-RUTINA" },
+    select: { priceCents: true, product: { select: { slug: true, title: true } } },
   });
   const mouthwash = await prisma.product.findUniqueOrThrow({
     where: { slug: "ustna-voda-globinsko-ciscenje" },
     select: { title: true },
   });
 
-  await page.goto("/izdelek/belilni-trakci-za-zobe");
+  await page.goto(`/izdelek/${routine.product.slug}`);
   await dismissCookieBanner(page);
   const buyBox = page.locator("[data-buy-box]");
   await buyBox.getByRole("button", { name: catalog.card.addToCart }).click();
   await expect(buyBox.getByRole("button", { name: catalog.card.added })).toBeVisible();
   const toast = page.locator("[data-cart-toast]");
   await expect(toast).toBeVisible();
-  await expect(toast.locator("[data-cart-toast-title]")).toHaveText(strips.product.title);
-  expect(flat(await toast.textContent())).toContain(flat(cartCopy.toast.line(1, formatEUR(strips.priceCents))));
+  await expect(toast.locator("[data-cart-toast-title]")).toHaveText(routine.product.title);
+  expect(flat(await toast.textContent())).toContain(flat(cartCopy.toast.line(1, formatEUR(routine.priceCents))));
   await expect(toast.locator("[data-cart-toast-view]")).toHaveAttribute("href", "/cart");
   // the card sits below the sticky header and never covers it
   const header = await page.locator("header").boundingBox();
@@ -215,7 +219,7 @@ test("add to cart: the button confirms, the card names the item and leads to the
   await toast.locator("[data-cart-toast-view]").click();
   await expect(page).toHaveURL(/\/cart$/);
   await expect(page.locator("[data-cart-line='NAS-UST-500']")).toBeVisible();
-  await expect(page.locator("[data-cart-line='NAS-TRK-14']")).toBeVisible();
+  await expect(page.locator("[data-cart-line='NAS-PAK-RUTINA']")).toBeVisible();
   await expect(page.locator("[data-cart-toast]")).toHaveCount(0);
 });
 

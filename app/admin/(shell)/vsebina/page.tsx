@@ -9,6 +9,7 @@ const CARDS = [
   { href: "/admin/vsebina/domov", card: "home" },
   { href: "/admin/vsebina/oglasna-vrstica", card: "marquee" },
   { href: "/admin/vsebina/popup", card: "popup" },
+  { href: "/admin/vsebina/paket", card: "bundle" },
   { href: "/admin/strani", card: "pages" },
   { href: "/admin/navigacija", card: "menus" },
   { href: "/admin/mediji", card: "media" },

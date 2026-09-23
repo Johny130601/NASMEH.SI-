@@ -61,6 +61,9 @@
   --radius-btn: 3rem;
   --radius-card: 0.5rem;
   --radius-input: 0.25rem;
+  /* Bundle builder: softer than a card because its panels are the page, not
+     items in a grid (components stay on the token, never an 18px literal). */
+  --radius-panel: 1.125rem;
   --container-wide: calc(1248px + var(--padding) * 2);
   --container-narrow: 1120px;
   --container-bleed: 1440px;
@@ -96,6 +99,7 @@
   --radius-btn: 3rem;
   --radius-card: 0.5rem;
   --radius-input: 0.25rem;
+  --radius-panel: 1.125rem;
 
   /* mobile-first two-breakpoint system: 768 / 991 (research 06 §4) */
   --breakpoint-sm: initial;

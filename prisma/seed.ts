@@ -541,6 +541,24 @@ async function seedSettings() {
         message: "Trgovina se pripravlja — vrnite se kmalu.",
       },
     },
+    {
+      // Bundle builder (/sestavi-paket): the offers are QUANTITIES of the base
+      // product's own variant, so there is nothing to seed but this row — no
+      // multipack SKUs, no new products. The coupon is an ordinary existing
+      // code the promo engine evaluates, so the module never states a figure
+      // the cart would contradict (§8.23); PAKET20 is seeded below.
+      // 20260920100000_bundle_builder_setting inserts the same row into an
+      // already-deployed database, but with an empty couponCode: production
+      // has no demo coupon (tests/unit/bundle-builder-seed.test.ts).
+      key: "bundle.builder",
+      value: {
+        enabled: true,
+        offerUnits: [1, 2, 3],
+        addOnSlugs: [],
+        couponCode: "PAKET20",
+        subscriptionRow: true,
+      },
+    },
   ];
 
   // Operator-owned identity data: the company row is created once and never
@@ -660,6 +678,7 @@ async function seedCoupons() {
       percentOff: 10,
       usageLimitPerCustomer: null as number | null,
       usageLimitTotal: null as number | null,
+      minSpendCents: null as number | null,
     },
     {
       // Welcome popup code: 10 % off, once per customer ("first order")
@@ -668,6 +687,24 @@ async function seedCoupons() {
       percentOff: 10,
       usageLimitPerCustomer: 1 as number | null,
       usageLimitTotal: null as number | null,
+      minSpendCents: null as number | null,
+    },
+    {
+      // Bundle builder code (the `bundle.builder` Setting names it): 20 % off,
+      // and deliberately without a usage limit, a per-customer limit, an email
+      // list or an end date. The builder prices every combination through the
+      // promo engine, so a code the engine accepts there but the checkout later
+      // refuses would show a discount the order cannot honour — and a coupon
+      // rejected at order time fails the order (lib/orders/create.ts).
+      // The minimum spend is the cheapest single-unit offer (19,99 €), so even
+      // the first offer reaches it; anything higher is a discount the module
+      // would advertise on an offer that can never qualify.
+      code: "PAKET20",
+      type: "PERCENT" as const,
+      percentOff: 20,
+      usageLimitPerCustomer: null as number | null,
+      usageLimitTotal: null as number | null,
+      minSpendCents: 1999 as number | null,
     },
   ];
   for (const coupon of coupons) {
@@ -678,6 +715,7 @@ async function seedCoupons() {
         percentOff: coupon.percentOff,
         usageLimitPerCustomer: coupon.usageLimitPerCustomer,
         usageLimitTotal: coupon.usageLimitTotal,
+        minSpendCents: coupon.minSpendCents,
         active: true,
       },
       create: {
@@ -686,6 +724,7 @@ async function seedCoupons() {
         percentOff: coupon.percentOff,
         usageLimitPerCustomer: coupon.usageLimitPerCustomer,
         usageLimitTotal: coupon.usageLimitTotal,
+        minSpendCents: coupon.minSpendCents,
         active: true,
       },
     });

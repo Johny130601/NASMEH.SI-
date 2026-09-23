@@ -7,6 +7,7 @@ import {
   maintenanceStoredSchema, seoDefaultsSchema, shippingMethodSchema,
 } from "@/lib/settings-schemas";
 import { DEFAULT_CONTACT_SETTINGS } from "@/lib/support/settings-schema";
+import { bundleBuilderSchema, DEFAULT_BUNDLE_BUILDER, type BundleBuilderSetting } from "@/lib/admin/cms-schemas";
 
 /** Config-driven merchandising: storefront config is Setting data, not code. */
 export async function getSetting<T>(key: string): Promise<T | null> {
@@ -42,6 +43,7 @@ export const SETTING_KEYS = {
   consentBanner: "consent.banner",
   legalLinks: "legal.links",
   lowStockThreshold: "inventory.lowStockThreshold",
+  bundleBuilder: "bundle.builder",
 } as const;
 
 export interface CompanySetting {
@@ -144,6 +146,15 @@ export async function getFreeThresholdCents(): Promise<number> {
 }
 
 /** Storefront low-stock line threshold (the admin's §14.2 setting, `lowStockThresholdSchema`). */
+/**
+ * Bundle-builder config (/sestavi-paket). Read through the schema like every
+ * other Setting (AGENTS §8.17), so a malformed row degrades to the default
+ * instead of breaking the product page that hands off to it.
+ */
+export async function getBundleBuilder(): Promise<BundleBuilderSetting> {
+  return readSetting(SETTING_KEYS.bundleBuilder, bundleBuilderSchema, DEFAULT_BUNDLE_BUILDER);
+}
+
 export async function getLowStockThreshold(): Promise<number> {
   return readSetting(SETTING_KEYS.lowStockThreshold, lowStockThresholdSchema, DEFAULT_LOW_STOCK_THRESHOLD);
 }

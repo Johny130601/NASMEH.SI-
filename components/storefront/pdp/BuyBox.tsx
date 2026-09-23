@@ -21,6 +21,7 @@ export function BuyBox({
   soldOut,
   testToken,
   imageUrl = null,
+  nextHref = null,
 }: {
   productSlug: string;
   variantId: string;
@@ -32,6 +33,8 @@ export function BuyBox({
   testToken: string | null;
   /** First gallery image, for the confirmation card. */
   imageUrl?: string | null;
+  /** Where a clean add continues to (the bundle builder); null confirms in place. */
+  nextHref?: string | null;
 }) {
   const [quantity, setQuantity] = useState(1);
 
@@ -84,6 +87,7 @@ export function BuyBox({
         quantity={quantity}
         imageUrl={imageUrl}
         label={copy.buyBox.addToCart}
+        nextHref={nextHref}
       />
 
       <Link

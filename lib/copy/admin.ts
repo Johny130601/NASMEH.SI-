@@ -694,11 +694,12 @@ export const admin = {
   },
   content: {
     title: "Vsebina",
-    intro: "Domača stran, oglasna vrstica in pozdravno okno tukaj; strani, navigacija, mediji in e-poštne predloge imajo svoje zaslone.",
+    intro: "Domača stran, oglasna vrstica, pozdravno okno in sestavljanje paketa tukaj; strani, navigacija, mediji in e-poštne predloge imajo svoje zaslone.",
     cards: {
       home: { title: "Domača stran", body: "Vrstni red in vidnost odsekov, hero, pasica paketov, pasica rutine." },
       marquee: { title: "Oglasna vrstica", body: "Besedilo, povezava in vklop vrstice nad glavo strani." },
       popup: { title: "Pozdravno okno", body: "Koda, zamik, besedila in vklop pozdravnega okna z e-novicami." },
+      bundle: { title: "Sestavljanje paketa", body: "Količine v ponudbi, dodatki, koda kupona in vrstica za mesečno dostavo." },
       pages: { title: "Strani", body: "Pravne in vsebinske strani s predlogo, SEO in objavo." },
       menus: { title: "Navigacija", body: "Glavni meni, mobilni predal, pripomočna vrstica in stolpci noge." },
       media: { title: "Mediji", body: "Knjižnica slik za hero, pasice in strani." },
@@ -756,6 +757,29 @@ export const admin = {
       saved: "Pozdravno okno je shranjeno.",
       invalid: "Preverite vnesene podatke (zamik 0–600 s, koda kot pri kuponih).",
       couponUnknown: "Koda ne obstaja med aktivnimi kuponi; najprej jo ustvarite v Kuponih.",
+    },
+    bundle: {
+      title: "Sestavljanje paketa",
+      intro: "Stran /sestavi-paket se odpre, ko kupec s strani izdelka doda izdelek v košarico. Ponudbe so količine tistega istega izdelka (1, 2 ali 3 kosi) — ločenih izdelkov ali paketnih šifer ni in jih ni treba ustvarjati. Cene, prihranki in odstotki se izračunajo ob vsakem obisku iz cen variant in odločitve promocijskega motorja, zato jih tukaj ni mogoče vpisati. Vrstica s popustom se prikaže samo, kadar je spodaj vpisana koda kupona; isti kupon obračuna tudi blagajna.",
+      fields: {
+        enabled: "S strani izdelka vodi na sestavljanje paketa",
+        subscriptionRow: "Prikaži vrstico za mesečno dostavo",
+        offerUnits: "Količine v ponudbi",
+        addOnSlugs: "Dodatki — slugi izdelkov",
+        couponCode: "Koda kupona",
+      },
+      hints: {
+        enabled: "Izklop odstrani samo preusmeritev s strani izdelka; naslov /sestavi-paket ostane dosegljiv.",
+        subscriptionRow: "Vrstica samo zbira zanimanje za mesečno dostavo: nima odstotka, ne spremeni nobenega zneska in se ne pošlje v košarico.",
+        offerUnits: "Od ena do štiri števila, ločena z vejico; prvo mora biti 1. Vsako je število kosov izdelka, s katerega je kupec prišel.",
+        addOnSlugs: "Do trije slugi, ločeni z vejico. Prazno pomeni, da dodatke izbere trgovina sama iz kolekcij osnovnega izdelka.",
+        couponCode: "Prazno pomeni brez popusta. Vpisana koda mora obstajati med aktivnimi kuponi in biti odstotkovna (PERCENT), sicer bi blagajna zaračunala drugače, kot je pokazala stran.",
+      },
+      save: "Shrani sestavljanje paketa",
+      saved: "Sestavljanje paketa je shranjeno.",
+      invalid: "Preverite vnesene podatke (prvo število mora biti 1, največ štiri količine in trije slugi).",
+      couponUnknown: "Koda ne obstaja med aktivnimi odstotkovnimi kuponi; najprej jo ustvarite v Kuponih.",
+      productUnknown: "Vsaj en slug ne pripada aktivnemu izdelku; preverite ga med Izdelki.",
     },
     pages: {
       title: "Strani",

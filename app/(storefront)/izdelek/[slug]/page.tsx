@@ -10,7 +10,7 @@ import {
   klarnaInstallmentCents,
   standardShippingMethod,
 } from "@/lib/pricing";
-import { getLowStockThreshold, getShippingSettings } from "@/lib/settings";
+import { getBundleBuilder, getLowStockThreshold, getShippingSettings } from "@/lib/settings";
 import { isTestMode } from "@/lib/turnstile";
 import { getEnv } from "@/lib/env";
 import { buildMetadata, siteUrl } from "@/lib/seo";
@@ -111,7 +111,7 @@ export default async function ProductPage({
 
   // Omnibus gate (lib/pricing priceReduction): strikethrough + 30-day line
   // only with a history-backed prior price above the current price.
-  const [reductions, shipping, reviewAggregate, crossSellProducts, lowStockThreshold] =
+  const [reductions, shipping, reviewAggregate, crossSellProducts, lowStockThreshold, bundleBuilder] =
     await Promise.all([
       getPriceReductions([
         { variantId: variant.id, priceCents: variant.priceCents, compareAtPriceCents: variant.compareAtPriceCents },
@@ -122,7 +122,16 @@ export default async function ProductPage({
         all.filter((p) => p.slug !== product.slug),
       ),
       getLowStockThreshold(),
+      getBundleBuilder(),
     ]);
+
+  // A clean add hands off to the bundle builder (§7.1). Never from a bundle
+  // PDP: a bundle is already a fixed selection, and the builder has nothing to
+  // offer on top of it.
+  const bundleBuilderHref =
+    bundleBuilder.enabled && product.bundle === null
+      ? `/sestavi-paket?izdelek=${encodeURIComponent(product.slug)}`
+      : null;
 
   const reduction = reductions.get(variant.id) ?? null;
   // the real remaining units, only while the stock is at or under the admin's threshold
@@ -421,6 +430,7 @@ export default async function ProductPage({
                   soldOut={soldOut}
                   testToken={testToken}
                   imageUrl={product.media[0]?.url ?? null}
+                  nextHref={bundleBuilderHref}
                 />
               </div>
 
@@ -521,6 +531,7 @@ export default async function ProductPage({
         soldOut={soldOut}
         testToken={testToken}
         imageUrl={product.media[0]?.url ?? null}
+        nextHref={bundleBuilderHref}
       />
       <TrackViewItem
         event={buildViewItemEvent({

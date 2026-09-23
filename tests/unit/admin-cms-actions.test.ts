@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(), revalidate: vi.fn(), sendMail: vi.fn(),
-  settingUpsert: vi.fn(), settingFindMany: vi.fn(), settingFindUnique: vi.fn(), couponFindUnique: vi.fn(),
+  settingUpsert: vi.fn(), settingFindMany: vi.fn(), settingFindUnique: vi.fn(), couponFindUnique: vi.fn(), productFindMany: vi.fn(),
   pageCreate: vi.fn(), pageUpdate: vi.fn(), pageFindUnique: vi.fn(), pageDelete: vi.fn(), pageFindMany: vi.fn(),
   menuUpsert: vi.fn(),
   assetFindUnique: vi.fn(), assetUpdateMany: vi.fn(), assetDelete: vi.fn(), assetDeleteMany: vi.fn(), assetCreate: vi.fn(),
@@ -24,6 +24,7 @@ vi.mock("@/lib/admin/media", () => ({
 vi.mock("@/lib/db", () => ({ db: {
   setting: { upsert: mocks.settingUpsert, findMany: mocks.settingFindMany, findUnique: mocks.settingFindUnique },
   coupon: { findUnique: mocks.couponFindUnique },
+  product: { findMany: mocks.productFindMany },
   contentPage: { create: mocks.pageCreate, update: mocks.pageUpdate, findUnique: mocks.pageFindUnique, delete: mocks.pageDelete, findMany: mocks.pageFindMany },
   menu: { upsert: mocks.menuUpsert },
   mediaAsset: { findUnique: mocks.assetFindUnique, updateMany: mocks.assetUpdateMany, delete: mocks.assetDelete, deleteMany: mocks.assetDeleteMany, create: mocks.assetCreate },
@@ -33,7 +34,7 @@ vi.mock("@/lib/db", () => ({ db: {
 } }));
 
 import {
-  saveBundleBannerAction, saveHeroAction, saveHomeSectionsAction, saveMarqueeAction, savePopupAction, saveRoutineBannerAction,
+  saveBundleBannerAction, saveBundleBuilderAction, saveHeroAction, saveHomeSectionsAction, saveMarqueeAction, savePopupAction, saveRoutineBannerAction,
 } from "@/app/admin/(shell)/vsebina/actions";
 import { createPageAction, deletePageAction, savePageAction } from "@/app/admin/(shell)/strani/actions";
 import { saveMenuAction } from "@/app/admin/(shell)/navigacija/actions";
@@ -48,6 +49,7 @@ const p2002 = new Prisma.PrismaClientKnownRequestError("unique", { code: "P2002"
 const hero = { kicker: "NOVO", title: "Naslov", subtitle: "Pod", ctaLabel: "Kupi", ctaHref: "/trgovina", videoDesktop: "", videoMobile: "", poster: "", imageAlt: "", promoOverlayText: "", promoOverlayHref: "" };
 const sections = [{ id: "hero" as const, visible: true }, { id: "rail" as const, visible: true }, { id: "bundleBanner" as const, visible: false }, { id: "routineBanner" as const, visible: true }];
 const popup = { active: true, delaySeconds: 30, couponCode: "welcome10", title: "T", body: "B", cta: "C", thankYouTitle: "TT", thankYouBody: "TB" };
+const bundleBuilder = { enabled: true, offerUnits: [1, 2, 3], addOnSlugs: [], couponCode: "", subscriptionRow: true };
 const page = { title: "Stran", slug: "moja-stran", template: "DEFAULT" as const, body: "<p>x</p>", seoTitle: "", seoDescription: "", published: true, reviewed: false };
 const menuItems = [{ label: "TRGOVINA", href: "/trgovina", color: "" as const, children: [{ label: "Trakci", href: "/izdelek/trakci", color: "" as const }], featured: ["trakci", "trakci"] }];
 const template = { key: "resetPassword", subject: "Geslo", bodyHtml: "<p>{{resetUrl}}</p>" };
@@ -61,6 +63,7 @@ const actions: Array<[string, () => Promise<unknown>]> = [
   ["saveRoutineBannerAction", () => saveRoutineBannerAction({ title: "R", href: "/izdelek/paket", image: "/uploads/x.svg", imageAlt: "A", footnote: "" })],
   ["saveMarqueeAction", () => saveMarqueeAction({ text: "Dostava", href: "", active: true })],
   ["savePopupAction", () => savePopupAction(popup)],
+  ["saveBundleBuilderAction", () => saveBundleBuilderAction(bundleBuilder)],
   ["createPageAction", () => createPageAction({ title: "Nova", slug: "nova-stran", template: "DEFAULT" })],
   ["savePageAction", () => savePageAction({ pageId, page })],
   ["deletePageAction", () => deletePageAction({ pageId })],
@@ -78,7 +81,8 @@ beforeEach(() => {
   mocks.settingUpsert.mockResolvedValue({});
   mocks.settingFindMany.mockResolvedValue([]);
   mocks.settingFindUnique.mockResolvedValue(null);
-  mocks.couponFindUnique.mockResolvedValue({ active: true });
+  mocks.couponFindUnique.mockResolvedValue({ active: true, type: "PERCENT" });
+  mocks.productFindMany.mockResolvedValue([]);
   mocks.pageCreate.mockImplementation(async ({ data }) => ({ id: pageId, ...data }));
   mocks.pageUpdate.mockResolvedValue({});
   mocks.pageFindUnique.mockResolvedValue({ slug: "moja-stran" });
@@ -151,6 +155,27 @@ describe("homepage, marquee and popup actions", () => {
     mocks.couponFindUnique.mockResolvedValueOnce(null);
     expect(await savePopupAction(popup)).toEqual({ ok: false, error: "couponUnknown" });
     expect(await savePopupAction({ ...popup, delaySeconds: 999 })).toEqual({ ok: false, error: "invalid" });
+    expect(mocks.settingUpsert).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("bundle builder action", () => {
+  it("stores a normalised config and refuses a code the checkout would not honour or a slug that names no active product", async () => {
+    mocks.productFindMany.mockResolvedValue([{ slug: "trakci" }, { slug: "pasta" }]);
+    expect(await saveBundleBuilderAction({ ...bundleBuilder, offerUnits: [3, 1, 3, 2], addOnSlugs: ["Trakci", " pasta "], couponCode: "paket15" })).toEqual({ ok: true });
+    expect(mocks.couponFindUnique).toHaveBeenCalledWith({ where: { code: "PAKET15" }, select: { active: true, type: true } });
+    expect(mocks.productFindMany.mock.calls[0][0]).toMatchObject({ where: { slug: { in: ["trakci", "pasta"] }, status: "ACTIVE" } });
+    expect(mocks.settingUpsert.mock.calls[0][0]).toMatchObject({ where: { key: "bundle.builder" }, create: { value: { offerUnits: [1, 2, 3], addOnSlugs: ["trakci", "pasta"], couponCode: "PAKET15" } } });
+    // The discount line is the promo engine's cents for this selection, so only an active PERCENT coupon may be stored.
+    for (const coupon of [null, { active: false, type: "PERCENT" }, { active: true, type: "FIXED" }, { active: true, type: "FREE_SHIPPING" }]) {
+      mocks.couponFindUnique.mockResolvedValueOnce(coupon);
+      expect(await saveBundleBuilderAction({ ...bundleBuilder, couponCode: "paket15" }), JSON.stringify(coupon)).toEqual({ ok: false, error: "couponUnknown" });
+    }
+    mocks.productFindMany.mockResolvedValueOnce([{ slug: "trakci" }]);
+    expect(await saveBundleBuilderAction({ ...bundleBuilder, addOnSlugs: ["trakci", "ni-izdelka"] })).toEqual({ ok: false, error: "productUnknown" });
+    // The first offer is the single unit the shopper already chose; four counts and four add-ons are past the row's width.
+    expect(await saveBundleBuilderAction({ ...bundleBuilder, offerUnits: [2, 3] })).toEqual({ ok: false, error: "invalid" });
+    expect(await saveBundleBuilderAction({ ...bundleBuilder, addOnSlugs: ["trakci", "pasta", "ustnik", "nitka"] })).toEqual({ ok: false, error: "invalid" });
     expect(mocks.settingUpsert).toHaveBeenCalledTimes(1);
   });
 });

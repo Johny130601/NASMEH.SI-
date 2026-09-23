@@ -6,6 +6,7 @@ import { getEnv } from "@/lib/env";
 import {
   GUEST_CART_COOKIE,
   GUEST_CART_MAX_AGE_S,
+  GUEST_CART_MAX_LINES,
   signGuestCart,
   verifyGuestCart,
   type CartLine,
@@ -123,6 +124,117 @@ export async function addToCart(
     : [...lines, { variantId: line.variantId, quantity }];
   await writeGuestCart(next);
   return { lines: next, addedQuantity: after - before };
+}
+
+export interface EnsureLineOutcome {
+  variantId: string;
+  /** Units the line holds after the write. */
+  storedQuantity: number;
+  /** Units this write really added — 0 when the line already held enough. */
+  addedQuantity: number;
+  /** The per-line cap stopped the line short of the quantity asked for. */
+  capped: boolean;
+}
+
+export interface EnsureLinesOutcome {
+  lines: CartLine[];
+  results: EnsureLineOutcome[];
+}
+
+/**
+ * Raise several lines to at least the quantity asked for, in ONE write
+ * (AGENTS §5.4). Used by the bundle builder, where one gesture commits an
+ * offer and its add-ons.
+ *
+ * "At least" and never less: the shopper may already hold more of a variant
+ * than this bundle asks for, and a builder must not quietly empty a cart it
+ * did not fill. Each line settles at
+ * `min(max(before, asked), maxCartQuantity)`, so the write is idempotent —
+ * the same submit twice leaves the same cart — and the product the PDP
+ * already added before sending the shopper here is absorbed rather than
+ * doubled.
+ *
+ * Per line it reports what really landed, because a cap that clamps one line
+ * must not be confirmed as a success (AGENTS §8.23).
+ */
+export async function ensureCartLines(
+  userId: string | null,
+  lines: CartLine[],
+  maxByVariant: ReadonlyMap<string, number>,
+): Promise<EnsureLinesOutcome> {
+  if (lines.length === 0) return { lines: await getCartLines(userId), results: [] };
+
+  if (userId) {
+    const results = await db.$transaction(async (tx) => {
+      const cart = await getOrCreateDbCart(userId, tx);
+      const out: EnsureLineOutcome[] = [];
+      for (const line of lines) {
+        const max = maxByVariant.get(line.variantId) ?? 0;
+        if (max <= 0) {
+          out.push({ variantId: line.variantId, storedQuantity: 0, addedQuantity: 0, capped: true });
+          continue;
+        }
+        // Read under the lock the upsert below takes, so the reported
+        // difference cannot lie when another tab writes the same line.
+        const [prior] = await tx.$queryRaw<Array<{ quantity: number }>>`
+          SELECT "quantity" FROM "CartItem"
+          WHERE "cartId" = ${cart.id} AND "variantId" = ${line.variantId}
+          FOR UPDATE
+        `;
+        const before = prior?.quantity ?? 0;
+        const asked = Math.min(line.quantity, max);
+        // GREATEST keeps a bigger existing line; LEAST re-applies the cap.
+        const [written] = await tx.$queryRaw<Array<{ quantity: number }>>`
+          INSERT INTO "CartItem" ("id", "cartId", "variantId", "quantity")
+          VALUES (${randomUUID()}, ${cart.id}, ${line.variantId}, ${asked})
+          ON CONFLICT ("cartId", "variantId") DO UPDATE
+          SET "quantity" = LEAST(GREATEST("CartItem"."quantity", EXCLUDED."quantity"), ${max})
+          RETURNING "quantity"
+        `;
+        const stored = written?.quantity ?? before;
+        out.push({
+          variantId: line.variantId,
+          storedQuantity: stored,
+          addedQuantity: stored - before,
+          capped: line.quantity > max,
+        });
+      }
+      return out;
+    });
+    return { lines: await getCartLines(userId), results };
+  }
+
+  const current = await readGuestCart();
+  const next = current.map((line) => ({ ...line }));
+  const results: EnsureLineOutcome[] = [];
+  for (const line of lines) {
+    const max = maxByVariant.get(line.variantId) ?? 0;
+    const existing = next.find((l) => l.variantId === line.variantId);
+    const before = existing?.quantity ?? 0;
+    if (max <= 0) {
+      results.push({ variantId: line.variantId, storedQuantity: before, addedQuantity: 0, capped: true });
+      continue;
+    }
+    // The signed cookie refuses more than GUEST_CART_MAX_LINES lines, and a
+    // cookie that fails verification reads as an EMPTY cart — so a line that
+    // would overflow it is dropped here rather than costing the shopper the
+    // whole cart on the next request.
+    if (!existing && next.length >= GUEST_CART_MAX_LINES) {
+      results.push({ variantId: line.variantId, storedQuantity: 0, addedQuantity: 0, capped: true });
+      continue;
+    }
+    const stored = Math.min(Math.max(before, line.quantity), max);
+    if (existing) existing.quantity = stored;
+    else next.push({ variantId: line.variantId, quantity: stored });
+    results.push({
+      variantId: line.variantId,
+      storedQuantity: stored,
+      addedQuantity: stored - before,
+      capped: line.quantity > max,
+    });
+  }
+  await writeGuestCart(next);
+  return { lines: next, results };
 }
 
 export async function setLineQuantity(

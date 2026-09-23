@@ -18,6 +18,11 @@ import { UiButton } from "../ui/UiButton";
  * request say so in a line under the button — no green state, no analytics
  * event and no confirmation card for a cart that did not change. A partial
  * add states the units the cap let through, not the ones asked for.
+ *
+ * `nextHref` hands the shopper on to the bundle builder instead of confirming
+ * in place — but ONLY when the add was clean. A clamped or refused add still
+ * has something to report, and §8.23 says it is reported here, not navigated
+ * away from.
  */
 export function AddToCartButton({
   variantId,
@@ -30,6 +35,7 @@ export function AddToCartButton({
   variant = "primary",
   fullWidth = true,
   className = "",
+  nextHref = null,
 }: {
   variantId: string;
   sku: string;
@@ -42,6 +48,8 @@ export function AddToCartButton({
   variant?: "primary" | "sale" | "outline" | "ghost";
   fullWidth?: boolean;
   className?: string;
+  /** Where a CLEAN add continues to (the bundle builder); null confirms in place. */
+  nextHref?: string | null;
 }) {
   const router = useRouter();
   const [state, setState] = useState<"idle" | "busy" | "done">("idle");
@@ -61,6 +69,13 @@ export function AddToCartButton({
           // really landed in the cart, never the quantity that was asked for
           const stored = result.addedQuantity ?? quantity;
           pushEvent(buildAddToCartEvent({ sku, title, priceCents, quantity: stored }));
+          if (nextHref && stored === quantity) {
+            // The next page is the confirmation: no toast to flash past, and
+            // the button stays busy until the navigation commits.
+            router.push(nextHref);
+            router.refresh();
+            return;
+          }
           setState("done");
           dispatchCartAdded({ title, priceCents, quantity: stored, imageUrl });
           router.refresh();

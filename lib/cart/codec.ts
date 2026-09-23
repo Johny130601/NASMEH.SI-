@@ -10,6 +10,10 @@ import { z } from "zod";
 
 export const GUEST_CART_COOKIE = "nasmeh_cart";
 export const GUEST_CART_MAX_AGE_S = 60 * 60 * 24 * 30; // 30 days
+/** Cookie ceiling: a payload over this many lines fails verification, and a
+ *  cookie that fails verification reads as an empty cart — so writers cap
+ *  themselves here rather than letting a shopper lose the lot. */
+export const GUEST_CART_MAX_LINES = 50;
 
 export const cartLineSchema = z.object({
   variantId: z.string().min(1).max(64),
@@ -18,7 +22,7 @@ export const cartLineSchema = z.object({
 
 const payloadSchema = z.object({
   v: z.literal(1),
-  lines: z.array(cartLineSchema).max(50),
+  lines: z.array(cartLineSchema).max(GUEST_CART_MAX_LINES),
   revision: z.string().max(64).optional(),
 });
 

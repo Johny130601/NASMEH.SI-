@@ -71,6 +71,52 @@ export const welcomePopupSchema = z.object({
 });
 export type WelcomePopupInput = z.input<typeof welcomePopupSchema>;
 
+/**
+ * Bundle builder (/sestavi-paket) — the step between a product page and the
+ * cart. Merchandising config, so it lives here with the other CMS settings
+ * and is written under `content:manage`.
+ *
+ * It holds NO price, percentage or claim: every figure the module renders is
+ * computed at request time from the variants it resolves and from the promo
+ * engine's decision for that exact selection (AGENTS §8.23). The offers are
+ * quantities of the product the shopper came from — not separate SKUs — so
+ * the coupon engine can price them and nothing is left orphaned in the cart.
+ */
+export const bundleBuilderSchema = z.object({
+  /** Gates the hand-off FROM a product page; /sestavi-paket itself always renders. */
+  enabled: z.boolean(),
+  /** Unit counts the offer row shows. Stored ascending and deduped. */
+  offerUnits: z.array(z.number().int().min(1).max(20)).min(1).max(4)
+    .transform((units) => [...new Set(units)].sort((a, b) => a - b))
+    .refine((units) => units[0] === 1, { message: "first offer must be 1" }),
+  /** Add-ons to prefer, in order; empty means "derive from the base product's collections". */
+  addOnSlugs: z.array(z.string().trim().toLowerCase().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)).max(3),
+  /**
+   * An existing active PERCENT coupon, applied to the cart when the bundle is
+   * added so the cart and the checkout charge exactly what the module showed.
+   * Empty means no discount line anywhere — never a discount we cannot honour.
+   */
+  couponCode: z.union([z.literal(""), z.string().trim().toUpperCase().regex(/^[A-Z0-9][A-Z0-9-]{2,23}$/)]),
+  /**
+   * The monthly-delivery row. Interest capture only: there is no recurring
+   * payment path in this store, so the row carries no percentage, changes no
+   * figure and is never sent to the cart.
+   */
+  subscriptionRow: z.boolean(),
+});
+export type BundleBuilderInput = z.input<typeof bundleBuilderSchema>;
+export type BundleBuilderSetting = z.output<typeof bundleBuilderSchema>;
+
+export const DEFAULT_BUNDLE_BUILDER: BundleBuilderSetting = {
+  enabled: true,
+  offerUnits: [1, 2, 3],
+  addOnSlugs: [],
+  // No coupon until an operator names one: an unconfigured module shows plain
+  // prices rather than a discount the cart would not apply.
+  couponCode: "",
+  subscriptionRow: true,
+};
+
 // ---------- menus ----------
 
 export const MENU_HANDLES = ["header", "utility", "footer-trgovina", "footer-pomoc", "footer-sledite", "footer-pravno", "mobile"] as const;
@@ -108,7 +154,7 @@ export const RESERVED_SLUGS = new Set([
   "admin", "api", "uploads", "vzdrzevanje", "sitemap.xml", "robots.txt", "_next", "favicon.ico",
   "cart", "checkout", "dostava", "iskanje", "izdelek", "koda", "kontakt", "o-nas", "oceni", "odjava-novice", "odjava-zaloga", "odstop-od-pogodbe",
   "paketi", "politika-piskotkov", "pomoc", "ponastavi-geslo", "potrdi", "potrdi-racun", "potrdi-zalogo", "potrditev", "pozabljeno-geslo",
-  "prijava", "prijava-nezelenega-ucinka", "racun", "razisli", "registracija", "reklamacije", "sledi", "trgovina",
+  "prijava", "prijava-nezelenega-ucinka", "racun", "razisli", "registracija", "reklamacije", "sestavi-paket", "sledi", "trgovina",
 ]);
 
 /** Static routes that render the content page of the same slug inside their own template. */

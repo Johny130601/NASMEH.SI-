@@ -155,17 +155,22 @@ test("PDP accordions toggle + buy box stepper + disabled ATC", async ({
   await buyBox.getByLabel("Zmanjšaj količino").click();
   await expect(qtyValue).toHaveText("2");
 
-  // ATC is LIVE (Phase 3a): enabled and adds to cart
-  const atc = buyBox.getByRole("button", { name: "Dodaj v košarico" });
-  await expect(atc).toBeEnabled();
-  await atc.click();
-  await expect(buyBox.getByRole("button", { name: "Dodano ✓" })).toBeVisible();
-  await expect(page.locator("[data-cart-badge]")).toHaveText("2");
-
-  // sticky buy bar present
+  // sticky buy bar present — asserted before the add, which leaves the page
   await expect(
     page.locator("div.fixed").getByText("Belilni trakci za zobe (14 uporab)"),
   ).toBeVisible();
+
+  // ATC is LIVE (Phase 3a): enabled, and a clean add hands the shopper on to
+  // the bundle builder for this product (§7.1) instead of confirming in place
+  const atc = buyBox.getByRole("button", { name: "Dodaj v košarico" });
+  await expect(atc).toBeEnabled();
+  await atc.click();
+  await expect(page).toHaveURL(/\/sestavi-paket\?izdelek=belilni-trakci-za-zobe$/);
+  await expect(
+    page.locator("[data-bundle-builder='belilni-trakci-za-zobe']"),
+  ).toBeVisible();
+  // both units the stepper asked for really landed
+  await expect(page.locator("[data-cart-badge]")).toHaveText("2");
 });
 
 test("sold-out PDP: Obvestite me replaces ATC, page stays merchandised", async ({
