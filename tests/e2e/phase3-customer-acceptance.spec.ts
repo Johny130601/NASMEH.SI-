@@ -15,6 +15,18 @@ async function dismissCmp(page: Page) {
   }
 }
 
+// Since the bundle builder (2026-09-23) a clean add from the buy box no longer confirms in
+// place: the shopper continues to the builder for that product (pdp.spec). The header badge
+// counts the units the cart holds and is the proof the line landed.
+async function addFromBuyBox(page: Page, slug: string, expectedBadge: string) {
+  await page.goto(`/izdelek/${slug}`);
+  await dismissCmp(page);
+  await page.locator("[data-buy-box]").getByRole("button", { name: "Dodaj v košarico", exact: true }).click();
+  await expect(page).toHaveURL(`/sestavi-paket?izdelek=${slug}`);
+  await expect(page.locator(`[data-bundle-builder='${slug}']`)).toBeVisible();
+  await expect(page.locator("[data-cart-badge]")).toHaveText(expectedBadge);
+}
+
 async function guestOrder() {
   const key = randomUUID();
   return prisma.order.create({
@@ -100,11 +112,10 @@ test("adding the same item twice while signed in increments the stored quantity"
     await form.getByRole("button", { name: "Prijava", exact: true }).click();
     await page.waitForURL(/\/racun/);
 
+    // A repeat add of one unit under the cap is a clean add too, so it hands off again;
+    // the badge must climb with each add.
     for (let index = 0; index < 2; index++) {
-      await page.goto("/izdelek/belilni-trakci-za-zobe");
-      const buyBox = page.locator("[data-buy-box]");
-      await buyBox.getByRole("button", { name: "Dodaj v košarico", exact: true }).click();
-      await expect(buyBox.getByRole("button", { name: "Dodano ✓", exact: true })).toBeVisible();
+      await addFromBuyBox(page, "belilni-trakci-za-zobe", String(index + 1));
     }
     const cart = await prisma.cart.findUniqueOrThrow({
       where: { userId: user.id }, include: { items: true },
@@ -172,10 +183,7 @@ test("guest purchaser receives private confirmation, can verify an account, and 
     },
   });
   try {
-    await page.goto(`/izdelek/${product.slug}`);
-    await dismissCmp(page);
-    await page.locator("[data-buy-box]").getByRole("button", { name: "Dodaj v košarico", exact: true }).click();
-    await expect(page.locator("[data-buy-box]").getByRole("button", { name: "Dodano ✓", exact: true })).toBeVisible();
+    await addFromBuyBox(page, product.slug, "1");
     await page.goto("/checkout");
     await page.getByLabel("E-pošta").fill(email);
     await page.locator("[data-continue-contact]").click();
@@ -213,9 +221,7 @@ test("guest purchaser receives private confirmation, can verify an account, and 
     }
 
     // The old confirmation must never erase a cart assembled after purchase.
-    await page.goto(`/izdelek/${product.slug}`);
-    await page.locator("[data-buy-box]").getByRole("button", { name: "Dodaj v košarico", exact: true }).click();
-    await expect(page.locator("[data-buy-box]").getByRole("button", { name: "Dodano ✓", exact: true })).toBeVisible();
+    await addFromBuyBox(page, product.slug, "1");
     const newCart = (await page.context().cookies()).find(cookie => cookie.name === "nasmeh_cart")?.value;
     await page.goto(`/potrditev/${number}`);
     const accountForm = page.locator("[data-create-account]");

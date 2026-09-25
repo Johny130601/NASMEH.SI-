@@ -25,6 +25,8 @@
 
 **Not run for this commit:** the full browser suite, the Docker build and container smoke, Lighthouse. The change touches no layout, font, image or checkout bundle; the storefront chrome is unchanged. The next full acceptance run covers it. `docker-smoke.ps1` (session scratchpad) asserts the migration count and must read **29**.
 
+> **Covered 2026-09-25** — [full acceptance run](full-acceptance-2026-09-25.md). The full suite found five stale Phase 3 fixtures (`phase3-checkout-quote.spec.ts`, `phase3-customer-acceptance.spec.ts`) that still waited for the in-place "Dodano ✓" the PDP handoff replaced; the add itself worked. Repaired in the test files, then 162 of 162 in the default mode and 162 of 162 with the policy enforced; Docker build and container smoke 19 of 19 at 29 migrations. Lighthouse not re-run, for the reason above.
+
 ## Notes and follow-ups
 
 - The PDP handoff calls `router.push` and then `router.refresh()` so the header's cart badge is current on arrival; the refresh re-renders the page being left as well. One wasted server render per handoff, no visible delay — worth replacing with a targeted badge update when the cart chrome is next touched.

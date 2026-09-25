@@ -61,7 +61,12 @@ async function startCheckout(page: Page, fixture: QuoteFixture) {
   await expect(banner).toBeHidden();
   const add = page.locator("[data-buy-box]").getByRole("button", { name: "Dodaj v košarico", exact: true });
   await add.click();
-  await expect(page.locator("[data-buy-box]")).toContainText("Dodano ✓");
+  // Since the bundle builder (2026-09-23) a clean add no longer confirms in place: the shopper
+  // continues to the builder for this product (pdp.spec), and the header badge is the proof
+  // that the line landed. The fixture is private and in no collection, so the builder renders
+  // the product's own offers without add-ons.
+  await expect(page).toHaveURL(`/sestavi-paket?izdelek=${fixture.slug}`);
+  await expect(page.locator(`[data-bundle-builder='${fixture.slug}']`)).toBeVisible();
   await expect(page.locator("[data-cart-badge]")).toHaveText("1");
   await page.goto("/checkout");
   await expect(page.locator("[data-checkout-wizard]")).toBeVisible();
