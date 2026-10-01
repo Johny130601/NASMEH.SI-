@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { HeroSlotSetting } from "@/lib/settings";
-import { home } from "@/lib/copy";
+import { home } from "@/lib/copy/home";
 import { TrustRow } from "../pdp/TrustRow";
 import { UiButton } from "../ui/UiButton";
 import { UiIcon } from "../ui/UiIcon";
@@ -11,6 +11,21 @@ export interface HeroTrust {
   estimate: string | null;
   /** Formatted free-shipping threshold, or null when every order ships free. */
   freeThreshold: string | null;
+}
+
+/** The poster (the LCP element, never lazy) or the neutral placeholder. */
+function HeroStill({ poster, alt }: { poster?: string | null; alt: string }) {
+  return poster ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={poster}
+      alt={alt}
+      fetchPriority="high"
+      className="aspect-[4/5] w-full rounded-card object-cover"
+    />
+  ) : (
+    <div aria-hidden="true" className="aspect-[4/5] w-full rounded-card bg-light-3" />
+  );
 }
 
 /**
@@ -71,16 +86,27 @@ export function HeroSection({ hero, trust }: { hero: HeroSlotSetting | null; tru
               ) : null}
               <source src={content.videoDesktop} media="(width >= 768px)" />
             </video>
-          ) : content.poster ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={content.poster}
-              alt={content.imageAlt ?? home.hero.mediaAlt}
-              fetchPriority="high"
-              className="aspect-[4/5] w-full rounded-card object-cover"
-            />
+          ) : content.videoMobile ? (
+            // Only a phone crop is set (QA T7-F13): phones play it, wider screens keep the still.
+            <>
+              <video
+                autoPlay
+                muted
+                loop
+                playsInline
+                poster={content.poster}
+                aria-label={content.imageAlt ?? home.hero.mediaAlt}
+                className="aspect-[4/5] w-full rounded-card object-cover md:hidden"
+                data-hero-video="mobile"
+              >
+                <source src={content.videoMobile} media="(width < 768px)" />
+              </video>
+              <div className="max-md:hidden">
+                <HeroStill poster={content.poster} alt={content.imageAlt ?? home.hero.mediaAlt} />
+              </div>
+            </>
           ) : (
-            <div aria-hidden="true" className="aspect-[4/5] w-full rounded-card bg-light-3" />
+            <HeroStill poster={content.poster} alt={content.imageAlt ?? home.hero.mediaAlt} />
           )}
         </div>
       </div>

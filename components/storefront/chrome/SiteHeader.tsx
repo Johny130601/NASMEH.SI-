@@ -3,54 +3,76 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getCartLines } from "@/lib/cart/server";
 import { getMenu, getSetting, SETTING_KEYS } from "@/lib/settings";
-import { chrome as copy, home } from "@/lib/copy";
+import { utilityMenuItems } from "@/lib/menus";
+import { chrome as copy } from "@/lib/copy/chrome";
+import { home } from "@/lib/copy/home";
 import { UiMarquee } from "../ui/UiMarquee";
 import { UiIcon } from "../ui/UiIcon";
 import { CartBadge } from "./CartBadge";
 import { MegaMenu, type FeaturedCardData } from "./MegaMenu";
 import { MobileDrawer } from "./MobileDrawer";
 import { SearchOverlay } from "./SearchOverlay";
+import { PURCHASABLE_PRODUCT_WHERE } from "@/lib/cart/visibility";
+import { linkIsAvailable, menuHrefs, menuWithAvailableLinks, productSlugsIn } from "@/lib/content-links";
 
 /**
  * Sticky header block (§3.1): marquee (Setting) + utility bar (desktop) +
- * main nav. Single-market chrome: SI only, no region selector.
+ * main nav. Single-market chrome: SI only, no region selector. The utility
+ * bar and the drawer's footer show the operator's utility menu (QA M16), its
+ * sign-in link kept session-aware. No menu link, featured card or marquee
+ * link leads to a product page that answers 404 (QA v-a, lib/content-links).
  */
 export async function SiteHeader() {
-  const [marqueeText, marqueeHref, marqueeActive, headerItems, mobileItems, session] =
+  const [marqueeText, marqueeHref, marqueeActive, headerMenu, mobileMenu, utilityMenu, session] =
     await Promise.all([
       getSetting<string>(SETTING_KEYS.marqueeText),
       getSetting<string>(SETTING_KEYS.marqueeHref),
       getSetting<boolean>(SETTING_KEYS.marqueeActive),
       getMenu("header"),
       getMenu("mobile"),
+      getMenu("utility"),
       auth(),
     ]);
 
-  // Featured media cards for mega-menu/drawer (slugs from Menu data)
+  // Featured media cards for mega-menu/drawer (slugs from Menu data), and every
+  // product page a menu or the marquee links to, checked in one query.
   const featuredSlugs = [
     ...new Set(
-      [...headerItems, ...mobileItems].flatMap((item) => item.featured ?? []),
+      [...headerMenu, ...mobileMenu].flatMap((item) => item.featured ?? []).filter((slug): slug is string => typeof slug === "string"),
     ),
   ];
-  const featuredProducts = featuredSlugs.length
+  const linkedSlugs = productSlugsIn([...menuHrefs(headerMenu), ...menuHrefs(mobileMenu), ...menuHrefs(utilityMenu), marqueeHref]);
+  const slugs = [...new Set([...featuredSlugs, ...linkedSlugs])];
+  const products = slugs.length
     ? await db.product.findMany({
-        where: { slug: { in: featuredSlugs }, status: "ACTIVE" },
-        include: {
-          media: { where: { kind: "CARD" }, orderBy: { sortOrder: "asc" }, take: 1 },
+        // Only products a shopper can buy: drafts, hidden deal SKUs and inactive bundles answer 404 (QA M5/M7).
+        where: { slug: { in: slugs }, ...PURCHASABLE_PRODUCT_WHERE },
+        select: {
+          slug: true,
+          title: true,
+          media: { where: { kind: "CARD" }, orderBy: { sortOrder: "asc" }, take: 1, select: { url: true, alt: true } },
         },
       })
     : [];
-  const featuredCards: FeaturedCardData[] = featuredProducts.map((product) => ({
+  const purchasable = new Set(products.map((product) => product.slug));
+  const featured = new Set(featuredSlugs);
+  const featuredCards: FeaturedCardData[] = products.filter((product) => featured.has(product.slug)).map((product) => ({
     slug: product.slug,
     title: product.title,
     href: `/izdelek/${product.slug}`,
     imageUrl: product.media[0]?.url ?? null,
     imageAlt: product.media[0]?.alt ?? product.title,
   }));
+  const headerItems = menuWithAvailableLinks(headerMenu, purchasable);
+  const mobileItems = menuWithAvailableLinks(mobileMenu, purchasable);
 
   const accountItem = session?.user
     ? { label: copy.utility.account, href: "/racun" }
     : { label: copy.utility.login, href: "/prijava" };
+  // The utility bar and the drawer's footer render each item as its own link (no dropdowns).
+  const utilityItems = utilityMenuItems(menuWithAvailableLinks(utilityMenu, purchasable, { dropdowns: false }), accountItem);
+  // The marquee keeps its text; only a link to a product page that answers 404 is dropped.
+  const marqueeLink = marqueeHref && linkIsAvailable(marqueeHref, purchasable) ? marqueeHref : undefined;
 
   // cart count badge (server-computed: guest cookie or DB cart)
   const cartLines = await getCartLines(session?.user?.id ?? null);
@@ -61,7 +83,7 @@ export async function SiteHeader() {
       {marqueeActive !== false ? (
         <UiMarquee
           text={marqueeText ?? home.marqueeFallback}
-          href={marqueeHref || undefined}
+          href={marqueeLink}
         />
       ) : null}
 
@@ -72,10 +94,21 @@ export async function SiteHeader() {
             {copy.language}
           </span>
           <nav aria-label={copy.utility.label}>
-            <Link href={accountItem.href} className="inline-flex min-h-10 items-center gap-2 text-sm text-mid-1 transition-colors hover:text-dark-1">
-              <UiIcon name="account" className="h-5 w-5" />
-              {accountItem.label}
-            </Link>
+            <ul className="flex items-center gap-6">
+              {utilityItems.map((item) => (
+                <li key={item.href + item.label}>
+                  <Link
+                    href={item.href}
+                    {...(item.href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                    className={`inline-flex min-h-10 items-center gap-2 text-sm transition-colors ${item.color === "sale" ? "text-sale hover:opacity-80" : "text-mid-1 hover:text-dark-1"}`}
+                    data-utility-link={item.account ? "account" : undefined}
+                  >
+                    {item.account ? <UiIcon name="account" className="h-5 w-5" /> : null}
+                    {item.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </nav>
         </div>
       </div>
@@ -86,7 +119,7 @@ export async function SiteHeader() {
           <MobileDrawer
             items={mobileItems}
             featuredCards={featuredCards}
-            utilityItems={[accountItem]}
+            utilityItems={utilityItems}
           />
 
           <Link

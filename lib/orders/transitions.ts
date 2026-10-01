@@ -8,8 +8,10 @@ import { deliverOrderConfirmation } from "./confirmation-delivery";
 import { deductOrderInventory } from "./inventory";
 import { deliverOrderShipped } from "./shipped-delivery";
 import { notifyOrderStatus } from "./status-mail";
+import { timelinePush } from "./timeline";
 
-interface TimelineEvent { at: string; event: string; detail?: string }
+/** Re-exported so existing callers (and the unit tests that mock this module) keep one import. */
+export { timelinePush };
 
 export interface PaymentDetails { amountCents: number; currency: string }
 export interface RefundDetails extends PaymentDetails { totalRefundedCents?: number }
@@ -48,11 +50,6 @@ async function lockPaymentOrder(tx: Prisma.TransactionClient, provider: string, 
   });
   if (!order) throw new RetryableTransition({ outcome: "not_found" });
   return order;
-}
-
-export function timelinePush(order: Order, event: string, detail?: string): Prisma.InputJsonValue {
-  const timeline = Array.isArray(order.timeline) ? order.timeline as unknown as TimelineEvent[] : [];
-  return [...timeline, { at: new Date().toISOString(), event, ...(detail ? { detail } : {}) }] as unknown as Prisma.InputJsonValue;
 }
 
 const errorName = (error: unknown) => (error instanceof Error ? error.name : "UnknownError");
@@ -175,7 +172,8 @@ export async function markOrderPaid(
         invoiceIssuedAt: now,
         ...(company ? { invoiceSnapshot: invoiceSnapshotJson(buildInvoiceSnapshot(order, company, footer, now)) } : {}),
         confirmationEmailPending: true,
-        timeline: timelinePush(order, "paid", `provider:${provider}`),
+        // The order's own provider: a test-driver order is confirmed through the Stripe route (QA C2-F18).
+        timeline: timelinePush(order, "paid", `provider:${order.paymentProvider ?? provider}`),
       },
     });
     // The checkout became a paid order: its abandoned-checkout capture has no purpose left (GDPR Art. 5(1)(c), (e)).
@@ -213,7 +211,7 @@ export async function markPaymentFailed(
     if (order.status !== "PENDING" || order.paidAt) return { outcome: "ignored" };
     await tx.order.update({
       where: { id: order.id },
-      data: { timeline: timelinePush(order, "payment_failed", reason ?? provider) },
+      data: { timeline: timelinePush(order, "payment_failed", reason ?? order.paymentProvider ?? provider) },
     });
     return { outcome: "ignored" };
   });
@@ -232,7 +230,7 @@ export async function markPaymentCancelled(
       data: {
         status: "CANCELLED",
         confirmationEmailPending: false,
-        timeline: timelinePush(order, "payment_cancelled", provider),
+        timeline: timelinePush(order, "payment_cancelled", order.paymentProvider ?? provider),
       },
     });
     return { outcome: "ignored" };

@@ -19,8 +19,8 @@ const mocks = vi.hoisted(() => {
     review: model("findMany", "updateMany"),
     consentLog: model("findMany", "create"),
     authToken: model("deleteMany"),
-    orderNote: model("updateMany"),
-    refund: model("updateMany"),
+    orderNote: model("findMany", "updateMany"),
+    refund: model("findMany", "updateMany"),
     ticketAttachment: model("deleteMany"),
     ticketEmailDelivery: model("deleteMany", "updateMany"),
   };
@@ -29,7 +29,7 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/lib/db", () => ({ db: { ...mocks.client, $queryRaw: mocks.queryRaw, $transaction: (operation: (tx: unknown) => unknown) => operation(mocks.client) } }));
 vi.mock("@/lib/support/photos", () => ({ removeSupportPhotos: mocks.removeSupportPhotos }));
 
-import { anonymiseCustomer, consentReferenceQuery, exportCustomerData, loadCustomer, loadGuest, resolveCustomerSubject, subjectOrderWhere, subjectReviewWhere, subjectTicketWhere, type CustomerSubject } from "@/lib/admin/customers";
+import { anonymiseCustomer, consentReferenceQuery, exportCustomerData, loadCustomer, loadGuest, personalIdentifiers, quotesPerson, resolveCustomerSubject, scrubbedTimeline, subjectOrderWhere, subjectReviewWhere, subjectTicketWhere, type CustomerSubject } from "@/lib/admin/customers";
 import { marketingVersion } from "@/lib/consent-log";
 
 const c = mocks.client;
@@ -242,9 +242,19 @@ describe("anonymisation", () => {
     expect(await anonymiseCustomer({ userId: "u1" }, "support@nasmeh.si")).toEqual({ ok: true, orders: 2, tickets: 0 });
   });
 
-  it("logs the end of an account's opt-in, scrubs notes and keeps the invoice snapshot", async () => {
-    c.user.findUnique.mockResolvedValue({ id: "u1", email: "ana@test.si", role: "CUSTOMER", marketingOptIn: true });
-    c.order.findMany.mockResolvedValue([{ id: "o1", number: "NS-1", shippingAddress: { fullName: "Ana", country: "SI" }, billingAddress: null, marketingOptIn: true }]);
+  it("logs the end of an account's opt-in, scrubs notes quoting the e-mail, name or phone, appends to the timeline and keeps the invoice snapshot", async () => {
+    c.user.findUnique.mockResolvedValue({ id: "u1", email: "ana@test.si", name: "Ana Kovač", role: "CUSTOMER", marketingOptIn: true });
+    c.address.findMany.mockResolvedValue([{ fullName: "Ana Kovač", phone: "040 123 456" }]);
+    const timeline = [{ at: "2026-09-01T10:00:00.000Z", event: "created" }, { at: "2026-09-01T10:01:00.000Z", event: "paid", detail: "provider:stripe" }];
+    c.order.findMany.mockResolvedValue([{ id: "o1", number: "NS-1", phone: "+386 40 123 456", shippingAddress: { fullName: "Ana", country: "SI" }, billingAddress: null, marketingOptIn: true, timeline }]);
+    c.orderNote.findMany.mockResolvedValue([
+      { id: "n-email", body: "Pisala je z ANA@test.si", visibleToCustomer: false },
+      { id: "n-surname", body: "Ga. Kovačeva kliče ob 17h", visibleToCustomer: false },
+      { id: "n-phone", body: "Pokličite na 040/123-456", visibleToCustomer: false },
+      { id: "n-customer", body: "Hvala za nakup!", visibleToCustomer: true },
+      { id: "n-plain", body: "Paket pripravljen, banana za skladišče", visibleToCustomer: false },
+    ]);
+    c.refund.findMany.mockResolvedValue([{ id: "r-name", reason: "kovac je vrnila paket" }, { id: "r-plain", reason: "poškodovano ob dostavi" }]);
     expect(await anonymiseCustomer({ userId: "u1" }, "support@nasmeh.si")).toEqual({ ok: true, orders: 1, tickets: 0 });
     expect(c.consentLog.create).toHaveBeenCalledWith({ data: {
       kind: "marketing-preference", version: marketingVersion("marketing-preference"), userId: "u1", visitorId: null,
@@ -255,16 +265,46 @@ describe("anonymisation", () => {
       email: "anonymised-u1@invalid", phone: null, shippingAddress: { country: "SI", anonymized: true }, billingAddress: Prisma.DbNull,
       confirmationEmailPending: false, shippedEmailPending: false,
     });
+    // D1 (QA 2026-09-29): the entry is appended to the stored log, never written as `{ push }`.
+    expect(orderUpdate.data.timeline).toEqual([...timeline, { at: expect.any(String), event: "anonymised", detail: "support@nasmeh.si" }]);
     expect(c.couponRedemption.updateMany).toHaveBeenCalledWith({ where: { orderId: { in: ["o1"] } }, data: { email: "anonymised@invalid" } });
     expect(orderUpdate.data).not.toHaveProperty("invoiceSnapshot");
     expect(orderUpdate.data).not.toHaveProperty("legalAcceptance");
-    expect(c.orderNote.updateMany).toHaveBeenCalledWith({
-      where: { orderId: { in: ["o1"] }, OR: [{ visibleToCustomer: true }, { body: { contains: "ana@test.si", mode: "insensitive" } }] },
-      data: { body: "[anonimizirano]" },
-    });
-    expect(c.refund.updateMany).toHaveBeenCalledWith({ where: { orderId: { in: ["o1"] }, reason: { contains: "ana@test.si", mode: "insensitive" } }, data: { reason: "[anonimizirano]" } });
+    // N5: notes and refund reasons of the person's orders quoting the e-mail, a name (also a surname alone,
+    // inflected or without diacritics) or a phone number in any spacing are blanked; the customer-visible notes always.
+    expect(c.orderNote.findMany).toHaveBeenCalledWith({ where: { orderId: { in: ["o1"] } }, select: { id: true, body: true, visibleToCustomer: true } });
+    expect(c.orderNote.updateMany).toHaveBeenCalledWith({ where: { id: { in: ["n-email", "n-surname", "n-phone", "n-customer"] } }, data: { body: "[anonimizirano]" } });
+    expect(c.refund.updateMany).toHaveBeenCalledWith({ where: { id: { in: ["r-name"] } }, data: { reason: "[anonimizirano]" } });
     expect(c.user.update.mock.calls[0][0].data).toMatchObject({ email: "anonymised-u1@invalid", name: null, passwordHash: null, marketingOptIn: false });
     expect(c.consentLog.create.mock.invocationCallOrder[0]).toBeLessThan(c.user.update.mock.invocationCallOrder[0]);
+    expect(c.address.findMany.mock.invocationCallOrder[0]).toBeLessThan(c.address.deleteMany.mock.invocationCallOrder[0]);
+  });
+
+  it("blanks a cancellation reason quoting the person in the kept log, never the entry or its actor", async () => {
+    c.user.findUnique.mockResolvedValue({ id: "u1", email: "ana@test.si", name: "Ana Kovač", role: "CUSTOMER", marketingOptIn: false });
+    const timeline = [
+      { at: "2026-09-01T10:00:00.000Z", event: "created", detail: "provider:stripe" },
+      { at: "2026-09-01T11:00:00.000Z", event: "cancelled", detail: "Ana Kovač je poklicala: ne želi več:support@nasmeh.si" },
+      { at: "2026-09-02T11:00:00.000Z", event: "cancelled", detail: "podvojeno naročilo:ana.podpora@nasmeh.si" },
+      { at: "2026-09-03T11:00:00.000Z", event: "cancelled", detail: "cents:1886:support@nasmeh.si" },
+    ];
+    c.order.findMany.mockResolvedValue([{ id: "o1", number: "NS-1", status: "CANCELLED", phone: null, shippingAddress: {}, billingAddress: null, timeline }]);
+    await anonymiseCustomer({ userId: "u1" }, "support@nasmeh.si");
+    expect(c.order.update.mock.calls[0][0].data.timeline).toEqual([
+      timeline[0],
+      { ...timeline[1], detail: "[anonimizirano]:support@nasmeh.si" },
+      // A staff actor whose address happens to start with the first name is not the person.
+      timeline[2],
+      timeline[3],
+      { at: expect.any(String), event: "anonymised", detail: "support@nasmeh.si" },
+    ]);
+  });
+
+  it("keeps an order's existing log when the timeline column holds no array", async () => {
+    c.user.findUnique.mockResolvedValue({ id: "u1", email: "ana@test.si", role: "CUSTOMER", marketingOptIn: false });
+    c.order.findMany.mockResolvedValue([{ id: "o1", number: "NS-1", status: "DELIVERED", phone: null, shippingAddress: {}, billingAddress: null, timeline: null }]);
+    await anonymiseCustomer({ userId: "u1" }, "support@nasmeh.si");
+    expect(c.order.update.mock.calls[0][0].data.timeline).toEqual([{ at: expect.any(String), event: "anonymised", detail: "support@nasmeh.si" }]);
   });
 
   it("links a guest's withdrawal row to the latest order and the confirmed subscription", async () => {
@@ -308,5 +348,28 @@ describe("anonymisation", () => {
     expect(c.user.update).not.toHaveBeenCalled();
     expect(c.subscriber.deleteMany).not.toHaveBeenCalled();
     expect(c.consentLog.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("what staff free text may quote about the person (N5)", () => {
+  const identifiers = personalIdentifiers({
+    emails: ["Ana.Kovac@Test.si"], names: ["Ana Kovač-Novak", "  ", null, "Bo"], phones: ["+386 41 123 456", "12", null],
+  });
+
+  it("collects the e-mail, full names, name words of 3+ letters and each phone's national digits", () => {
+    expect(identifiers).toEqual({ terms: ["ana.kovac@test.si", "ana kovac-novak", "ana", "kovac", "novak"], phones: ["41123456"] });
+  });
+
+  it("matches a term at the start of a word, without case or diacritics, and a phone in any spacing", () => {
+    for (const text of ["Klicala je ga. NOVAKOVA", "kovač", "Ana bo prišla", "pišite na ana.kovac@test.si", "041 123 456", "+386 (41) 123-456", "tel.041/123456"]) {
+      expect(quotesPerson(text, identifiers), text).toBe(true);
+    }
+    for (const text of ["banana", "Paket pripravljen", "Obvestilo 41 123", ""]) expect(quotesPerson(text, identifiers), text).toBe(false);
+  });
+
+  it("leaves a stored log that is no array, or holds no cancellation, as it is", () => {
+    expect(scrubbedTimeline(null, identifiers)).toBeNull();
+    const log = [{ at: "t", event: "shipped", detail: "GLS:ana@nasmeh.si" }, { at: "t", event: "cancelled", detail: "Kovač" }];
+    expect(scrubbedTimeline(log, identifiers)).toEqual([log[0], { at: "t", event: "cancelled", detail: "[anonimizirano]" }]);
   });
 });

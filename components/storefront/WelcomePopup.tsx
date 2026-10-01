@@ -1,27 +1,44 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, useState, useTransition, type FormEvent } from "react";
+import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import { subscribeNewsletterAction } from "@/app/(storefront)/actions/newsletter";
 import { applyKodaAction } from "@/app/(storefront)/actions/koda";
-import { common, footer, newsletter, promo } from "@/lib/copy";
+import { common } from "@/lib/copy/common";
+import { footer } from "@/lib/copy/footer";
+import { newsletter } from "@/lib/copy/newsletter";
+import { promo } from "@/lib/copy/promo";
 import type { WelcomePopupSetting } from "@/lib/settings-types";
+import { markWelcomeSeen, welcomeSeenThisSession } from "@/lib/welcome-popup-flag";
 import { useConsent } from "./cmp/ConsentProvider";
 import { ChallengeStatus, useLazyChallenge } from "./chrome/useLazyChallenge";
 import { PrivacyNotice } from "./PrivacyNotice";
 import { UiButton } from "./ui/UiButton";
 import { UiInput } from "./ui/UiInput";
 import { UiIcon } from "./ui/UiIcon";
+import { useDialogFocus } from "./ui/useDialogFocus";
 
-const SESSION_FLAG = "nasmeh_welcome_seen";
-const SUPPRESSED_PATHS = ["/cart", "/checkout", "/racun"];
+/** Cart, checkout, the account, every sign-in, activation, reset, review and
+ * unsubscribe screen, and the support, withdrawal, complaint, adverse-event and
+ * tracking forms: a marketing prompt has no place over a task the visitor came
+ * to finish (a guest sent to /prijava from /racun included), and the dialog
+ * takes focus, so it must not open while someone is typing a message. */
+const SUPPRESSED_PATHS = [
+  "/cart", "/checkout", "/racun", "/prijava", "/registracija", "/pozabljeno-geslo", "/ponastavi-geslo",
+  "/potrdi", "/odjava-", "/oceni",
+  "/kontakt", "/odstop-od-pogodbe", "/reklamacije", "/prijava-nezelenega-ucinka", "/sledi",
+];
 
 /**
  * Welcome popup (§9.3): Setting-driven copy/timing/code/active. Suppressed on
- * /cart /checkout /racun, for known subscribers, and once-interacted-per-
- * session. It never opens (and hides) while the consent banner awaits a
- * choice, so it cannot cover the banner's buttons. Bottom sheet on mobile /
- * centered on desktop. Thank-you state auto-stores the code for checkout.
+ * cart/checkout/account/auth and support-form paths, for known subscribers (a signed-in
+ * subscriber, or a guest whose stored code is already the popup's — the
+ * layout decides), and once-interacted-per-session — a sign-up in the footer
+ * form counts, even one made while the delay runs (lib/welcome-popup-flag.ts). It never
+ * opens (and hides) while the consent banner awaits a choice, so it cannot
+ * cover the banner's buttons. Focus moves into the dialog, stays there and
+ * Escape dismisses it. Bottom sheet on mobile / centered on desktop.
+ * Thank-you state auto-stores the code for checkout.
  * Capture = Phase 1 double opt-in with source "welcome-popup": its own lazily
  * mounted Turnstile widget, the fixed consent note and the privacy link under
  * the operator copy.
@@ -47,30 +64,36 @@ export function WelcomePopup({
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const dialogRef = useRef<HTMLDivElement>(null);
 
-  const suppressed =
-    !setting.active ||
-    knownSubscriber ||
-    SUPPRESSED_PATHS.some((path) => pathname.startsWith(path));
+  const pathSuppressed = SUPPRESSED_PATHS.some((path) => pathname.startsWith(path));
+  const suppressed = !setting.active || knownSubscriber || pathSuppressed;
 
   useEffect(() => {
     if (suppressed || bannerOpen) return;
-    if (sessionStorage.getItem(SESSION_FLAG)) return;
+    if (welcomeSeenThisSession()) return;
+    // Checked again when the delay ends: the footer form may have taken the e-mail meanwhile.
     const timer = setTimeout(
-      () => setOpen(true),
+      () => { if (!welcomeSeenThisSession()) setOpen(true); },
       Math.max(1, setting.delaySeconds) * 1000,
     );
     return () => clearTimeout(timer);
   }, [suppressed, bannerOpen, setting.delaySeconds]);
 
   const dismiss = () => {
-    sessionStorage.setItem(SESSION_FLAG, "1");
+    markWelcomeSeen();
     setOpen(false);
   };
+  // Hidden, not dismissed, when the visitor moves on to a suppressed page (checkout, sign-in, ...).
+  // Only the path hides an open popup: subscribing stores the popup's code, the layout
+  // then counts this browser as a known subscriber, and the thank-you state with the
+  // code must stay on screen (that flag only keeps the popup from opening again).
+  const visible = open && !bannerOpen && !pathSuppressed;
+  useDialogFocus(visible, dialogRef, { onClose: dismiss });
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    sessionStorage.setItem(SESSION_FLAG, "1");
+    markWelcomeSeen();
     setMessage(null);
     // A submit made before the widget answered goes out as soon as it does.
     human.submit((turnstileToken) => {
@@ -92,15 +115,17 @@ export function WelcomePopup({
     });
   };
 
-  if (!open || bannerOpen) return null;
+  if (!visible) return null;
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label={setting.title}
+      tabIndex={-1}
       data-welcome-popup
-      className="fixed inset-x-0 bottom-0 z-50 border-t border-light-2 bg-white p-6 shadow-xl md:inset-x-auto md:bottom-auto md:left-1/2 md:top-1/2 md:w-[26rem] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-card md:border"
+      className="fixed inset-x-0 bottom-0 z-50 border-t border-light-2 bg-white p-6 shadow-xl outline-none md:inset-x-auto md:bottom-auto md:left-1/2 md:top-1/2 md:w-[26rem] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-card md:border"
     >
       <button
         type="button"

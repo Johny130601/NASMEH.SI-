@@ -132,3 +132,21 @@ test("an already-confirmed address re-arms from the sold-out PDP without a new c
     await prisma.backInStockSubscription.deleteMany({ where: { email } });
   }
 });
+
+test("the notify-me modal keeps focus inside and returns it to its trigger (QA T1-05)", async ({ page }) => {
+  await page.goto("/izdelek/belilni-trakci-potovalni-7");
+  await dismissCmp(page);
+  const trigger = page.locator("[data-buy-box]").getByRole("button", { name: "Obvestite me" });
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "Obvestite me, ko bo spet na zalogi" });
+  await expect(dialog).toBeVisible();
+  const focusInside = () => dialog.evaluate((element) => element.contains(document.activeElement));
+  expect(await focusInside()).toBe(true);
+  for (const key of ["Tab", "Tab", "Tab", "Tab", "Tab", "Tab", "Shift+Tab", "Shift+Tab", "Shift+Tab"]) {
+    await page.keyboard.press(key);
+    expect(await focusInside(), key).toBe(true);
+  }
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});

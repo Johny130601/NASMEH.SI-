@@ -23,6 +23,8 @@ export const auth = {
     genericError: "Prijava ni uspela. Poskusite znova.",
     mfaExpired: "Potrditev prijave je potekla. Prijavite se znova.",
     rateLimited: "Preveč poskusov prijave. Počakajte nekaj minut in poskusite znova.",
+    /** After a password change from /racun/podatki every session ends, this one too (QA T3-A1). */
+    passwordChanged: "Geslo je spremenjeno in odjavljeni ste na vseh napravah. Prijavite se z novim geslom.",
   },
   mfa: {
     title: "Potrditvena koda",
@@ -48,7 +50,14 @@ export const auth = {
     successTitle: "Skoraj gotovo!",
     successBody: "Poslali smo vam potrditveno sporočilo — s klikom na povezavo aktivirate račun.",
     weakPassword: "Geslo mora imeti vsaj 8 znakov.",
-    invalidInput: "Preverite ime, e-pošto in geslo. Geslo mora imeti vsaj 8 znakov; predolgo geslo skrajšajte.",
+    invalidInput: "Preverite označena polja.",
+    /** Per-field messages the server names on an invalid submission (QA T3-F4). */
+    fields: {
+      firstName: "Vnesite ime (do 60 znakov).",
+      lastName: "Vnesite priimek (do 60 znakov).",
+      email: "Vnesite veljaven e-poštni naslov (npr. ime@primer.si).",
+      password: "Geslo mora imeti od 8 do 72 znakov.",
+    },
     genericError: "Registracija ni uspela. Poskusite znova.",
   },
   verify: {
@@ -61,6 +70,10 @@ export const auth = {
     bodyOk: "Vaša e-pošta je potrjena. Prijavite se in nadaljujte z nakupom.",
     titleInvalid: "Povezava ni veljavna",
     bodyInvalid: "Potrditvena povezava je neveljavna ali je potekla. Zahtevajte novo pri registraciji.",
+    /** A used link whose account is already verified leads to sign-in, not to a re-registration that sends nothing (QA T3-F5). */
+    titleAlreadyActive: "Račun je že aktiven",
+    bodyAlreadyActive: "Ta potrditvena povezava je bila že uporabljena in vaš račun je aktiven. Prijavite se; če ste geslo pozabili, ga lahko ponastavite.",
+    forgotCta: "Ponastavi geslo",
     cta: "Na prijavo",
   },
   forgot: {

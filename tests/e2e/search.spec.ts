@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { catalog } from "@/lib/copy/catalog";
+import { search } from "@/lib/copy/search";
 import { prisma, waitForMailTo } from "./helpers";
 
 /** Search + back-in-stock double opt-in e2e. */
@@ -35,6 +37,29 @@ test("search: typing 'trak' suggests strips → results page → zero state", as
   // zero-result state
   await page.goto("/iskanje?q=xyznic");
   await expect(page.getByText("Ni zadetkov")).toBeVisible();
+});
+
+test("search relevance: a title match ranks first, slugs and JSON keys never match (QA M8)", async ({ page, request }) => {
+  await page.goto("/iskanje?q=serum");
+  await expect(page.locator("[data-product-card]").first()).toHaveAttribute("data-product-card", "serum-korektor-barve-zob");
+  // the count agrees with its number (1 izdelek, 2 izdelka, 3 izdelki, 5 izdelkov — QA T1-18)
+  const count = page.locator("[data-search-count]");
+  const found = Number(await count.getAttribute("data-search-count"));
+  expect(found).toBeGreaterThan(0);
+  await expect(count).toContainText(search.resultsCount(found));
+  // every product cross-sells another by its handle, and the metafields have keys: neither is shopper text
+  for (const query of ["crossSell", "korektor-barve-zob", "unitPrice"]) {
+    expect(await (await request.get(`/iskanje?q=${query}`)).text(), query).toContain("Ni zadetkov");
+  }
+});
+
+test("search results are the catalog's cards: the bundle keeps its value line and its CTA (QA T1-06)", async ({ page }) => {
+  await page.goto("/iskanje?q=paket");
+  const bundle = page.locator("[data-product-card='paket-popolna-rutina']");
+  await expect(bundle).toBeVisible();
+  await expect(bundle.getByRole("link", { name: catalog.card.buildBundle })).toBeVisible();
+  await expect(bundle.locator("[data-bundle-savings]")).toBeVisible();
+  await expect(bundle.getByRole("button", { name: catalog.card.addToCart })).toHaveCount(0);
 });
 
 test("search /iskanje SSR + GET form works", async ({ request }) => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import {
   trackOrderAction,
   trackShipmentAction,
@@ -10,6 +10,7 @@ import {
 import { formatEUR } from "@/lib/pricing";
 import { tracking as copy } from "@/lib/copy/tracking";
 import { TurnstileWidget } from "../chrome/TurnstileWidget";
+import { ResultHeading, useRevealOnMount } from "../ui/ResultHeading";
 import { UiButton } from "../ui/UiButton";
 import { UiInput } from "../ui/UiInput";
 
@@ -17,6 +18,9 @@ interface Challenge {
   siteKey: string | null;
   testToken: string | null;
 }
+
+type Mode = "number" | "order";
+type LookupMarker = "number" | "status" | "shipped" | "estimate" | "delivered";
 
 type Result =
   | { mode: "number"; view: ShipmentView }
@@ -26,10 +30,39 @@ function formatDate(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString("sl-SI") : "—";
 }
 
+/** "Checking …" under the form that asked, brought into view when that form sits at the fold; focus stays on the button. */
+function PendingLine() {
+  const ref = useRef<HTMLParagraphElement>(null);
+  useRevealOnMount(ref, { block: "nearest", focus: false });
+  return (
+    <p ref={ref} role="status" className="text-sm text-mid-2" data-lookup-pending>
+      {copy.pending}
+    </p>
+  );
+}
+
+/** The refusal, announced, brought into view below the form (which stays in view for the correction) and focused. */
+function ErrorLine({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  useRevealOnMount(ref, { block: "nearest" });
+  return (
+    <p ref={ref} role="alert" tabIndex={-1} className="text-sm text-error outline-none" data-lookup-error>
+      {children}
+    </p>
+  );
+}
+
 /**
  * Two lookup modes on one page (§12.3): a tracking number, or e-mail + order
  * number. Each form carries its own challenge token; results render from the
- * action response, never from client-side guesses.
+ * action response, never from client-side guesses. "Checking", the answer and
+ * the error appear directly under the form that was submitted and are brought
+ * into view; the answer and the error take focus (QA M14), so nothing changes
+ * out of sight. The buttons are aria-disabled, not disabled, while a lookup
+ * runs, so focus stays on the one that was pressed instead of falling to the
+ * page. Without JavaScript a form reloads the page with its values in the
+ * query (trackingNumber, email, orderNumber), which the page prefills like the
+ * mail links' sledenje/narocilo, and the page says the lookup needs JavaScript.
  */
 export function TrackingLookup({
   challenge,
@@ -45,10 +78,16 @@ export function TrackingLookup({
   const [orderToken, setOrderToken] = useState(challenge.testToken ?? "");
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [active, setActive] = useState<Mode | null>(null);
+  // Keys the feedback, so an identical second answer is a new element that is revealed again.
+  const [attempt, setAttempt] = useState(0);
   const [pending, startTransition] = useTransition();
 
   const submitNumber = (event: FormEvent) => {
     event.preventDefault();
+    if (pending) return;
+    setActive("number");
+    setAttempt((count) => count + 1);
     startTransition(async () => {
       const outcome = await trackShipmentAction({ trackingNumber, turnstileToken: numberToken });
       setError(outcome.ok ? null : outcome.error);
@@ -58,6 +97,9 @@ export function TrackingLookup({
 
   const submitOrder = (event: FormEvent) => {
     event.preventDefault();
+    if (pending) return;
+    setActive("order");
+    setAttempt((count) => count + 1);
     startTransition(async () => {
       const outcome = await trackOrderAction({ email, orderNumber, turnstileToken: orderToken });
       setError(outcome.ok ? null : outcome.error);
@@ -75,157 +117,145 @@ export function TrackingLookup({
   const status = (view: ShipmentView) =>
     copy.statuses[view.status as keyof typeof copy.statuses] ?? view.status;
 
+  /** One label/value row; `marker` names the data-lookup-* hook the tests and scripts read. */
+  const row = (label: string, value: ReactNode, marker?: LookupMarker, valueClass = "text-dark-1") => (
+    <div className="flex justify-between gap-4">
+      <dt className="text-mid-2">{label}</dt>
+      <dd
+        className={valueClass}
+        data-lookup-number={marker === "number" ? "" : undefined}
+        data-lookup-status={marker === "status" ? "" : undefined}
+        data-lookup-shipped={marker === "shipped" ? "" : undefined}
+        data-lookup-estimate={marker === "estimate" ? "" : undefined}
+        data-lookup-delivered={marker === "delivered" ? "" : undefined}
+      >
+        {value}
+      </dd>
+    </div>
+  );
+
+  // One feedback block, rendered under the form that asked; each attempt remounts it, so it is revealed again.
+  const feedback = (mode: Mode) => {
+    if (active !== mode) return null;
+    if (pending) return <PendingLine key={attempt} />;
+    if (error) return <ErrorLine key={attempt}>{error}</ErrorLine>;
+    if (!result) return null;
+    return (
+      <section
+        key={attempt}
+        className="rounded-card border border-light-2 bg-white p-5"
+        data-lookup-result
+        data-lookup-mode={result.mode}
+        aria-live="polite"
+      >
+        <ResultHeading className="text-lg">{result.mode === "order" ? copy.result.orderTitle : copy.result.title}</ResultHeading>
+        <dl className="mt-3 flex flex-col gap-2 text-sm">
+          {result.mode === "order" ? row(copy.result.numberLabel, result.view.number, "number") : null}
+          {row(copy.result.statusLabel, status(result.view), "status", "font-medium text-dark-1")}
+          {row(copy.result.carrierLabel, result.view.carrier ?? "—")}
+          {row(
+            copy.result.trackingLabel,
+            result.view.trackingNumber ? (
+              result.view.trackingLink ? (
+                <a
+                  href={result.view.trackingLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-brand underline underline-offset-2"
+                  data-tracking-link
+                >
+                  {result.view.trackingNumber}
+                </a>
+              ) : (
+                <span data-tracking-number>{result.view.trackingNumber}</span>
+              )
+            ) : (
+              copy.result.noTracking
+            ),
+            undefined,
+            "text-right text-dark-1",
+          )}
+          {result.view.shippedAt ? row(copy.result.shippedAtLabel, formatDate(result.view.shippedAt), "shipped") : null}
+          {result.view.estimate && !result.view.deliveredAt ? row(copy.result.estimateLabel, result.view.estimate, "estimate") : null}
+          {result.view.deliveredAt ? row(copy.result.deliveredAtLabel, formatDate(result.view.deliveredAt), "delivered") : null}
+          {result.mode === "order" ? (
+            <>
+              {row(copy.result.methodLabel, result.view.shippingMethod ?? "—")}
+              {row(copy.result.itemsLabel, result.view.itemCount)}
+              {row(copy.result.totalLabel, formatEUR(result.view.totalCents))}
+              {row(copy.result.dateLabel, formatDate(result.view.createdAt))}
+            </>
+          ) : null}
+        </dl>
+        {result.view.trackingLink ? (
+          <a
+            href={result.view.trackingLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 inline-block text-sm text-brand underline underline-offset-2"
+          >
+            {copy.result.trackLink}
+          </a>
+        ) : null}
+      </section>
+    );
+  };
+
   return (
     <div className="mt-8 flex flex-col gap-8">
-      <form onSubmit={submitNumber} className="rounded-card border border-light-2 bg-white p-5" data-track-form="number">
-        <h2 className="text-lg">{copy.byNumber.title}</h2>
-        <div className="mt-4 flex flex-col gap-4">
-          <UiInput
-            label={copy.byNumber.numberLabel}
-            name="trackingNumber"
-            autoComplete="off"
-            required
-            value={trackingNumber}
-            onChange={(event) => setTrackingNumber(event.target.value)}
-          />
-          {challengeField(numberToken, setNumberToken, "turnstileToken")}
-          <UiButton type="submit" variant="primary" fullWidth disabled={pending}>
-            {copy.byNumber.submit}
-          </UiButton>
-        </div>
-      </form>
+      <div className="flex flex-col gap-4">
+        <form onSubmit={submitNumber} className="rounded-card border border-light-2 bg-white p-5" data-track-form="number">
+          <h2 className="text-lg">{copy.byNumber.title}</h2>
+          <div className="mt-4 flex flex-col gap-4">
+            <UiInput
+              label={copy.byNumber.numberLabel}
+              name="trackingNumber"
+              autoComplete="off"
+              required
+              maxLength={80}
+              value={trackingNumber}
+              onChange={(event) => setTrackingNumber(event.target.value)}
+            />
+            {challengeField(numberToken, setNumberToken, "turnstileToken")}
+            <UiButton type="submit" variant="primary" fullWidth aria-disabled={pending} className="aria-disabled:opacity-50">
+              {copy.byNumber.submit}
+            </UiButton>
+          </div>
+        </form>
+        {feedback("number")}
+      </div>
 
-      <form onSubmit={submitOrder} className="rounded-card border border-light-2 bg-white p-5" data-track-form="order">
-        <h2 className="text-lg">{copy.byOrder.title}</h2>
-        <div className="mt-4 flex flex-col gap-4">
-          <UiInput
-            label={copy.byOrder.emailLabel}
-            name="email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
-          <UiInput
-            label={copy.byOrder.numberLabel}
-            name="orderNumber"
-            autoComplete="off"
-            required
-            value={orderNumber}
-            onChange={(event) => setOrderNumber(event.target.value)}
-          />
-          {challengeField(orderToken, setOrderToken, "turnstileToken")}
-          <UiButton type="submit" variant="outline" fullWidth disabled={pending}>
-            {copy.byOrder.submit}
-          </UiButton>
-        </div>
-      </form>
-
-      {pending ? <p role="status" className="text-sm text-mid-2">{copy.pending}</p> : null}
-
-      {error ? (
-        <p role="alert" className="text-sm text-error" data-lookup-error>
-          {error}
-        </p>
-      ) : null}
-
-      {result ? (
-        <section
-          className="rounded-card border border-light-2 bg-white p-5"
-          data-lookup-result
-          data-lookup-mode={result.mode}
-          aria-live="polite"
-        >
-          <h2 className="text-lg">{result.mode === "order" ? copy.result.orderTitle : copy.result.title}</h2>
-          <dl className="mt-3 flex flex-col gap-2 text-sm">
-            {result.mode === "order" ? (
-              <div className="flex justify-between gap-4">
-                <dt className="text-mid-2">{copy.byOrder.numberLabel}</dt>
-                <dd className="text-dark-1" data-lookup-number>{result.view.number}</dd>
-              </div>
-            ) : null}
-            <div className="flex justify-between gap-4">
-              <dt className="text-mid-2">{copy.result.statusLabel}</dt>
-              <dd className="font-medium text-dark-1" data-lookup-status>{status(result.view)}</dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-mid-2">{copy.result.carrierLabel}</dt>
-              <dd className="text-dark-1">{result.view.carrier ?? "—"}</dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-mid-2">{copy.result.trackingLabel}</dt>
-              <dd className="text-right text-dark-1">
-                {result.view.trackingNumber ? (
-                  result.view.trackingLink ? (
-                    <a
-                      href={result.view.trackingLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-brand underline underline-offset-2"
-                      data-tracking-link
-                    >
-                      {result.view.trackingNumber}
-                    </a>
-                  ) : (
-                    <span data-tracking-number>{result.view.trackingNumber}</span>
-                  )
-                ) : (
-                  copy.result.noTracking
-                )}
-              </dd>
-            </div>
-            {result.view.shippedAt ? (
-              <div className="flex justify-between gap-4">
-                <dt className="text-mid-2">{copy.result.shippedAtLabel}</dt>
-                <dd className="text-dark-1" data-lookup-shipped>{formatDate(result.view.shippedAt)}</dd>
-              </div>
-            ) : null}
-            {result.view.estimate && !result.view.deliveredAt ? (
-              <div className="flex justify-between gap-4">
-                <dt className="text-mid-2">{copy.result.estimateLabel}</dt>
-                <dd className="text-dark-1" data-lookup-estimate>{result.view.estimate}</dd>
-              </div>
-            ) : null}
-            {result.view.deliveredAt ? (
-              <div className="flex justify-between gap-4">
-                <dt className="text-mid-2">{copy.result.deliveredAtLabel}</dt>
-                <dd className="text-dark-1" data-lookup-delivered>{formatDate(result.view.deliveredAt)}</dd>
-              </div>
-            ) : null}
-            {result.mode === "order" ? (
-              <>
-                <div className="flex justify-between gap-4">
-                  <dt className="text-mid-2">{copy.result.methodLabel}</dt>
-                  <dd className="text-dark-1">{result.view.shippingMethod ?? "—"}</dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt className="text-mid-2">{copy.result.itemsLabel}</dt>
-                  <dd className="text-dark-1">{result.view.itemCount}</dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt className="text-mid-2">{copy.result.totalLabel}</dt>
-                  <dd className="text-dark-1">{formatEUR(result.view.totalCents)}</dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt className="text-mid-2">{copy.result.dateLabel}</dt>
-                  <dd className="text-dark-1">{formatDate(result.view.createdAt)}</dd>
-                </div>
-              </>
-            ) : null}
-          </dl>
-          {result.view.trackingLink ? (
-            <a
-              href={result.view.trackingLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-4 inline-block text-sm text-brand underline underline-offset-2"
-            >
-              {copy.result.trackLink}
-            </a>
-          ) : null}
-        </section>
-      ) : null}
+      <div className="flex flex-col gap-4">
+        <form onSubmit={submitOrder} className="rounded-card border border-light-2 bg-white p-5" data-track-form="order">
+          <h2 className="text-lg">{copy.byOrder.title}</h2>
+          <div className="mt-4 flex flex-col gap-4">
+            <UiInput
+              label={copy.byOrder.emailLabel}
+              name="email"
+              type="email"
+              autoComplete="email"
+              required
+              maxLength={254}
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+            <UiInput
+              label={copy.byOrder.numberLabel}
+              name="orderNumber"
+              autoComplete="off"
+              required
+              maxLength={20}
+              value={orderNumber}
+              onChange={(event) => setOrderNumber(event.target.value)}
+            />
+            {challengeField(orderToken, setOrderToken, "turnstileToken")}
+            <UiButton type="submit" variant="outline" fullWidth aria-disabled={pending} className="aria-disabled:opacity-50">
+              {copy.byOrder.submit}
+            </UiButton>
+          </div>
+        </form>
+        {feedback("order")}
+      </div>
     </div>
   );
 }

@@ -1,5 +1,7 @@
 import type { MetadataRoute } from "next";
 import { db } from "@/lib/db";
+import { productHasSellableUnits } from "@/lib/bundle/availability";
+import { PURCHASABLE_PRODUCT_WHERE } from "@/lib/cart/visibility";
 import { siteUrl } from "@/lib/seo";
 import { getMaintenance } from "@/lib/settings";
 
@@ -16,9 +18,12 @@ const RETIRED_SLUGS = ["pomoc", "o-nas", "razisli", "dostava", "paketi"];
 const INDEXABLE_ROUTES = ["/prijava-nezelenega-ucinka"];
 
 /**
- * Auto sitemap (§3.3, backlog B1): homepage, the catalog page, every ACTIVE
- * product that is visible in the catalog (sold-out products stay published),
- * the indexable static routes and the published content pages.
+ * Auto sitemap (§3.3, backlog B1): homepage, the catalog page, every product
+ * the catalog lists — purchasable (ACTIVE, no hidden deal SKU, no withdrawn
+ * bundle: lib/cart/visibility) and visible in the catalog; sold-out NOTIFY
+ * products stay published, a sold-out HIDE product leaves, a bundle counted
+ * by its components' stock — the indexable static routes and the published
+ * content pages.
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = siteUrl();
@@ -31,10 +36,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
   const [products, pages] = await Promise.all([
     db.product.findMany({
-      where: { status: "ACTIVE", visibleInCatalog: true },
-      select: { slug: true, updatedAt: true, soldOutBehavior: true, variants: { select: { stock: true, allowBackorder: true } } },
+      where: { ...PURCHASABLE_PRODUCT_WHERE, visibleInCatalog: true },
+      select: {
+        slug: true,
+        updatedAt: true,
+        soldOutBehavior: true,
+        variants: { select: { stock: true, allowBackorder: true } },
+        bundle: { select: { items: { select: { quantity: true, variant: { select: { stock: true, allowBackorder: true } } } } } },
+      },
       orderBy: { createdAt: "asc" },
-    }).then((rows) => rows.filter((row) => row.soldOutBehavior !== "HIDE" || row.variants.some((variant) => variant.stock > 0 || variant.allowBackorder))),
+    }).then((rows) => rows.filter(productHasSellableUnits)),
     db.contentPage.findMany({
       where: { published: true, slug: { notIn: RETIRED_SLUGS } },
       select: { slug: true, updatedAt: true },

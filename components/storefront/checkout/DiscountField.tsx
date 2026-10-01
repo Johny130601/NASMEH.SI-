@@ -6,7 +6,7 @@ import {
   applyKodaAction,
   clearKodaAction,
 } from "@/app/(storefront)/actions/koda";
-import { promo } from "@/lib/copy";
+import { promo } from "@/lib/copy/promo";
 import { UiButton } from "../ui/UiButton";
 import { UiInput } from "../ui/UiInput";
 import { UiIcon } from "../ui/UiIcon";

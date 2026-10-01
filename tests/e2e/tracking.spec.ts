@@ -88,6 +88,9 @@ test("shipping emails the carrier link; tracking page, account and email agree; 
     const result = page.locator("[data-lookup-result]");
     await expect(result).toBeVisible();
     await expect(result).toHaveAttribute("data-lookup-mode", "number");
+    // The answer sits right under the form that asked and takes focus (QA M14).
+    await expect(page.locator('[data-track-form="number"] + [data-lookup-result]')).toBeVisible();
+    await expect(result.getByRole("heading", { name: "Stanje pošiljke" })).toBeFocused();
     await expect(page.locator("[data-lookup-status]")).toHaveText("Odposlano");
     await expect(page.locator("[data-tracking-link]")).toHaveAttribute("href", expectedLink);
     await expect(page.locator("[data-lookup-estimate]")).toHaveText("2–3 delovni dnevi");
@@ -99,6 +102,7 @@ test("shipping emails the carrier link; tracking page, account and email agree; 
     await orderForm(page).number.fill(order.number.toLowerCase());
     await orderForm(page).submit.click();
     await expect(result).toHaveAttribute("data-lookup-mode", "order");
+    await expect(page.locator('[data-track-form="order"] + [data-lookup-result]')).toBeVisible();
     await expect(page.locator("[data-lookup-number]")).toHaveText(order.number);
     await expect(page.locator("[data-lookup-status]")).toHaveText("Odposlano");
     await expect(page.locator("[data-tracking-link]")).toHaveAttribute("href", expectedLink);
@@ -107,7 +111,7 @@ test("shipping emails the carrier link; tracking page, account and email agree; 
     // The account order detail derives the identical carrier link.
     await page.goto("/prijava");
     await dismissCmp(page);
-    await page.getByLabel("E-pošta").fill(email);
+    await page.getByLabel("E-pošta", { exact: true }).fill(email);
     await page.getByLabel("Geslo", { exact: true }).fill(PASSWORD);
     await page.getByRole("button", { name: "Prijava", exact: true }).click();
     await page.waitForURL(/\/racun/);
@@ -188,6 +192,61 @@ test("unknown inputs give one uniform answer and the rate limit is per client an
   }
 });
 
+test("on a phone the pending line and the error under the order form come into view, and focus never drops to the page (QA M14)", async ({ browser }) => {
+  // A fresh phone page puts the order form's button at the fold: its feedback renders below it.
+  const phone = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    extraHTTPHeaders: { "x-forwarded-for": `198.51.100.${randomInt(1, 254)}` },
+  });
+  const page = await phone.newPage();
+  try {
+    await page.goto("/sledi");
+    await dismissCmp(page);
+    // Hold the lookup (a Server Action POST to this page) until the pending state has been checked.
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => { release = () => resolve(); });
+    await page.route("**/sledi*", async (route) => {
+      if (route.request().method() === "POST") await held;
+      await route.continue();
+    });
+
+    const form = orderForm(page);
+    await form.email.fill("nobody@test.si");
+    await form.number.fill("NS-2026-00002");
+    await form.submit.click();
+    const pendingLine = page.locator('[data-track-form="order"] + [data-lookup-pending]');
+    await expect(pendingLine).toHaveText("Preverjamo …");
+    await expect(pendingLine).toBeInViewport({ ratio: 1 });
+    // aria-disabled, not disabled: the pressed button keeps focus while the lookup runs.
+    await expect(form.submit).toHaveAttribute("aria-disabled", "true");
+    await expect(form.submit).toBeFocused();
+    release();
+
+    const error = page.locator('[data-track-form="order"] + [data-lookup-error]');
+    await expect(error).toHaveText(NOT_FOUND);
+    await expect(error).toHaveAttribute("role", "alert");
+    await expect(error).toBeFocused();
+    await expect(error).toBeInViewport({ ratio: 1 });
+    // Clear of the sticky header, with the form's button still in view for the correction.
+    await expect.poll(async () => {
+      const headerBottom = await page.locator("header.ui-header").evaluate((element) => element.getBoundingClientRect().bottom);
+      const errorTop = await error.evaluate((element) => element.getBoundingClientRect().top);
+      return errorTop >= headerBottom;
+    }).toBe(true);
+    await expect(form.submit).toBeInViewport();
+
+    // The same answer again is a new alert: revealed and focused again.
+    await page.unroute("**/sledi*");
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await form.submit.click();
+    await expect(error).toHaveText(NOT_FOUND);
+    await expect(error).toBeFocused();
+    await expect(error).toBeInViewport({ ratio: 1 });
+  } finally {
+    await phone.close();
+  }
+});
+
 test("tracking page is server-rendered with both modes and stays noindex", async ({ request }) => {
   const response = await request.get("/sledi");
   expect(response.status()).toBe(200);
@@ -195,4 +254,16 @@ test("tracking page is server-rendered with both modes and stays noindex", async
   expect(html).toContain("Po številki sledenja");
   expect(html).toContain("Po e-pošti in številki naročila");
   expect(html).toContain('name="robots" content="noindex');
+});
+
+test("without JavaScript the forms reload the page with their values and say the lookup needs JavaScript (QA T4-F9)", async ({ request }) => {
+  // What a GET submit of the forms sends: their own field names are prefilled like the mail links' parameters.
+  const response = await request.get("/sledi?trackingNumber=GLS123&email=kupec%40test.si&orderNumber=NS-2026-00001");
+  const html = await response.text();
+  expect(html).toMatch(/name="trackingNumber"[^>]*value="GLS123"|value="GLS123"[^>]*name="trackingNumber"/);
+  expect(html).toMatch(/name="orderNumber"[^>]*value="NS-2026-00001"|value="NS-2026-00001"[^>]*name="orderNumber"/);
+  expect(html).toContain("data-tracking-noscript");
+  expect(html).toContain("potrebujete JavaScript");
+  // The way forward works without JavaScript too: the seller's e-mail, not the (scripted) contact form.
+  expect(html).toMatch(/data-tracking-noscript[\s\S]*href="mailto:[^"]+@[^"]+"/);
 });

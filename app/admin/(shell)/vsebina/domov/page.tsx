@@ -18,9 +18,9 @@ export default async function AdminHomePage() {
       <h1 className="mt-3 text-[2rem]">{copy.content.home.title}</h1>
       <div className="mt-6 flex flex-col gap-4">
         <SectionsEditor initial={editor.sections} />
-        <HeroEditor initial={editor.hero} media={media} />
-        <BundleBannerEditor initial={editor.bundleBanner} />
-        <RoutineBannerEditor initial={editor.routineBanner} media={media} />
+        <HeroEditor initial={editor.hero} media={media} unavailableLinks={editor.unavailableLinks.hero} />
+        <BundleBannerEditor initial={editor.bundleBanner} unavailableLinks={editor.unavailableLinks.bundleBanner} />
+        <RoutineBannerEditor initial={editor.routineBanner} media={media} unavailableLinks={editor.unavailableLinks.routineBanner} />
       </div>
     </section>
   );

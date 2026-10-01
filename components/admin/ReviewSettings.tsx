@@ -1,7 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
 import { saveReviewSettingsAction } from "@/app/admin/(shell)/ocene/actions";
-import { reviews as copy } from "@/lib/copy";
+import { reviews as copy } from "@/lib/copy/reviews";
 import type { ReviewSettings as Settings } from "@/lib/reviews/settings";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 

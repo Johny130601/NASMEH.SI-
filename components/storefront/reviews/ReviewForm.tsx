@@ -1,13 +1,20 @@
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useRef, useState, useTransition, type FormEvent } from "react";
 import { submitReviewAction } from "@/app/(storefront)/actions/reviews";
-import { reviews as copy } from "@/lib/copy";
+import { reviews as copy } from "@/lib/copy/reviews";
+import { MAX_REVIEW_PHOTOS } from "@/lib/reviews/photos";
 import { UiButton } from "../ui/UiButton";
 import { UiInput } from "../ui/UiInput";
 import { UiIcon } from "../ui/UiIcon";
+import { downscalePhoto, photoBatchProblem } from "./photo-downscale";
 
-/** Review form (§10): stars, title, text, ≤4 photos, optional attributes. */
+/**
+ * Review form (§10): stars, title, text, ≤4 photos, optional attributes.
+ * Only real selections are sent (an untouched input's empty part never is);
+ * photos over the per-photo cap are downscaled in the browser first, and a
+ * batch that would not fit one request is refused with a clear message.
+ */
 export function ReviewForm({
   orderItemId,
   defaultRating,
@@ -24,6 +31,7 @@ export function ReviewForm({
   const [rating, setRating] = useState(defaultRating);
   const [result, setResult] = useState<{ ok: boolean; error?: string; auto?: boolean } | null>(null);
   const [pending, startTransition] = useTransition();
+  const photosRef = useRef<HTMLInputElement>(null);
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -31,11 +39,18 @@ export function ReviewForm({
     form.set("rating", String(rating));
     form.set("orderItemId", orderItemId);
     form.set("ratingToken", ratingToken);
+    form.delete("photos");
+    const selected = Array.from(photosRef.current?.files ?? []).filter((file) => file.size > 0);
     startTransition(async () => {
+      const photos: File[] = [];
+      for (const file of selected) photos.push(await downscalePhoto(file));
+      const problem = photoBatchProblem(photos, MAX_REVIEW_PHOTOS);
+      if (problem) { setResult({ ok: false, error: copy.form.photoErrors[problem] }); return; }
+      for (const photo of photos) form.append("photos", photo, photo.name);
       try {
         const outcome = await submitReviewAction(form);
         setResult({ ok: outcome.ok, error: outcome.error, auto: outcome.autoPublished });
-      } catch { setResult({ ok: false, error: copy.form.genericError }); }
+      } catch { setResult({ ok: false, error: photos.length ? copy.form.photoErrors.request : copy.form.genericError }); }
     });
   };
 
@@ -95,6 +110,7 @@ export function ReviewForm({
         <label className="flex flex-col gap-1.5 text-sm font-medium text-dark-1">
           {copy.form.photosLabel}
           <input
+            ref={photosRef}
             type="file"
             name="photos"
             accept="image/jpeg,image/png,image/webp"

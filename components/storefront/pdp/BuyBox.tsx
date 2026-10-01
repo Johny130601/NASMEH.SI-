@@ -2,14 +2,17 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { pdp as copy } from "@/lib/copy";
+import { pdp as copy } from "@/lib/copy/pdp";
 import { UiIcon } from "../ui/UiIcon";
 import { ObvestiteMeButton } from "../catalog/ObvestiteMeButton";
 import { AddToCartButton } from "../catalog/AddToCartButton";
+import { QuantityStepper } from "./QuantityStepper";
 
 /**
- * PDP buy box (§6.8): qty stepper (1–maxCartQuantity, minus disabled at 1),
- * LIVE add-to-cart (server re-prices), or "Obvestite me" when sold out.
+ * PDP buy box (§6.8): qty stepper (1–maxQuantity, minus disabled at 1),
+ * LIVE add-to-cart (server re-prices), or "Obvestite me" when sold out — and
+ * a disabled sold-out button instead when no restock alert could be armed
+ * (a bundle its components cannot fill, lib/bundle/availability).
  */
 export function BuyBox({
   productSlug,
@@ -50,33 +53,7 @@ export function BuyBox({
     <div data-buy-box className="flex flex-col gap-3">
       <div className="flex items-center gap-3">
         <span className="text-sm text-mid-1">{copy.buyBox.quantity}</span>
-        <div className="inline-flex items-center rounded-btn border border-light-1">
-          <button
-            type="button"
-            aria-label={copy.buyBox.decrease}
-            disabled={quantity <= 1}
-            onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-            className="flex h-11 w-11 items-center justify-center rounded-btn text-lg text-dark-1 transition-colors hover:bg-light-3 disabled:pointer-events-none disabled:opacity-40"
-          >
-            −
-          </button>
-          <span
-            aria-live="polite"
-            className="w-8 text-center text-base font-medium text-dark-1"
-          >
-            {/* keyed so each change pops the figure */}
-            <span key={quantity} className="inline-block animate-pop">{quantity}</span>
-          </span>
-          <button
-            type="button"
-            aria-label={copy.buyBox.increase}
-            disabled={quantity >= maxQuantity}
-            onClick={() => setQuantity((q) => Math.min(maxQuantity, q + 1))}
-            className="flex h-11 w-11 items-center justify-center rounded-btn text-lg text-dark-1 transition-colors hover:bg-light-3 disabled:pointer-events-none disabled:opacity-40"
-          >
-            +
-          </button>
-        </div>
+        <QuantityStepper value={quantity} max={maxQuantity} onChange={setQuantity} />
       </div>
 
       <AddToCartButton

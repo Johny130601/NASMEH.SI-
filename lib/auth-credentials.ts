@@ -6,7 +6,6 @@ import { z } from "zod";
 import { requestClientAddress } from "@/lib/client-address";
 import { db } from "@/lib/db";
 import { getEnv } from "@/lib/env";
-import { checkRateLimit } from "@/lib/rate-limit";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { authEmailSchema, humanTokenSchema } from "@/lib/auth-validation";
 import { isStaffRole } from "@/lib/admin/permissions";
@@ -22,8 +21,67 @@ class MfaExpiredError extends CredentialsSignin { code = "mfa_expired"; }
 /** Too many password attempts for the address or from the client (Phase 9 step 1). */
 class RateLimitedError extends CredentialsSignin { code = "rate_limited"; }
 
-/** Attempts per address and per client within a window; the TOTP step has its own limit in lib/admin/mfa.ts. */
-export const LOGIN_ATTEMPT_LIMIT = { perEmail: 10, perClient: 200, windowMs: 15 * 60_000 } as const; // per client: a shared NAT or the e2e suite must never trip it
+/**
+ * FAILED password attempts within a window (QA T3-F3); a successful sign-in is
+ * never counted. Three bounds, all checked before the challenge and the hash:
+ * - `perAddressFromClient`: one address guessed from one client. Reaching it
+ *   locks that client out of that address only, so someone typing wrong
+ *   passwords for a customer's address cannot lock the customer out.
+ * - `perAddress`: one address guessed from any number of clients, the bound on
+ *   a distributed guess. Only it can lock the owner out, and reaching it takes
+ *   at least `perAddress / perAddressFromClient` clients.
+ * - `perClient`: one client across addresses (credential stuffing); generous,
+ *   so a shared NAT or the e2e suite never trips it.
+ * The TOTP step has its own limit in lib/admin/mfa.ts.
+ */
+export const LOGIN_ATTEMPT_LIMIT = { perAddressFromClient: 10, perAddress: 50, perClient: 200, windowMs: 15 * 60_000 } as const;
+
+/**
+ * Failure counters, in memory like lib/rate-limit.ts (one container). The
+ * shared limiter counts every call, which is exactly what must not happen to a
+ * correct password, hence a counter of its own.
+ *
+ * Every attempt RESERVES a failure in the same synchronous step as the limit
+ * check, before the first await (challenge, lookup, hash): attempts fired in
+ * parallel would otherwise all pass the check before any of them recorded, and
+ * the bounds would only limit sequential guessing. The outcome then settles the
+ * reservation — a correct password gives it back, a failed challenge keeps it
+ * for the client only, and a wrong password or unknown address keeps it.
+ */
+interface FailureBucket { count: number; resetAt: number }
+const failures = new Map<string, FailureBucket>();
+const MAX_FAILURE_BUCKETS = 10_000;
+
+function failureCount(key: string, now: number): number {
+  const bucket = failures.get(key);
+  return bucket && bucket.resetAt > now ? bucket.count : 0;
+}
+
+function recordFailure(keys: string[], now: number): void {
+  if (failures.size > MAX_FAILURE_BUCKETS) {
+    for (const [key, bucket] of failures) if (bucket.resetAt <= now) failures.delete(key);
+  }
+  for (const key of keys) {
+    const bucket = failures.get(key);
+    if (!bucket || bucket.resetAt <= now) failures.set(key, { count: 1, resetAt: now + LOGIN_ATTEMPT_LIMIT.windowMs });
+    else bucket.count += 1;
+  }
+}
+
+/** Gives back a reservation that turned out not to be a failed password. */
+function releaseFailure(keys: string[]): void {
+  for (const key of keys) {
+    const bucket = failures.get(key);
+    if (!bucket) continue;
+    if (bucket.count <= 1) failures.delete(key);
+    else bucket.count -= 1;
+  }
+}
+
+/** Test-only: forget every failed attempt. */
+export function __resetLoginFailures(): void {
+  failures.clear();
+}
 
 const passwordSchema = z.object({
   email: authEmailSchema,
@@ -65,13 +123,31 @@ export async function authorizeCredentials(raw: unknown) {
   const parsed = passwordSchema.safeParse(raw);
   if (!parsed.success) return null;
   const client = await requestClientAddress();
-  const perEmail = checkRateLimit(`login:${parsed.data.email}`, LOGIN_ATTEMPT_LIMIT.perEmail, LOGIN_ATTEMPT_LIMIT.windowMs);
-  const perClient = checkRateLimit(`login-ip:${client}`, LOGIN_ATTEMPT_LIMIT.perClient, LOGIN_ATTEMPT_LIMIT.windowMs);
-  if (!perEmail.allowed || !perClient.allowed) throw new RateLimitedError();
-  if (!await verifyTurnstile(parsed.data.turnstileToken)) throw new BotCheckError();
+  const now = Date.now();
+  const keys = {
+    pair: `login-fail:${parsed.data.email}|${client}`,
+    address: `login-fail:${parsed.data.email}`,
+    client: `login-fail-ip:${client}`,
+  };
+  if (
+    failureCount(keys.pair, now) >= LOGIN_ATTEMPT_LIMIT.perAddressFromClient ||
+    failureCount(keys.address, now) >= LOGIN_ATTEMPT_LIMIT.perAddress ||
+    failureCount(keys.client, now) >= LOGIN_ATTEMPT_LIMIT.perClient
+  ) throw new RateLimitedError();
+  // Reserved in the same synchronous step as the check above (see the counters' note).
+  recordFailure([keys.pair, keys.address, keys.client], now);
+  if (!await verifyTurnstile(parsed.data.turnstileToken)) {
+    // A failed challenge counts against the client only: it never locks the address.
+    releaseFailure([keys.pair, keys.address]);
+    throw new BotCheckError();
+  }
   const user = await db.user.findUnique({ where: { email: parsed.data.email } });
+  // An unknown address and a wrong password count alike (the reservation stands), so the counters disclose nothing.
   if (!user?.passwordHash) return null;
   if (!await bcrypt.compare(parsed.data.password, user.passwordHash)) return null;
+  // The right password is never a failure; from this client, its own guesses at the address are forgotten.
+  releaseFailure([keys.address, keys.client]);
+  failures.delete(keys.pair);
   // Show activation guidance only after the correct password and challenge.
   if (!user.emailVerified) throw new UnverifiedEmailError();
   if (isStaffRole(user.role) && user.totpEnabledAt) {

@@ -5,9 +5,10 @@ import { db } from "@/lib/db";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { humanTokenSchema } from "@/lib/auth-validation";
 import { adverse as copy } from "@/lib/copy/adverse";
-import { adverseInputSchema, adverseToContactInput } from "@/lib/support/validation";
+import { adverseInputSchema, adverseToContactInput, firstInvalidField } from "@/lib/support/validation";
 import { createContactTicket } from "@/lib/support/tickets";
 import { deliverTicketEmails } from "@/lib/support/delivery";
+import { submittedFiles } from "@/lib/form-files";
 
 /** Structured adverse-event report (§12.6) → ADVERSE ticket routed to the compliance mailbox. */
 export async function submitAdverseEventAction(form: FormData): Promise<{ ok: boolean; error?: string; reference?: string }> {
@@ -23,12 +24,16 @@ export async function submitAdverseEventAction(form: FormData): Promise<{ ok: bo
     contactPermission: form.get("contactPermission") === "on",
     privacyAccepted: form.get("privacyAccepted") === "on",
   });
-  if (!parsed.success) return { ok: false, error: copy.errors.invalid };
+  if (!parsed.success) {
+    // Name the field to correct; a malformed request without one keeps the general sentence.
+    const field = firstInvalidField(parsed.error);
+    return { ok: false, error: field && Object.hasOwn(copy.errors.fields, field) ? copy.errors.fields[field as keyof typeof copy.errors.fields] : copy.errors.invalid };
+  }
   const challenge = humanTokenSchema.safeParse(form.get("turnstileToken") ?? "");
   if (!challenge.success || !await verifyTurnstile(challenge.data)) return { ok: false, error: copy.errors.challenge };
-  const rawFiles = form.getAll("photos");
-  if (rawFiles.some(value => !(value instanceof File))) return { ok: false, error: copy.errors.photos };
-  const files = rawFiles.filter((file): file is File => file instanceof File && !(file.size === 0 && file.name === ""));
+  // Empty parts (an untouched file input, however the encoder names it) are no upload.
+  const files = submittedFiles(form.getAll("photos"));
+  if (!files) return { ok: false, error: copy.errors.photos };
   try {
     // Discontinued products can still cause reactions: any known product qualifies.
     const product = await db.product.findUnique({ where: { slug: parsed.data.productSlug }, select: { slug: true, title: true } });

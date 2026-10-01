@@ -198,7 +198,7 @@ test("owner edits shipping, tax, marketing, consent, legal, maintenance and supp
     await dismissCookieBanner(front); // the version bump above re-opened the banner for this context
     await expect(front.locator("[data-checkout-email-notice] [data-legal-privacy]")).toHaveAttribute("href", "/politika-zasebnosti");
     await expect(front.locator("[data-checkout-email-notice] [data-legal-privacy]")).toHaveAttribute("target", "_blank");
-    await front.getByLabel("E-pošta").fill(`settings-kupec-${key}@test.si`);
+    await front.getByLabel("E-pošta", { exact: true }).fill(`settings-kupec-${key}@test.si`);
     await front.locator("[data-continue-contact]").click();
     await front.getByLabel("Ime in priimek").fill("Kupec Nastavitve");
     await front.getByLabel("Ulica").fill("Testna ulica");

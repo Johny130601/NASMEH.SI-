@@ -2,8 +2,8 @@ import Link from "next/link";
 import { getSetting } from "@/lib/settings";
 import { reviewPhotoPaths, reviewPhotoSrcSet } from "@/lib/reviews/photos";
 import { parseReviewFilters, filterReviews, publishedReviews, reviewFilterHref, reviewAuthor, reviewVerificationPoints, type DisplayReview } from "@/lib/reviews/display";
-import { aggregateRatings } from "@/lib/reviews/aggregate";
-import { reviews as copy } from "@/lib/copy";
+import { aggregateRatings, formatAverage } from "@/lib/reviews/aggregate";
+import { reviews as copy } from "@/lib/copy/reviews";
 import { RatingStars } from "../catalog/RatingStars";
 import { UiIcon } from "../ui/UiIcon";
 import { UiPill } from "../ui/UiPill";
@@ -54,7 +54,7 @@ export async function ReviewsSection({
           {/* summary + distribution */}
           <div className="mt-6 grid gap-6 rounded-card border border-light-2 bg-white p-6 md:grid-cols-2">
             <div className="flex items-center gap-4">
-              <p className="text-5xl font-light text-dark-1">{aggregate.average.toFixed(1)}</p>
+              <p className="text-5xl font-light text-dark-1">{formatAverage(aggregate.average)}</p>
               <div>
                 <RatingStars
                   rating={{ average: aggregate.average, count: aggregate.count }}

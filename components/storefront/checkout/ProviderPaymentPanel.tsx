@@ -10,7 +10,7 @@ import { capturePayPalAction, resumeOrderPaymentAction } from "@/app/(storefront
 import { testDriverPayAction, type TestPayOutcome } from "@/app/(storefront)/actions/checkout";
 import type { PlaceOrderResult } from "@/lib/orders/create";
 import { paymentResumeState } from "@/lib/orders/resume-state";
-import { checkout, orders } from "@/lib/copy";
+import { checkout, orders } from "@/lib/copy/checkout";
 import { formatEUR } from "@/lib/pricing";
 import { UiButton } from "../ui/UiButton";
 

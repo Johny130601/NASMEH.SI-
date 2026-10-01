@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildBuckets, parseDashboardRange } from "@/lib/admin/dashboard";
-import { chartTicks } from "@/components/admin/BarChart";
+import { chartTicks, fitLabel } from "@/components/admin/BarChart";
 
 const now = new Date(2026, 8, 10, 15, 30); // 10 September 2026, local time
 
@@ -34,6 +34,15 @@ describe("dashboard range", () => {
     }
   });
 
+  it("says why a custom range was not used (QA N1)", () => {
+    expect(parseDashboardRange({ obdobje: "custom", od: "2026-09-05", do: "2026-09-01" }, now).invalid).toBe("reversed");
+    expect(parseDashboardRange({ obdobje: "custom", od: "2026-02-30", do: "2026-09-01" }, now).invalid).toBe("malformed");
+    expect(parseDashboardRange({ obdobje: "custom" }, now).invalid).toBe("malformed");
+    expect(parseDashboardRange({ obdobje: "custom", od: "2025-01-01", do: "2026-09-01" }, now).invalid).toBe("too_long");
+    expect(parseDashboardRange({ obdobje: "custom", od: "2026-09-01", do: "2026-09-03" }, now)).not.toHaveProperty("invalid");
+    expect(parseDashboardRange({ obdobje: "7d" }, now)).not.toHaveProperty("invalid");
+  });
+
   it("starts weekly buckets on Monday", () => {
     const range = parseDashboardRange({ obdobje: "custom", od: "2026-09-01", do: "2026-10-15" }, now);
     const buckets = buildBuckets(range);
@@ -49,5 +58,13 @@ describe("chart ticks", () => {
     expect(chartTicks(7)).toEqual([0, 2, 4, 6, 8]);
     expect(chartTicks(123456)).toEqual([0, 50000, 100000, 150000]);
     expect(chartTicks(3)).toEqual([0, 1, 2, 3]);
+  });
+
+  it("cuts an x-axis label to the width it owns so neighbours never overlap (QA T5-02)", () => {
+    expect(fitLabel("12. 9.", 70)).toBe("12. 9.");
+    const cut = fitLabel("Serum korektor barve zob", 90);
+    expect(cut.endsWith("…")).toBe(true);
+    expect(cut.length).toBeLessThanOrEqual(Math.floor(90 / 6.4));
+    expect(fitLabel("Beljenje", 4).length).toBe(3);
   });
 });

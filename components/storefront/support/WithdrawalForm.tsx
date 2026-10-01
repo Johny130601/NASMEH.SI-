@@ -8,6 +8,7 @@ import { WITHDRAWAL_DELIVERY_STATUSES, type WithdrawalDeliveryStatus } from "@/l
 import { useAuthChallenge, type AuthChallengeProps } from "../auth/AuthChallenge";
 import { UiButton } from "../ui/UiButton";
 import { UiFormField, UiInput } from "../ui/UiInput";
+import { ResultHeading } from "../ui/ResultHeading";
 
 const copy = returns.withdrawal;
 const textareaClass = "w-full resize-y rounded-input border border-light-1 bg-white p-4 text-base outline-none focus:border-brand";
@@ -52,7 +53,7 @@ export function WithdrawalForm({
 
   if (receipt) return (
     <div role="status" data-withdrawal-success className="rounded-card border border-success bg-white p-6 md:p-8">
-      <h3 className="text-2xl font-semibold">{copy.success.title}</h3>
+      <ResultHeading as="h3" className="text-2xl font-semibold">{copy.success.title}</ResultHeading>
       <p className="mt-3 leading-relaxed text-mid-1">{copy.success.body}</p>
       <p className="mt-6 text-sm font-medium">{copy.success.reference}</p>
       <p data-withdrawal-reference className="mt-1 break-all text-xl font-semibold text-brand">{receipt.reference}</p>
@@ -71,7 +72,7 @@ export function WithdrawalForm({
         <UiInput id="withdrawal-order" label={copy.fields.orderNumber} hint={copy.fields.orderNumberHint} name="orderNumber" required maxLength={20} />
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium text-dark-1">{copy.fields.deliveryStatus}</legend>
-          <div className="flex flex-col gap-2 text-sm text-mid-1 sm:flex-row sm:gap-6">
+          <div className="flex flex-col gap-2 text-sm text-mid-1 md:flex-row md:gap-6">
             {WITHDRAWAL_DELIVERY_STATUSES.map(value => (
               <label key={value} className="flex items-center gap-2">
                 <input type="radio" name="deliveryStatus" value={value} required checked={delivery === value} onChange={() => setDelivery(value)} className="size-4 accent-brand" />

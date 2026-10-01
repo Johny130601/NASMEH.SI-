@@ -7,6 +7,7 @@ import { legal } from "@/lib/copy";
 import { sellerBlockLines } from "@/lib/copy/legal";
 import { getCompany } from "@/lib/settings";
 import { companyPlaceholderFields } from "@/lib/settings-schemas";
+import { sanitizeContentHtml } from "@/lib/security/html-sanitizer";
 
 export const dynamic = "force-dynamic";
 
@@ -78,10 +79,10 @@ export default async function ContentPageRoute({ params }: Params) {
         </section>
       ) : null}
 
-      {/* Admin-authored trusted content (Phase 7 editor) */}
+      {/* Operator HTML from the Phase 7 editor, sanitized again on render (AGENTS §8.24) */}
       <div
         className="content-prose mt-8"
-        dangerouslySetInnerHTML={{ __html: page.body }}
+        dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(page.body) }}
       />
       {page.template === "CONTACT" ? (
         <p className="mt-8">

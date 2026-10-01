@@ -5,12 +5,14 @@ import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getAuthChallengeProps } from "@/lib/auth-challenge";
 import { db } from "@/lib/db";
+import { sanitizeContentHtml } from "@/lib/security/html-sanitizer";
 import { buildMetadata } from "@/lib/seo";
 import { legal } from "@/lib/copy";
 import { sellerBlockLines } from "@/lib/copy/legal";
 import { returns } from "@/lib/copy/returns";
 import { getCompany, getLegalLinks } from "@/lib/settings";
 import { companyPlaceholderFields } from "@/lib/settings-schemas";
+import { shopToday } from "@/lib/support/validation";
 import { WithdrawalForm } from "@/components/storefront/support/WithdrawalForm";
 
 export const dynamic = "force-dynamic";
@@ -61,7 +63,8 @@ export default async function WithdrawalPage() {
         )}
       </section>
 
-      <div className="content-prose mt-8" dangerouslySetInnerHTML={{ __html: page.body }} />
+      {/* Operator HTML is sanitised on save and again here (AGENTS §8.24). */}
+      <div className="content-prose mt-8" dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(page.body) }} />
 
       <section aria-labelledby="withdrawal-form-title" className="mt-12 border-t border-light-2 pt-10" data-withdrawal-section>
         <h2 id="withdrawal-form-title" className="text-2xl">{copy.formTitle}</h2>
@@ -77,7 +80,7 @@ export default async function WithdrawalPage() {
             challenge={getAuthChallengeProps()}
             requestKey={randomUUID()}
             defaults={{ name: session?.user?.name ?? "", email: session?.user?.email ?? "" }}
-            maxDate={new Date().toISOString().slice(0, 10)}
+            maxDate={shopToday()}
             privacyHref={legalLinks.privacy}
           />
         </div>

@@ -25,6 +25,7 @@ export const pdp = {
   accordions: {
     howItWorks: "Kako deluje",
     inci: "Sestavine (INCI)",
+    /** The caret resolves a claim marked "^"; the page drops it when no claim on the product carries one (QA T1-14). */
     guarantee: "^Jamstvo vračila denarja",
     tested: "*Opombe k navedbam",
     delivery: "Dostava in vračila",
@@ -75,8 +76,8 @@ export const pdp = {
   bundle: {
     components: "Vsebina paketa",
     quantitySuffix: "×",
-    savingsLine: "vrednost",
-    savingsSave: "— prihranite",
+    /** Fixed-bundle value math from the components' current prices (§6.6): "Vrednost 74,97 € — prihranite 33 %". */
+    savingsLine: (value: string, percent: number) => `Vrednost ${value} — prihranite ${percent} %`,
     perPiece: "na kos",
   },
   notFound: "Izdelek ne obstaja",

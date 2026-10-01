@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
+import { sanitizeContentHtml } from "@/lib/security/html-sanitizer";
 import { buildMetadata } from "@/lib/seo";
 import { cmp as copy, legal } from "@/lib/copy";
 import { sellerBlockLines } from "@/lib/copy/legal";
@@ -58,7 +59,8 @@ export default async function CookiePolicyPage() {
 
       <div
         className="content-prose mt-8"
-        dangerouslySetInnerHTML={{ __html: page.body }}
+        // Operator HTML is sanitised on save and again here (AGENTS §8.24).
+        dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(page.body) }}
       />
 
       <h2 className="mt-12 text-2xl">{copy.policy.tableTitle}</h2>

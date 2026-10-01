@@ -2,7 +2,9 @@
 
 import { useState, useTransition, type FormEvent } from "react";
 import { subscribeNewsletterAction } from "@/app/(storefront)/actions/newsletter";
-import { footer as copy, newsletter } from "@/lib/copy";
+import { footer as copy } from "@/lib/copy/footer";
+import { newsletter } from "@/lib/copy/newsletter";
+import { markWelcomeSeen } from "@/lib/welcome-popup-flag";
 import { UiButton } from "../ui/UiButton";
 import { UiInput } from "../ui/UiInput";
 import { PrivacyNotice } from "../PrivacyNotice";
@@ -15,7 +17,9 @@ import { ChallengeStatus, useLazyChallenge } from "./useLazyChallenge";
  * for the token and sends itself, with the button disabled; if the widget
  * errors, expires or stays silent past the timeout the wait ends with a retry
  * message). Test mode uses the hidden e2e token; with no keys in development
- * the server allows and fails closed in production.
+ * the server allows and fails closed in production. A sign-up here also counts
+ * as the session's welcome-popup interaction, so the popup does not ask for
+ * the e-mail again in this tab (QA T7-F14).
  */
 export function NewsletterForm({
   siteKey,
@@ -40,7 +44,10 @@ export function NewsletterForm({
         try {
           const result = await subscribeNewsletterAction({ email, turnstileToken, source: "footer" });
           setMessage({ ok: result.ok, text: result.message });
-          if (result.ok) setEmail("");
+          if (result.ok) {
+            setEmail("");
+            markWelcomeSeen();
+          }
         } catch {
           setMessage({ ok: false, text: newsletter.genericError });
         } finally {
@@ -60,6 +67,9 @@ export function NewsletterForm({
       <div className="flex flex-col gap-3 md:flex-row md:items-start">
         <div className="flex-1">
           <UiInput
+            // Its own id: the footer is on every page, and a page form's "email" field
+            // (sign-in, registration, /sledi) would otherwise take this label (QA 2026-09-30).
+            id="newsletter-email"
             label={copy.newsletter.emailLabel}
             name="email"
             type="email"

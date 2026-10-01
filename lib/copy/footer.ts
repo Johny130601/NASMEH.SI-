@@ -3,7 +3,8 @@ export const footer = {
   newsletter: {
     title: "Prejmite novosti med prvimi",
     hook: "Prijavite se na e-novice in pridobite možnost testiranja novih izdelkov pred vsemi.",
-    emailLabel: "E-pošta",
+    // Its own name: the footer sits on every page next to forms with an "E-pošta" field (QA 2026-09-30).
+    emailLabel: "E-pošta za novice",
     emailPlaceholder: "ime@primer.si",
     submit: "Prijavi se",
     note: "Z oddajo se strinjate s prejemanjem e-novic. Odjava je mogoča kadar koli.",

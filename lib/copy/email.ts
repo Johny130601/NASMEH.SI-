@@ -45,6 +45,10 @@ export const email = {
     /** The estimate comes from the chosen shipping method (shipping.methods), never a fixed day count. */
     deliveryEstimate: (estimate: string) => `Predviden rok dostave: ${estimate}. Ob odpošiljanju prejmete sporočilo s številko sledenja.`,
     deliveryNote: "Ob odpošiljanju prejmete sporočilo s številko sledenja.",
+    shippingLabel: "Dostava",
+    /** The discount row (code and amount) makes the lines add up to the total. */
+    discountLabel: "Popust",
+    discountWithCode: (code: string) => `Popust (koda ${code})`,
     totalLabel: "Skupaj",
     footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
     /**
@@ -100,7 +104,7 @@ export const email = {
     delivered: {
       subjectPrefix: "Naročilo je dostavljeno",
       heading: "Vaše naročilo je dostavljeno",
-      body: "Prevoznik je označil pošiljko kot dostavljeno. Upamo, da boste z izdelki zadovoljni. Številka naročila:",
+      body: "Pošiljka je označena kot dostavljena. Upamo, da boste z izdelki zadovoljni. Številka naročila:",
     },
     cancelled: {
       subjectPrefix: "Naročilo je preklicano",

@@ -9,6 +9,7 @@ import { buildMetadata } from "@/lib/seo";
 import { trackingUrl } from "@/lib/tracking";
 import { account as copy } from "@/lib/copy";
 import { OrderStatusPill } from "@/components/storefront/account/OrderStatusPill";
+import { uiButtonClasses } from "@/components/storefront/ui/UiButton";
 import { hasIssuedInvoice, snapshotAddressLines } from "@/lib/account/order-view";
 
 export const dynamic = "force-dynamic";
@@ -67,6 +68,16 @@ export default async function OrderDetailPage({
           year: "numeric",
         })}
       </p>
+
+      {isOwner && order.status === "PENDING" ? (
+        /* An unpaid order offers the way to finish paying (QA M10). */
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-card border border-light-2 bg-light-4 p-4" data-order-unpaid>
+          <p className="text-sm text-mid-1">{copy.orders.unpaidNotice}</p>
+          <Link href={`/potrditev/${order.number}`} className={uiButtonClasses("primary")} data-order-pay>
+            {copy.orders.payNow}
+          </Link>
+        </div>
+      ) : null}
 
       <div className="mt-8 grid gap-6 md:grid-cols-2">
         <section className="rounded-card border border-light-2 bg-white p-5">

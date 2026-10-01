@@ -31,6 +31,20 @@ export const checkout = {
     free: "Brezplačna",
     back: "Nazaj",
     continue: "Naprej na plačilo",
+    /** Signed-in shoppers pick from their address book; the fields stay editable (QA M12). */
+    savedAddresses: "Shranjeni naslovi",
+    savedAddressNew: "Vnesite nov naslov",
+    savedAddressOption: (label: string, line: string) => `${label} — ${line}`,
+  },
+  /** Per-field messages; the client mirror and the server's `invalid_form` answer both land here (QA M11). */
+  fields: {
+    required: "To polje je obvezno.",
+    invalid: "Preverite vnos.",
+    tooLong: "Vnos je predolg.",
+    email: "Vnesite veljaven e-poštni naslov (npr. ime@primer.si).",
+    phone: "Vnesite veljavno telefonsko številko — samo številke, presledki in znak +.",
+    postalCode: "Preverite obliko poštne številke za izbrano državo.",
+    fullName: "Vnesite ime in priimek.",
   },
   payment: {
     providerLabel: "Način plačila",
@@ -82,7 +96,16 @@ export const checkout = {
     stock: "Izdelek ni več na zalogi",
     quoteChanged: "Znesek naročila se je spremenil. Preverite novi povzetek in ponovno potrdite.",
     shippingUnavailable: "Za izbrano državo dostava še ni na voljo.",
+    quoteEmptyCart: "Košarica je prazna — dodajte izdelke in se vrnite na blagajno.",
+    quoteSoldOut: "Nekaterih izdelkov v košarici ni več na zalogi — uredite košarico in se vrnite na blagajno.",
+    quoteFailed: "Zneska trenutno ni mogoče izračunati. Preverite povezavo in poskusite znova.",
     noProvider: "Plačila trenutno niso na voljo. Poskusite pozneje.",
+  },
+  /** A line sold out while it sat in the cart: the wizard stops at the start, names it and links back (QA 2026-09-30). */
+  soldOut: {
+    title: "Nekaterih izdelkov ni več na zalogi",
+    body: "Odstranite jih iz košarice, nato nadaljujte z nakupom.",
+    cta: "Uredi košarico",
   },
   empty: {
     title: "Blagajna",
@@ -97,7 +120,8 @@ export const checkout = {
     total: "Skupaj",
     vat: "Vključen DDV",
     updating: "Posodabljamo znesek …",
-    klarnaRecap: "ali 3 obroka po",
+    klarnaRecap: "ali 3 obroki po",
+    klarnaSuffix: "s Klarno",
   },
 } as const;
 
@@ -105,8 +129,14 @@ export const orders = {
   confirmation: {
     paidTitle: "Naročilo je potrjeno 🎉",
     paidBody: "Hvala za nakup! Potrditveno sporočilo z računom je že na poti v vaš nabiralnik.",
+    /** A payment was just submitted and its confirmation is pending (lib/orders/confirmation-view "awaiting"). */
     pendingTitle: "Čakamo na potrditev plačila",
     pendingBody: "Naročilo je ustvarjeno. Stran se osveži, ko plačilo potrdimo.",
+    /** An unpaid order visited to pay it ("Dokončaj plačilo", a failed attempt): the payment leads (QA 2026-09-30). */
+    unpaidTitle: "Dokončajte plačilo",
+    unpaidBody: "Naročilo je ustvarjeno, plačilo pa še ni opravljeno. Dokončate ga spodaj.",
+    /** Tab title when the order cannot be shown (no access, unknown number). */
+    metaTitle: "Naročilo",
     cancelledTitle: "Naročilo je preklicano",
     cancelledBody: "Naročilo je preklicano. Za dodatne informacije se obrnite na podporo.",
     refundRequiredBody: "Plačilo je bilo prejeto, naročila pa zaradi težave z zalogo ne moremo odpremiti. Vračilo plačila je potrebno; za ureditev se obrnite na podporo.",
@@ -152,10 +182,11 @@ export const orders = {
     itemsLabel: "Izdelkov",
     totalLabel: "Znesek",
     dateLabel: "Datum",
+    // The customer-facing status words, shared with /racun and the processing mail (QA M10).
     statuses: {
-      PENDING: "V obdelavi (čaka na plačilo)",
+      PENDING: "Čaka na plačilo",
       PAID: "Plačano",
-      PROCESSING: "V pripravi",
+      PROCESSING: "V obdelavi",
       SHIPPED: "Odposlano",
       DELIVERED: "Dostavljeno",
       CANCELLED: "Preklicano",

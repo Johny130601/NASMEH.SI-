@@ -81,11 +81,14 @@ const PRODUCTS = [
     badges: [{ label: "PRIHRANI", style: "promo" }],
   },
   {
-    // Phase 2 documented choice: 5th demo product, sold out → Obvestite me
+    // Phase 2 documented choice: 5th demo product, sold out → Obvestite me.
+    // The sold-out state is computed (pill, OutOfStock, capture); no copy or badge
+    // types it, so a restock never leaves a false claim behind (AGENTS §8.23,
+    // QA 2026-09-30; 20260930110000_qa_seed_stock_claims moves unedited rows).
     title: "Belilni trakci — potovalno pakiranje (7 uporab)",
     slug: "belilni-trakci-potovalni-7",
     description:
-      "Potovalno pakiranje belilnih trakov: 7 uporab za na pot. Trenutno razprodano.",
+      "Potovalno pakiranje belilnih trakov: 7 uporab za na pot.",
     sku: "NAS-TRK-07",
     priceCents: 1999,
     compareAtPriceCents: null as number | null,
@@ -93,7 +96,6 @@ const PRODUCTS = [
     maxCartQuantity: 5,
     badges: [
       { label: "NOVO", style: "outline" },
-      { label: "RAZPRODANO", style: "grey" },
     ],
   },
 ] as const;
@@ -433,7 +435,8 @@ async function seedSettings() {
       // and this is a price claim — see lib/copy/pdp `trust.freeShipping`.
       value: "Brezplačna dostava pri naročilih od 45 €",
     },
-    { key: "marquee.href", value: "/checkout" },
+    // 20260930100000_qa_storefront_links moves unedited rows here too: an empty checkout is no landing page (QA T1-19).
+    { key: "marquee.href", value: "/trgovina" },
     { key: "marquee.active", value: true },
     // Phase 7 step 6: settings the admin edits and the storefront reads with fallbacks
     { key: "invoice.footer", value: "" },
@@ -611,7 +614,8 @@ async function seedMenus() {
         { label: "Belilni trakci", href: "/izdelek/belilni-trakci-za-zobe" },
         { label: "Ustna voda", href: "/izdelek/ustna-voda-globinsko-ciscenje" },
         { label: "Serum korektor", href: "/izdelek/serum-korektor-barve-zob" },
-        { label: "Paketi", href: "/izdelek/paket-popolna-rutina" },
+        // The collection view, like the header link (AGENTS §5.11, QA T1-19; 20260930100000_qa_storefront_links).
+        { label: "Paketi", href: "/trgovina?kolekcija=paketi" },
       ],
     },
     {

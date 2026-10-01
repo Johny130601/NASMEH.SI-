@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getEnv } from "@/lib/env";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { common } from "@/lib/copy";
+import { common } from "@/lib/copy/common";
 import { decryptSecret, encryptSecret } from "./secrets";
 import { generateTotpSecret, otpauthUri, verifyTotp } from "./totp";
 import { consumeRecoveryCode, generateRecoveryCodes, hashRecoveryCode } from "./recovery-codes";

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePagePermission } from "@/lib/admin/access";
-import { loadDashboard, parseDashboardRange, type RangePreset } from "@/lib/admin/dashboard";
+import { loadDashboard, MAX_RANGE_DAYS, parseDashboardRange, type RangePreset } from "@/lib/admin/dashboard";
 import { formatEUR } from "@/lib/pricing";
 import { admin as copy } from "@/lib/copy";
 import { BarChart } from "@/components/admin/BarChart";
@@ -76,7 +76,13 @@ export default async function AdminDashboardPage({
         </button>
       </form>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {range.invalid ? (
+        <p role="alert" className="mt-3 rounded-card border border-warning bg-white p-3 text-sm text-dark-1" data-range-invalid={range.invalid}>
+          {copy.dashboard.invalidRange[range.invalid].replace("{max}", String(MAX_RANGE_DAYS))}
+        </p>
+      ) : null}
+
+      <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <StatTile label={copy.dashboard.kpis.revenue} value={formatEUR(data.kpis.revenueCents)} hint={`${copy.dashboard.kpis.refunded}: ${formatEUR(data.kpis.refundedCents)}`} />
         <StatTile label={copy.dashboard.kpis.orders} value={count(data.kpis.orders)} />
         <StatTile label={copy.dashboard.kpis.aov} value={formatEUR(data.kpis.aovCents)} />
@@ -85,7 +91,7 @@ export default async function AdminDashboardPage({
         <StatTile label={copy.dashboard.kpis.conversion} value={copy.common.none} hint={copy.dashboard.kpis.unavailable} />
       </div>
 
-      <div className="mt-6 grid gap-4 xl:grid-cols-2">
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <BarChart
           id="revenue"
           title={range.bucket === "week" ? copy.dashboard.charts.revenueWeekly : copy.dashboard.charts.revenue}
@@ -120,7 +126,8 @@ export default async function AdminDashboardPage({
         />
       </div>
 
-      <div className="mt-6 grid gap-4 xl:grid-cols-2">
+      {/* Two lists to a row only where each gets 28rem (about 1220 px and up); beside the sidebar at 991 they stack (QA round 2: half cards squeezed the tables). The min() keeps one track inside the page at a large root font. */}
+      <div className="mt-6 grid gap-4 lg:grid-cols-[repeat(auto-fit,minmax(min(28rem,100%),1fr))]">
         <section className="min-w-0 rounded-card border border-light-2 bg-white p-5" data-list="recent-orders">
           <h2 className="text-base font-medium">{copy.dashboard.lists.recentOrders}</h2>
           {data.recentOrders.length === 0 ? <p className="mt-3 text-sm text-mid-2">{copy.dashboard.lists.empty}</p> : (
@@ -131,10 +138,11 @@ export default async function AdminDashboardPage({
               <tbody>
                 {data.recentOrders.map((order) => (
                   <tr key={order.number} className="border-t border-light-2">
-                    <td className="py-2 pr-3 font-medium">{order.number}</td>
-                    <td className="py-2 pr-3 text-mid-1">{order.email}</td>
-                    <td className="py-2 pr-3">{statusLabel(order.status)}</td>
-                    <td className="py-2 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>{formatEUR(order.totalCents)}</td>
+                    {/* The number, status and total never break; the e-mail takes the squeeze. */}
+                    <td className="whitespace-nowrap py-2 pr-3 font-medium" style={{ fontVariantNumeric: "tabular-nums" }}>{order.number}</td>
+                    <td className="break-all py-2 pr-3 text-mid-1">{order.email}</td>
+                    <td className="whitespace-nowrap py-2 pr-3">{statusLabel(order.status)}</td>
+                    <td className="whitespace-nowrap py-2 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>{formatEUR(order.totalCents)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -153,9 +161,13 @@ export default async function AdminDashboardPage({
               <tbody>
                 {data.lowStock.variants.map((variant) => (
                   <tr key={variant.sku} className="border-t border-light-2" data-low-stock-sku={variant.sku}>
-                    <td className="py-2 pr-3 font-medium">{variant.sku}</td>
+                    <td className="whitespace-nowrap py-2 pr-3 font-medium">{variant.sku}</td>
                     <td className="py-2 pr-3 text-mid-1">{variant.productTitle}{variant.title && variant.title !== variant.productTitle ? ` · ${variant.title}` : ""}</td>
-                    <td className="py-2 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>{variant.stock}</td>
+                    <td className="py-2 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>
+                      {variant.stock}
+                      {/* Sold out reads as a word, not only as a low number (QA T6-14). */}
+                      {variant.stock <= 0 && !variant.allowBackorder ? <span className="ml-2 whitespace-nowrap rounded-btn bg-error px-2 py-0.5 text-xs font-medium text-white">{copy.catalog.products.stockOut}</span> : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -170,7 +182,7 @@ export default async function AdminDashboardPage({
               {data.pendingReviews.items.map((review) => (
                 <li key={review.id} className="flex justify-between gap-3 border-t border-light-2 pt-2">
                   <span>{review.productTitle}</span>
-                  <span className="text-mid-1">{copy.dashboard.lists.columns.rating} {review.rating}/5 · {review.createdAt.toLocaleDateString("sl-SI")}</span>
+                  <span className="shrink-0 whitespace-nowrap text-mid-1">{copy.dashboard.lists.columns.rating} {review.rating}/5 · {review.createdAt.toLocaleDateString("sl-SI")}</span>
                 </li>
               ))}
             </ul>
@@ -188,8 +200,8 @@ export default async function AdminDashboardPage({
               <tbody>
                 {data.expiringCoupons.map((coupon) => (
                   <tr key={coupon.code} className="border-t border-light-2">
-                    <td className="py-2 pr-3 font-medium">{coupon.code}</td>
-                    <td className="py-2 pr-3 text-mid-1">{coupon.endsAt.toLocaleDateString("sl-SI")}</td>
+                    <td className="whitespace-nowrap py-2 pr-3 font-medium">{coupon.code}</td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-mid-1" style={{ fontVariantNumeric: "tabular-nums" }}>{coupon.endsAt.toLocaleDateString("sl-SI")}</td>
                     <td className="py-2 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>{coupon.usedCount}{coupon.usageLimitTotal !== null ? ` / ${coupon.usageLimitTotal}` : ""}</td>
                   </tr>
                 ))}

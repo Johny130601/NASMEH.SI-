@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { humanTokenSchema } from "@/lib/auth-validation";
 import { returns } from "@/lib/copy/returns";
-import { withdrawalInputSchema, withdrawalToContactInput } from "@/lib/support/validation";
+import { firstInvalidField, withdrawalInputSchema, withdrawalToContactInput } from "@/lib/support/validation";
 import { createContactTicket } from "@/lib/support/tickets";
 import { deliverTicketEmails } from "@/lib/support/delivery";
 
@@ -22,7 +22,11 @@ export async function submitWithdrawalAction(form: FormData): Promise<{ ok: bool
     items: form.get("items"), note: form.get("note") ?? "",
     privacyAccepted: form.get("privacyAccepted") === "on",
   });
-  if (!parsed.success) return { ok: false, error: copy.errors.invalid };
+  if (!parsed.success) {
+    // Name the field to correct; a malformed request without one keeps the general sentence.
+    const field = firstInvalidField(parsed.error);
+    return { ok: false, error: field && Object.hasOwn(copy.errors.fields, field) ? copy.errors.fields[field as keyof typeof copy.errors.fields] : copy.errors.invalid };
+  }
   const challenge = humanTokenSchema.safeParse(form.get("turnstileToken") ?? "");
   if (!challenge.success || !await verifyTurnstile(challenge.data)) return { ok: false, error: copy.errors.challenge };
   try {

@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { orders } from "@/lib/copy";
+import { orders } from "@/lib/copy/checkout";
 import { UiButton } from "../ui/UiButton";
 
 /** Provider redirects are UX only; refresh until the verified webhook arrives. */

@@ -4,20 +4,38 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 export const MAINTENANCE_COOKIE = "nasmeh_maintenance";
 export const MAINTENANCE_MAX_AGE_S = 60 * 60 * 24; // 24h
 
-// Fixed payload — the token proves "gate was unlocked", independent of the
-// current password, keyed by AUTH_SECRET.
-const COOKIE_PAYLOAD = "nasmeh:maintenance-unlock:v1";
+const COOKIE_PAYLOAD = "nasmeh:maintenance-unlock:v2";
 
-export function maintenanceCookieValue(secret: string): string {
-  return createHmac("sha256", secret).update(COOKIE_PAYLOAD).digest("hex");
+/**
+ * The token proves "the gate was unlocked with the CURRENT password, at most
+ * 24 h ago": it is keyed by AUTH_SECRET and bound to the stored password hash
+ * and to its issue time, so changing the password revokes every earlier unlock
+ * and the browser's cookie age is enforced server-side too (QA 2026-09-29, T7-F10).
+ */
+export function maintenanceCookieValue(secret: string, passwordHash: string, issuedAtMs = Date.now()): string {
+  const issued = Math.floor(issuedAtMs / 1000).toString(10);
+  return `${issued}.${signature(secret, passwordHash, issued)}`;
+}
+
+function signature(secret: string, passwordHash: string, issued: string): string {
+  return createHmac("sha256", secret).update(`${COOKIE_PAYLOAD}\n${passwordHash}\n${issued}`).digest("hex");
 }
 
 export function isValidMaintenanceCookie(
   value: string | undefined,
   secret: string,
+  passwordHash: string | null | undefined,
+  nowMs = Date.now(),
 ): boolean {
-  if (!value) return false;
-  const expected = maintenanceCookieValue(secret);
-  if (value.length !== expected.length) return false;
-  return timingSafeEqual(Buffer.from(value), Buffer.from(expected));
+  if (!value || !passwordHash) return false;
+  const dot = value.indexOf(".");
+  if (dot <= 0) return false;
+  const issued = value.slice(0, dot);
+  if (!/^\d{1,12}$/.test(issued)) return false;
+  const ageS = Math.floor(nowMs / 1000) - Number(issued);
+  if (ageS < 0 || ageS > MAINTENANCE_MAX_AGE_S) return false;
+  const expected = signature(secret, passwordHash, issued);
+  const given = value.slice(dot + 1);
+  if (given.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(given), Buffer.from(expected));
 }

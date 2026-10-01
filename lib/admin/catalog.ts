@@ -2,6 +2,7 @@ import type { Prisma, ProductStatus } from "@prisma/client";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { parseBadges } from "@/lib/catalog";
+import { likeEscaped } from "./like";
 
 /** Catalog administration (§14.2, §14.3, §14.6): schemas, JSON parsers and queries. */
 
@@ -96,6 +97,35 @@ export const bundleSchema = z.object({
 export type BundleInput = z.input<typeof bundleSchema>;
 
 export const lowStockSchema = z.object({ lowStockThreshold: z.number().int().min(0).max(1000) });
+
+/** Editor fields a failed product save can name (QA T6-11); the keys match the editor's labels in lib/copy/admin.ts. */
+export const PRODUCT_FIELD_KEYS = [
+  "title", "slug", "description", "seoTitle", "seoDescription",
+  "badges", "uspChips", "intro", "bullets", "unitPrice", "crossSell", "extraJson",
+  "howItWorks", "inci", "guarantee", "tested", "faq", "education",
+] as const;
+export type ProductFieldKey = (typeof PRODUCT_FIELD_KEYS)[number];
+
+/** Fields of the "Nov izdelek" form a refused create names (QA v-a); the keys match its inputs' names. */
+export const PRODUCT_CREATE_FIELDS = ["title", "slug", "sku", "priceCents"] as const;
+export type ProductCreateField = (typeof PRODUCT_CREATE_FIELDS)[number];
+
+/** The first editor field a validation issue path names (e.g. ["content", "merchandising", "uspChips", 0] → "uspChips"). */
+export function productIssueField(issues: ReadonlyArray<{ path: ReadonlyArray<PropertyKey> }>): ProductFieldKey | null {
+  for (const issue of issues) {
+    const key = issue.path.find((segment): segment is ProductFieldKey => typeof segment === "string" && (PRODUCT_FIELD_KEYS as readonly string[]).includes(segment));
+    if (key) return key;
+  }
+  return null;
+}
+
+/** Product stock state for the admin list (QA T6-14): sold out and low read as words, not only as a colour. */
+export function productStockLevel(variants: Array<{ stock: number; allowBackorder: boolean }>, threshold: number): "out" | "low" | null {
+  const tracked = variants.filter((variant) => !variant.allowBackorder);
+  if (tracked.length === 0) return null;
+  if (tracked.length === variants.length && tracked.every((variant) => variant.stock <= 0)) return "out";
+  return tracked.some((variant) => variant.stock <= threshold) ? "low" : null;
+}
 
 // ---------- JSON ↔ editor ----------
 
@@ -194,7 +224,7 @@ export async function listProducts(filters: ProductFilters) {
     take: PRODUCT_LIST_LIMIT,
     where: {
       ...(filters.status ? { status: filters.status } : {}),
-      ...(filters.q ? { OR: [{ title: { contains: filters.q, mode: "insensitive" } }, { slug: { contains: filters.q, mode: "insensitive" } }, { variants: { some: { sku: { contains: filters.q, mode: "insensitive" } } } }] } : {}),
+      ...(filters.q ? { OR: [{ title: { contains: likeEscaped(filters.q), mode: "insensitive" } }, { slug: { contains: likeEscaped(filters.q), mode: "insensitive" } }, { variants: { some: { sku: { contains: likeEscaped(filters.q), mode: "insensitive" } } } }] } : {}),
     },
     orderBy: [{ status: "asc" }, { createdAt: "asc" }],
     select: {

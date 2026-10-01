@@ -4,7 +4,7 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 export type UiButtonVariant = "primary" | "sale" | "outline" | "ghost" | "success";
 
 const baseClasses =
-  "inline-flex h-[3.25rem] select-none items-center justify-center gap-2 whitespace-nowrap rounded-btn px-8 text-base font-medium leading-none transition-[background-color,color,border-color,transform,opacity] duration-200 ease-out-quart active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50";
+  "inline-flex h-[3.25rem] select-none items-center justify-center gap-2 whitespace-nowrap rounded-btn px-8 text-base font-medium leading-none transition-[background-color,color,border-color,transform,scale,opacity] duration-200 ease-out-quart active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50";
 
 const variantClasses: Record<UiButtonVariant, string> = {
   primary: "bg-dark-1 text-white hover:bg-dark-2",

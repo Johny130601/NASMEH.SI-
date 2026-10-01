@@ -6,9 +6,26 @@ import type { SeriesPoint } from "@/lib/admin/dashboard";
  * clean ticks, the maximum directly labelled, a native hover title per column
  * and a visually hidden table as the non-visual reading of the same data.
  */
-const WIDTH = 640;
-const HEIGHT = 220;
+/**
+ * The viewBox is close to the width a chart renders at in the two-column
+ * dashboard grid (lg: about 300–520 px), so the 11-unit labels stay readable
+ * there instead of shrinking to half size (QA M9 follow-up).
+ */
+const WIDTH = 460;
+const HEIGHT = 200;
 const PAD = { top: 24, right: 12, bottom: 30, left: 60 };
+
+/**
+ * The max-value label sits centred over its bar unless that would run past an
+ * edge of the viewBox (the highest bar is often the last day): then it is
+ * anchored to the edge instead of being cut off (QA 2026-09-30).
+ */
+export function maxLabelPosition(centre: number, label: string): { x: number; textAnchor: "start" | "middle" | "end" } {
+  const half = (label.length * LABEL_CHAR_WIDTH) / 2;
+  if (centre + half > WIDTH - 2) return { x: WIDTH - 2, textAnchor: "end" };
+  if (centre - half < 2) return { x: 2, textAnchor: "start" };
+  return { x: centre, textAnchor: "middle" };
+}
 
 function niceStep(rawStep: number): number {
   const exponent = Math.floor(Math.log10(rawStep));
@@ -24,6 +41,19 @@ export function chartTicks(max: number, count = 4): number[] {
   const ticks: number[] = [];
   for (let value = 0; value <= top + step / 2; value += step) ticks.push(Math.round(value * 1e6) / 1e6);
   return ticks;
+}
+
+/** Average advance of an 11px UI-font glyph in viewBox units; generous so a fitted label never touches its neighbour. */
+const LABEL_CHAR_WIDTH = 6.4;
+
+/**
+ * An x-axis label cut to the width it owns (its slot times the label step),
+ * with an ellipsis (QA T5-02: product names overlapped). The full label stays
+ * in each column's hover title and in the visually hidden table.
+ */
+export function fitLabel(label: string, width: number): string {
+  const maxChars = Math.max(3, Math.floor(width / LABEL_CHAR_WIDTH));
+  return label.length <= maxChars ? label : `${label.slice(0, maxChars - 1).trimEnd()}…`;
 }
 
 export function BarChart({
@@ -87,13 +117,13 @@ export function BarChart({
                   <title>{`${point.label}: ${format(point.value)}`}</title>
                 </rect>
                 {index === maxIndex && height > 0 ? (
-                  <text x={x + barWidth / 2} y={yTop - 6} textAnchor="middle" fontSize={11} className="fill-dark-1" style={{ fontVariantNumeric: "tabular-nums" }}>
+                  <text {...maxLabelPosition(x + barWidth / 2, format(point.value))} y={yTop - 6} fontSize={11} className="fill-dark-1" style={{ fontVariantNumeric: "tabular-nums" }}>
                     {format(point.value)}
                   </text>
                 ) : null}
                 {index % labelEvery === 0 ? (
                   <text x={x + barWidth / 2} y={HEIGHT - 10} textAnchor="middle" fontSize={11} className="fill-mid-1">
-                    {point.label}
+                    {fitLabel(point.label, slot * labelEvery - 6)}
                   </text>
                 ) : null}
               </g>

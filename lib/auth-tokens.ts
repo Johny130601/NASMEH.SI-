@@ -57,6 +57,23 @@ export async function isAuthTokenValid(raw: unknown, kind: AuthTokenKind): Promi
 }
 
 /**
+ * An activation link that no longer works because its account is already
+ * active — used, or superseded by a newer link that was used (QA T3-F5). The
+ * page then leads to sign-in instead of to a re-registration that sends
+ * nothing. Only the holder of the 256-bit link learns this, and only for the
+ * account the link was sent to.
+ */
+export async function isVerifiedAccountToken(raw: unknown): Promise<boolean> {
+  const parsed = authTokenSchema.safeParse(raw);
+  if (!parsed.success) return false;
+  const row = await db.authToken.findFirst({
+    where: { tokenHash: hash(parsed.data), kind: "VERIFY_EMAIL" },
+    select: { user: { select: { emailVerified: true } } },
+  });
+  return !!row?.user.emailVerified;
+}
+
+/**
  * The protected mutation and token consumption commit or roll back together.
  * `issuedAt` is when the activation snapshot was taken, so the change can
  * honour a withdrawal made after the link was sent.

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { createPageAction, deletePageAction, savePageAction, type PageActionResult } from "@/app/admin/(shell)/strani/actions";
 import { CONTENT_TEMPLATES, SHADOWED_SLUGS, type ContentPageInput } from "@/lib/admin/cms-schemas";
-import { admin as copy } from "@/lib/copy";
+import { admin as copy } from "@/lib/copy/admin";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiFormField, UiInput } from "@/components/storefront/ui/UiInput";
 

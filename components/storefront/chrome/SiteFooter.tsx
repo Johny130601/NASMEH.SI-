@@ -4,31 +4,45 @@ import { isTestMode } from "@/lib/turnstile";
 import {
   getCompany,
   getLegalLinks,
-  getMenu,
 } from "@/lib/settings";
-import { footer as copy } from "@/lib/copy";
+import { footerColumnTitle, getMenuWithTitle, withLegalLinks } from "@/lib/menus";
+import { menuHrefs, menuWithAvailableLinks, productSlugsIn, purchasableSlugs } from "@/lib/content-links";
+import { admin } from "@/lib/copy/admin";
+import { footer as copy } from "@/lib/copy/footer";
 import { telHref } from "@/lib/phone";
 import { NewsletterForm } from "./NewsletterForm";
 import { CmpOpenButton } from "../cmp/CmpOpenButton";
 import { PaymentIcons } from "../ui/PaymentIcons";
 import { UiIcon } from "../ui/UiIcon";
 
-const COLUMNS: Array<{ handle: string; title: string }> = [
+const COLUMNS = [
   { handle: "footer-trgovina", title: copy.columns.shop },
   { handle: "footer-pomoc", title: copy.columns.help },
   { handle: "footer-sledite", title: copy.columns.follow },
-];
+] as const;
 
 /** Site footer (§3.2): capture block, menu columns (mobile accordions),
- *  payment row, company block, legal links + CMP reopen. */
+ *  payment row, company block, legal links + CMP reopen. Column headings are
+ *  the menus' titles (QA T7-F3) and links to the legal pages follow the
+ *  `legal.links` mapping (QA T7-F21). A link to a product page that answers
+ *  404 is left out (QA v-a, lib/content-links). */
 export async function SiteFooter() {
-  const [company, legalLinks, legalItems, ...columnMenus] = await Promise.all([
+  const [company, legalLinks, legalMenu, ...columnMenus] = await Promise.all([
     // Validated reader: a malformed row shows no block rather than a partial identity.
     getCompany(),
     getLegalLinks(),
-    getMenu("footer-pravno"),
-    ...COLUMNS.map((col) => getMenu(col.handle)),
+    getMenuWithTitle("footer-pravno"),
+    ...COLUMNS.map((col) => getMenuWithTitle(col.handle)),
   ]);
+  const linkedItems = [legalMenu.items, ...columnMenus.map((menu) => menu?.items ?? [])].map((items) => withLegalLinks(items, legalLinks));
+  const purchasable = await purchasableSlugs(productSlugsIn(linkedItems.flatMap((items) => menuHrefs(items))));
+  // Every footer item renders as its own link (no dropdowns), so a dead link goes whatever its children.
+  const [legalItems, ...columnItems] = linkedItems.map((items) => menuWithAvailableLinks(items, purchasable, { dropdowns: false }));
+  const columns = COLUMNS.map((col, index) => ({
+    handle: col.handle,
+    title: footerColumnTitle(columnMenus[index]?.title ?? "", admin.content.menus.handles[col.handle], col.title),
+    items: columnItems[index] ?? [],
+  }));
 
   const phoneHref = company?.phone ? telHref(company.phone) : null;
   const env = getEnv();
@@ -51,8 +65,8 @@ export async function SiteFooter() {
       {/* Link columns: grid on desktop, accordions on mobile */}
       <div className="mx-auto max-w-(--container-wide) px-(--padding) py-10">
         <div className="grid gap-2 md:grid-cols-3 md:gap-10">
-          {COLUMNS.map((col, index) => {
-            const items = columnMenus[index] ?? [];
+          {columns.map((col) => {
+            const items = col.items;
             const list = (
               <ul className="flex flex-col gap-2.5 pb-4 md:pb-0">
                 {items.map((item) => {

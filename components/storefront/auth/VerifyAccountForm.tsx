@@ -1,7 +1,7 @@
 "use client";
 import { useState, useTransition, type FormEvent } from "react";
 import { verifyEmailAction } from "@/app/(storefront)/actions/auth";
-import { auth as copy } from "@/lib/copy";
+import { auth as copy } from "@/lib/copy/auth";
 import { UiButton } from "../ui/UiButton";
 import { useAuthChallenge, type AuthChallengeProps } from "./AuthChallenge";
 

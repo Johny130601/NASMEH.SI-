@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { regenerateRecoveryCodesAction } from "@/app/admin/(shell)/racun/actions";
-import { admin as copy } from "@/lib/copy";
+import { admin as copy } from "@/lib/copy/admin";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiInput } from "@/components/storefront/ui/UiInput";
 

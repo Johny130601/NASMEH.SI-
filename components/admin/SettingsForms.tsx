@@ -8,7 +8,7 @@ import {
 } from "@/app/admin/(shell)/nastavitve/actions";
 import { companyPlaceholderFields, LEGAL_LINK_KEYS, type AnalyticsInput, type CompanyInput, type LegalLinksInput, type MaintenanceInput, type SeoDefaultsInput } from "@/lib/settings-schemas";
 import type { ContactSettingsInput } from "@/lib/support/settings-schema";
-import { admin as copy } from "@/lib/copy";
+import { admin as copy } from "@/lib/copy/admin";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiInput } from "@/components/storefront/ui/UiInput";
 

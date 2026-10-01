@@ -2,7 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/db", () => ({ db: {} }));
 
-import { bundleSavingsFor, lowStockUnits, toCatalogProduct } from "@/lib/catalog";
+import {
+  bundleSavingsFor,
+  descriptionSummary,
+  displayBadges,
+  hasCaretClaim,
+  lowStockUnits,
+  plainTextFromHtml,
+  toCatalogProduct,
+} from "@/lib/catalog";
 import { catalog, kosForm, lowStockLine } from "@/lib/copy/catalog";
 import { trust } from "@/lib/copy/pdp";
 import { cart } from "@/lib/copy/cart";
@@ -151,7 +159,16 @@ describe("toCatalogProduct", () => {
 
   it("carries the bundle's value math and flags it as a bundle", () => {
     const bundle = row({
-      bundle: { id: "b1", priceCents: 4999, items: [{ quantity: 1, variant: { priceCents: 3499 } }, { quantity: 1, variant: { priceCents: 1999 } }, { quantity: 1, variant: { priceCents: 1999 } }] },
+      bundle: {
+        id: "b1",
+        priceCents: 4999,
+        active: true,
+        items: [
+          { quantity: 1, variant: { priceCents: 3499, stock: 100, allowBackorder: false } },
+          { quantity: 1, variant: { priceCents: 1999, stock: 100, allowBackorder: false } },
+          { quantity: 1, variant: { priceCents: 1999, stock: 100, allowBackorder: false } },
+        ],
+      },
     } as Partial<Row>);
     const product = toCatalogProduct(bundle, noRatings, noReductions, 5)!;
     expect(product.isBundle).toBe(true);
@@ -163,5 +180,110 @@ describe("toCatalogProduct", () => {
     const reductions = new Map([["v1", { priorPriceCents: 2499, priceCents: 1999, percentOff: 20 }]]);
     expect(toCatalogProduct(row(), noRatings, reductions, 5)!.reduction).toEqual({ priorPriceCents: 2499, priceCents: 1999, percentOff: 20 });
     expect(toCatalogProduct(row(), noRatings, noReductions, 5)!.reduction).toBeNull();
+  });
+});
+
+describe("a bundle card states its components' availability (QA M6)", () => {
+  const bundleRow = (serumStock: number, rowStock = 100) =>
+    row({
+      variants: [{ id: "v9", sku: "PAK", priceCents: 4999, compareAtPriceCents: null, stock: rowStock, allowBackorder: false, backorderNote: null, maxCartQuantity: 1 }],
+      bundle: {
+        id: "b1",
+        priceCents: 4999,
+        active: true,
+        items: [
+          { quantity: 1, variant: { priceCents: 3499, stock: 40, allowBackorder: false } },
+          { quantity: 2, variant: { priceCents: 1999, stock: serumStock, allowBackorder: false } },
+        ],
+      },
+    } as Partial<Row>);
+
+  it("is sold out as soon as one component cannot fill it, whatever its own row says", () => {
+    const card = toCatalogProduct(bundleRow(1), noRatings, noReductions, 5)!;
+    expect(card.soldOut).toBe(true);
+    expect(card.stock).toBe(0);
+    expect(card.lowStock).toBeNull();
+  });
+
+  it("is sold out when only the bundle's own row is out, and a plain product at zero is too", () => {
+    // a sold-out card offers "Obvestite me" either way: a component's restock re-arms the bundle's
+    // subscriptions (lib/inventory/stock armBundleAlerts), an admin restock of the row arms its own
+    expect(toCatalogProduct(bundleRow(6, 0), noRatings, noReductions, 5)!.soldOut).toBe(true);
+    const soldOutPlain = row({ variants: [{ id: "v1", sku: "S", priceCents: 1999, compareAtPriceCents: null, stock: 0, allowBackorder: false, backorderNote: null, maxCartQuantity: 5 }] } as Partial<Row>);
+    expect(toCatalogProduct(soldOutPlain, noRatings, noReductions, 5)!.soldOut).toBe(true);
+  });
+
+  it("states the bundles the components can fill, low-stock line included", () => {
+    const card = toCatalogProduct(bundleRow(6), noRatings, noReductions, 5)!;
+    expect(card.soldOut).toBe(false);
+    expect(card.stock).toBe(3);
+    expect(card.lowStock).toBe(3);
+    expect(toCatalogProduct(bundleRow(200), noRatings, noReductions, 5)!.stock).toBe(40);
+  });
+});
+
+describe("admin badges never repeat or contradict the sold-out state (QA T1-13, T6-09)", () => {
+  it("drops an admin badge that says sold out, in any case", () => {
+    expect(
+      displayBadges([
+        { label: "NOVO", style: "outline" },
+        { label: "RAZPRODANO", style: "grey" },
+        { label: " razprodano ", style: "grey" },
+      ]),
+    ).toEqual([{ label: "NOVO", style: "outline" }]);
+  });
+
+  it("keeps the card's badges free of it, so a restocked product never reads sold out", () => {
+    const restocked = row({ badges: [{ label: "RAZPRODANO", style: "grey" }, { label: "NOVO", style: "outline" }] } as Partial<Row>);
+    const card = toCatalogProduct(restocked, noRatings, noReductions, 5)!;
+    expect(card.soldOut).toBe(false);
+    expect(card.badges).toEqual([{ label: "NOVO", style: "outline" }]);
+  });
+});
+
+describe("operator HTML as plain text (meta, JSON-LD, search — QA T6-07)", () => {
+  it("drops tags, scripts and styles, decodes entities and collapses whitespace", () => {
+    expect(plainTextFromHtml("<p>QA opis z <mark>oznako</mark></p>\n<ul><li>ena</li><li>dva</li></ul>")).toBe("QA opis z oznako ena dva");
+    expect(plainTextFromHtml("<script>alert(1)</script><style>p{}</style>Besedilo")).toBe("Besedilo");
+    expect(plainTextFromHtml("Cena &lt;30&gt; &amp; več&nbsp;&#8364; &#x2014; &quot;x&quot;")).toBe("Cena <30> & več € — \"x\"");
+    expect(plainTextFromHtml("")).toBe("");
+  });
+
+  it("summarises a long description at a word boundary", () => {
+    const long = `<p>${"beseda ".repeat(40)}</p>`;
+    const summary = descriptionSummary(long, 50);
+    expect(summary.endsWith("…")).toBe(true);
+    expect(summary.length).toBeLessThanOrEqual(51);
+    expect(summary).not.toContain("<");
+    expect(descriptionSummary("<p>Kratek opis.</p>")).toBe("Kratek opis.");
+  });
+});
+
+describe("the guarantee caret follows a real ^ claim on the page (QA T1-14)", () => {
+  const product = (overrides: Partial<Parameters<typeof hasCaretClaim>[0]> = {}) => ({
+    title: "Ustna voda",
+    description: "<p>Svež dah.</p>",
+    customFields: { intro: "Uvod", bullets: ["Brez alkohola"], uspChips: ["Vegansko"] },
+    accordions: { howItWorks: "<p>Izperite 30 s.</p>", guarantee: "<p>^ Velja 30 dni.</p>" },
+    faq: [{ q: "Kako?", a: "Tako." }],
+    education: [{ heading: "Zakaj", body: "Ker." }],
+    ...overrides,
+  });
+
+  it("finds no claim when only the guarantee's own resolution carries the caret", () => {
+    expect(hasCaretClaim(product())).toBe(false);
+  });
+
+  it("finds a caret in the description, customFields text, other accordions, FAQ or education", () => {
+    expect(hasCaretClaim(product({ description: "<p>Belejši zobje v 7 dneh^</p>" }))).toBe(true);
+    expect(hasCaretClaim(product({ description: "<p>Rezultat&#94;</p>" }))).toBe(true);
+    expect(hasCaretClaim(product({ customFields: { bullets: ["Zadovoljstvo zajamčeno^"] } }))).toBe(true);
+    expect(hasCaretClaim(product({ accordions: { tested: "<p>Klinično testirano^</p>" } }))).toBe(true);
+    expect(hasCaretClaim(product({ faq: [{ q: "Ali deluje?", a: "Da^" }] }))).toBe(true);
+    expect(hasCaretClaim(product({ education: [{ heading: "Rezultati^", body: "" }] }))).toBe(true);
+  });
+
+  it("ignores keys and handles that are not text on the page", () => {
+    expect(hasCaretClaim(product({ customFields: { crossSell: ["serum^"] } }))).toBe(false);
   });
 });

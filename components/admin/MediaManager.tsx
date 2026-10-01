@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { deleteMediaAction, moveMediaAction, updateMediaAction, uploadProductMediaAction, type CatalogActionResult } from "@/app/admin/(shell)/izdelki/actions";
 import { MEDIA_KINDS } from "@/lib/admin/catalog";
-import { admin as copy } from "@/lib/copy";
+import { admin as copy } from "@/lib/copy/admin";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiFormField, UiInput } from "@/components/storefront/ui/UiInput";
 
@@ -82,7 +82,19 @@ export function MediaManager({ productId, media }: { productId: string; media: M
                   <button type="submit" className={smallButton} disabled={pending}>{c.saveAlt}</button>
                   <button type="button" className={smallButton} disabled={pending} onClick={() => run(() => moveMediaAction({ mediaId: item.id, direction: "up" }), copy.common.done)}>{c.moveUp}</button>
                   <button type="button" className={smallButton} disabled={pending} onClick={() => run(() => moveMediaAction({ mediaId: item.id, direction: "down" }), copy.common.done)}>{c.moveDown}</button>
-                  <button type="button" className="rounded-btn border border-error px-3 py-1.5 text-xs text-error" disabled={pending} onClick={() => run(() => deleteMediaAction({ mediaId: item.id }), copy.common.done)} data-media-delete>{c.delete}</button>
+                  <button
+                    type="button"
+                    className="rounded-btn border border-error px-3 py-1.5 text-xs text-error"
+                    disabled={pending}
+                    onClick={() => {
+                      // Irreversible: the file is removed from disk (QA T6-12).
+                      if (!window.confirm(c.confirmDelete)) return;
+                      run(() => deleteMediaAction({ mediaId: item.id }), c.deleted);
+                    }}
+                    data-media-delete
+                  >
+                    {c.delete}
+                  </button>
                 </div>
               </form>
             </li>

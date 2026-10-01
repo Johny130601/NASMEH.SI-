@@ -59,7 +59,7 @@ export default async function middleware(request: NextRequest) {
   requestHeaders.set(cspHeaderName(enforce), csp);
 
   let response: Response;
-  const returning = maintenanceReturn(request);
+  const returning = await maintenanceReturn(request);
   if (returning) {
     response = returning;
   } else if (await isMaintenanceLocked(request)) {
@@ -110,14 +110,15 @@ function maintenanceResponse(request: NextRequest): NextResponse {
  * follows the unlock sends the visitor to the address they asked for. A
  * same-origin path only — never a host, a scheme or a protocol-relative URL.
  */
-function maintenanceReturn(request: NextRequest): NextResponse | null {
+async function maintenanceReturn(request: NextRequest): Promise<NextResponse | null> {
   // Reads only: the unlock itself is a POST to this same URL, and a 307 would
   // replay it — body, Next-Action header and all — against the address in `od`.
   if (request.method !== "GET" && request.method !== "HEAD") return null;
   if (request.nextUrl.pathname !== "/vzdrzevanje") return null;
   const back = request.nextUrl.searchParams.get(RETURN_PARAM);
   if (!back || !back.startsWith("/") || back.startsWith("//") || back.startsWith("/\\")) return null;
-  if (!isValidMaintenanceCookie(request.cookies.get(MAINTENANCE_COOKIE)?.value, getEnv().AUTH_SECRET)) {
+  const setting = await readMaintenanceSetting();
+  if (!isValidMaintenanceCookie(request.cookies.get(MAINTENANCE_COOKIE)?.value, getEnv().AUTH_SECRET, setting?.passwordHash)) {
     return null;
   }
   const [pathname, search = ""] = back.split("?");
@@ -189,14 +190,16 @@ async function isMaintenanceLocked(request: NextRequest): Promise<boolean> {
     return false;
   }
 
-  const row = await db.setting.findUnique({
-    where: { key: SETTING_KEYS.maintenance },
-  });
-  const setting = row?.value as MaintenanceSetting | undefined;
+  const setting = await readMaintenanceSetting();
   if (!setting?.enabled) return false;
 
   const token = request.cookies.get(MAINTENANCE_COOKIE)?.value;
-  return !isValidMaintenanceCookie(token, getEnv().AUTH_SECRET);
+  return !isValidMaintenanceCookie(token, getEnv().AUTH_SECRET, setting.passwordHash);
+}
+
+async function readMaintenanceSetting(): Promise<MaintenanceSetting | undefined> {
+  const row = await db.setting.findUnique({ where: { key: SETTING_KEYS.maintenance } });
+  return row?.value as MaintenanceSetting | undefined;
 }
 
 export const config = {

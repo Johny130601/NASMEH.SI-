@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/admin/access";
 import { CONTENT_TEMPLATES, contentPageSchema, isReservedSlug, pageSlugSchema, protectedPageSlugs, type ContentPageInput } from "@/lib/admin/cms-schemas";
 import { getLegalLinks } from "@/lib/settings";
+import { sanitizeContentHtml } from "@/lib/security/html-sanitizer";
 
 /** `reviewCleared`: the save changed the text, so the legal-review mark it asked for was not stored. */
 export type PageActionResult =
@@ -51,7 +52,8 @@ export async function savePageAction(input: { pageId: string; page: ContentPageI
   await requirePermission("content:manage");
   const parsed = z.object({ pageId: idSchema, page: contentPageSchema }).safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid" };
-  const page = parsed.data.page;
+  // Stored exactly as the storefront renders it: the body is operator HTML on the same origin as /admin (AGENTS §8.24).
+  const page = { ...parsed.data.page, body: sanitizeContentHtml(parsed.data.page.body) };
   const existing = await db.contentPage.findUnique({ where: { id: parsed.data.pageId }, select: { slug: true, title: true, body: true, template: true } });
   if (!existing) return { ok: false, error: "not_found" };
   // A protected page keeps the slug it has now (checking only the new slug let a rename escape the guard) and,

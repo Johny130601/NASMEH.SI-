@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePagePermission } from "@/lib/admin/access";
 import { loadMarquee } from "@/lib/admin/cms";
+import { unavailableProductLinks } from "@/lib/content-links";
 import { admin as copy } from "@/lib/copy";
 import { MarqueeForm } from "@/components/admin/CmsForms";
 
@@ -11,11 +12,13 @@ export const metadata: Metadata = { title: copy.content.marquee.title, robots: {
 export default async function AdminMarqueePage() {
   await requirePagePermission("content:manage");
   const marquee = await loadMarquee();
+  // A link to a product page that answers 404 is dropped from the bar (QA v-a); the form names it.
+  const unavailableLinks = await unavailableProductLinks([marquee.href]);
   return (
     <section className="mx-auto max-w-3xl" data-admin-marquee>
       <Link href="/admin/vsebina" className="text-sm text-mid-1 underline underline-offset-4">{copy.common.back}</Link>
       <h1 className="mt-3 text-[2rem]">{copy.content.marquee.title}</h1>
-      <div className="mt-6"><MarqueeForm initial={marquee} /></div>
+      <div className="mt-6"><MarqueeForm initial={marquee} unavailableLinks={unavailableLinks} /></div>
     </section>
   );
 }

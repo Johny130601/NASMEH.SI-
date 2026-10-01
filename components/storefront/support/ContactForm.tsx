@@ -8,6 +8,7 @@ import { TOPIC_CODES, topicReasons, type ReasonCode, type TopicCode } from "@/li
 import { useAuthChallenge, type AuthChallengeProps } from "../auth/AuthChallenge";
 import { UiButton } from "../ui/UiButton";
 import { UiFormField, UiInput } from "../ui/UiInput";
+import { ResultHeading } from "../ui/ResultHeading";
 
 interface ContactOrder { number: string; status: string; createdAt: string }
 interface ContactFormProps {
@@ -125,7 +126,7 @@ export function ContactForm({ settings, challenge, requestKey: initialRequestKey
 
   if (reference) return (
     <div role="status" data-contact-success className="rounded-card border border-success bg-white p-6 md:p-8">
-      <h2 className="text-2xl font-semibold">{contact.success.title}</h2>
+      <ResultHeading className="text-2xl font-semibold">{contact.success.title}</ResultHeading>
       <p className="mt-3 leading-relaxed text-mid-1">{contact.success.body}</p>
       <p className="mt-6 text-sm font-medium">{contact.success.reference}</p>
       <p data-contact-reference className="mt-1 break-all text-xl font-semibold text-brand">{reference}</p>

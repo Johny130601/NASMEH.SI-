@@ -49,7 +49,7 @@ async function addStripsToCart(page: Page) {
 
 async function placeAndPay(page: Page, email: string): Promise<string> {
   await page.goto("/checkout");
-  await page.getByLabel("E-pošta").fill(email);
+  await page.getByLabel("E-pošta", { exact: true }).fill(email);
   await page.locator("[data-continue-contact]").click();
   await page.getByLabel("Ime in priimek").fill("Kupec Vsebina");
   await page.getByLabel("Ulica").fill("Testna ulica");
@@ -193,7 +193,7 @@ test("manager edits the homepage, marquee, header menu, a page, the media librar
     await page.locator("#library-files").setInputFiles({ name: "hero.png", mimeType: "image/png", buffer: await pngImage() });
     await page.locator("[data-library-upload] input[name='alt']").fill(`E2E slika ${key}`);
     await page.locator("[data-library-submit]").click();
-    await expect(page.locator("[data-library-message]")).toHaveText("Slike so naložene.");
+    await expect(page.locator("[data-library-message]")).toHaveText("Datoteke so naložene.");
     const asset = await prisma.mediaAsset.findFirstOrThrow({ where: { alt: `E2E slika ${key}` } });
     mediaUrl = asset.url;
     expect(asset.url).toMatch(/^\/uploads\/media\/knjiznica-medijev\/[a-f0-9]{24}\.webp$/);
@@ -214,11 +214,31 @@ test("manager edits the homepage, marquee, header menu, a page, the media librar
     await heroForm.locator("[data-hero-save]").click();
     await expect(page.getByText("Hero je shranjen.")).toBeVisible();
     await page.goto("/admin/mediji");
+    // An irreversible delete asks first (QA T6-12).
+    page.once("dialog", (dialog) => dialog.accept());
     await page.locator(`[data-library-item='${asset.id}'] [data-library-delete]`).click();
     await expect(page.locator(`[data-library-item='${asset.id}']`)).toHaveCount(0);
+    await expect(page.locator("[data-library-message]")).toHaveText("Datoteka je izbrisana.");
     expect(await prisma.mediaAsset.count({ where: { id: asset.id } })).toBe(0);
     expect((await front.request.get(asset.url)).status()).toBe(404);
     mediaUrl = null;
+
+    // Hero video (QA M13): an MP4 goes into the library as uploaded; an external video URL is refused
+    // with its own message, because the media policy plays video only from the store itself.
+    const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypisom"), Buffer.from([0, 0, 2, 0]), Buffer.from("isommp41"), Buffer.alloc(512, 1)]);
+    await page.goto("/admin/mediji");
+    await page.locator("#library-files").setInputFiles({ name: "hero.mp4", mimeType: "video/mp4", buffer: mp4 });
+    await page.locator("[data-library-upload] input[name='alt']").fill(`E2E slika ${key} video`);
+    await page.locator("[data-library-submit]").click();
+    await expect(page.locator("[data-library-message]")).toHaveText("Datoteke so naložene.");
+    const video = await prisma.mediaAsset.findFirstOrThrow({ where: { alt: `E2E slika ${key} video` } });
+    expect(video.url).toMatch(/^\/uploads\/media\/knjiznica-medijev\/[a-f0-9]{24}\.mp4$/);
+    expect(video).toMatchObject({ width: 0, height: 0, bytes: mp4.byteLength });
+    await expect(page.locator(`[data-library-item='${video.id}'] video`)).toHaveCount(1);
+    await page.goto("/admin/vsebina/domov");
+    await heroForm.locator("input[name='videoDesktop']").fill("https://cdn.example.com/hero.mp4");
+    await heroForm.locator("[data-hero-save]").click();
+    await expect(page.getByText("zunanjih video naslovov")).toBeVisible();
 
     // E-mail template: unknown placeholder refused, test-send arrives, the next order confirmation uses the override, reset restores the code template.
     await page.goto("/admin/e-posta");
@@ -264,7 +284,7 @@ test("manager edits the homepage, marquee, header menu, a page, the media librar
     await shop.close();
     await prisma.contentPage.deleteMany({ where: { slug: `e2e-stran-${key}` } });
     await prisma.emailTemplate.deleteMany({ where: { key: "orderConfirmation" } });
-    const leftover = await prisma.mediaAsset.findMany({ where: { alt: `E2E slika ${key}` } });
+    const leftover = await prisma.mediaAsset.findMany({ where: { alt: { startsWith: `E2E slika ${key}` } } });
     await prisma.mediaAsset.deleteMany({ where: { id: { in: leftover.map((asset) => asset.id) } } });
     for (const url of [mediaUrl, ...leftover.map((asset) => asset.url)]) {
       if (url) await rm(path.join(process.cwd(), "catalog-uploads", url.replace(/^\/uploads\//, "")), { force: true });

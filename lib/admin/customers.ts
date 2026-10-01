@@ -1,7 +1,9 @@
 import { Prisma, type Role } from "@prisma/client";
 import { db } from "@/lib/db";
 import { marketingVersion, recordConsent } from "@/lib/consent-log";
+import { timelinePush } from "@/lib/orders/timeline";
 import { removeSupportPhotos } from "@/lib/support/photos";
+import { likeEscaped } from "./like";
 
 /** Customers (§14.8): registered accounts and guest purchasers, GDPR export and anonymisation. */
 
@@ -55,9 +57,6 @@ const guestOrderSelect = {
   email: true, status: true, totalCents: true, refundedCents: true, createdAt: true, shippingAddress: true, anonymizedAt: true,
 } satisfies Prisma.OrderSelect;
 
-/** % and _ are literal characters of a typed name, never wildcards. */
-const likeEscaped = (value: string) => value.replace(/[\\%_]/g, (character) => `\\${character}`);
-
 /**
  * Guest purchasers, newest first, capped like the account scan. The name lives
  * in the shippingAddress JSON, and Prisma's JSON filter takes no `mode`, so
@@ -79,7 +78,8 @@ export async function listCustomers(filters: CustomerFilters): Promise<{ rows: C
     db.user.findMany({
       where: {
         role: "CUSTOMER",
-        ...(filters.q ? { OR: [{ email: { contains: filters.q, mode: "insensitive" } }, { name: { contains: filters.q, mode: "insensitive" } }] } : {}),
+        // Prisma's `contains` does not escape % and _ either: a bare "%" listed every account.
+        ...(filters.q ? { OR: [{ email: { contains: likeEscaped(filters.q), mode: "insensitive" } }, { name: { contains: likeEscaped(filters.q), mode: "insensitive" } }] } : {}),
         ...(filters.marketing !== null ? { marketingOptIn: filters.marketing } : {}),
       },
       select: {
@@ -376,6 +376,86 @@ function scrubbedAddress(value: unknown): Prisma.InputJsonValue {
 
 const ANONYMISED_TEXT = "[anonimizirano]";
 
+function addressText(value: unknown, key: "fullName" | "phone"): string | null {
+  return value && typeof value === "object" && typeof (value as Record<string, unknown>)[key] === "string"
+    ? (value as Record<string, string>)[key] : null;
+}
+
+/** Compared without case or diacritics: staff may type "Kovac" for "Kovač". */
+const folded = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+const regExpEscaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** The national part of a phone number: "+386 41 123 456", "041 123 456" and "041/123-456" share it. */
+const PHONE_KEY_DIGITS = 8;
+
+export interface PersonIdentifiers {
+  /** The e-mail, every full name and each name word of 3+ letters, folded. */
+  terms: string[];
+  /** The last digits of every phone number, however it was typed. */
+  phones: string[];
+}
+
+/**
+ * What staff free text may quote about the person: the e-mail, every name and
+ * phone number the store holds (account, address book, order addresses, order
+ * phone). A name also counts word by word, so a note naming only the surname
+ * ("ga. Novak") matches. Fragments under 3 letters are left out so a short name
+ * cannot blank every note; matching is over-inclusive on purpose (it only ever
+ * reads the person's own orders) — an erased note is the safe direction.
+ */
+export function personalIdentifiers(input: { emails: Array<string | null | undefined>; names: Array<string | null | undefined>; phones: Array<string | null | undefined> }): PersonIdentifiers {
+  const terms = new Set<string>();
+  const phones = new Set<string>();
+  const addTerm = (value: string) => {
+    const text = folded(value.trim());
+    if (text.length >= 3) terms.add(text);
+  };
+  for (const email of input.emails) if (email) addTerm(email);
+  for (const name of input.names) {
+    if (!name) continue;
+    addTerm(name);
+    for (const word of name.split(/[^\p{L}]+/u)) addTerm(word);
+  }
+  for (const phone of input.phones) {
+    const digits = phone?.replace(/\D/g, "") ?? "";
+    if (digits.length >= 6) phones.add(digits.slice(-PHONE_KEY_DIGITS));
+  }
+  return { terms: [...terms], phones: [...phones] };
+}
+
+/**
+ * Whether a piece of staff free text quotes the person: a term at the start of
+ * a word (so an inflected surname, "Novaka", matches and "banana" does not
+ * match "Ana"), or a phone number in any spacing or punctuation.
+ */
+export function quotesPerson(text: string, identifiers: PersonIdentifiers): boolean {
+  const haystack = folded(text);
+  if (identifiers.terms.some((term) => new RegExp(`(?<![\\p{L}\\p{N}])${regExpEscaped(term)}`, "u").test(haystack))) return true;
+  if (!identifiers.phones.length) return false;
+  return (text.match(/\d[\d\s()./-]*\d/g) ?? []).some((run) => {
+    const digits = run.replace(/\D/g, "");
+    return identifiers.phones.some((key) => digits.includes(key));
+  });
+}
+
+/**
+ * The stored order log with operator free text that quotes the person blanked.
+ * Only a cancellation's reason (`<reason>:<actor>`) is typed by staff; every
+ * other detail is a machine value, a configured carrier or a staff address.
+ * The entry, its time and the actor stay, so the log still reads in order.
+ */
+export function scrubbedTimeline(timeline: Prisma.JsonValue, identifiers: PersonIdentifiers): Prisma.JsonValue {
+  if (!Array.isArray(timeline)) return timeline;
+  return timeline.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry;
+    const { event, detail } = entry as { event?: unknown; detail?: unknown };
+    if (event !== "cancelled" || typeof detail !== "string" || detail.startsWith("cents:")) return entry;
+    const cut = detail.lastIndexOf(":");
+    const reason = cut > 0 ? detail.slice(0, cut) : detail;
+    if (!quotesPerson(reason, identifiers)) return entry;
+    return { ...entry, detail: cut > 0 ? `${ANONYMISED_TEXT}${detail.slice(cut)}` : ANONYMISED_TEXT };
+  });
+}
+
 /**
  * An order still waiting for a decision. Erasing its buyer would leave a late
  * payment webhook issuing an invoice for a scrubbed name and queueing a
@@ -405,10 +485,26 @@ export async function anonymiseCustomer(target: CustomerTarget, actorName: strin
       if (account) return { ok: false as const, reason: "account" as const };
     }
     const orders = await tx.order.findMany({
-      where: subjectOrderWhere(subject), select: { id: true, number: true, status: true, shippingAddress: true, billingAddress: true }, orderBy: { createdAt: "desc" },
+      where: subjectOrderWhere(subject),
+      select: { id: true, number: true, status: true, phone: true, shippingAddress: true, billingAddress: true, timeline: true },
+      orderBy: { createdAt: "desc" },
     });
     if (orders.some((order) => OPEN_ORDER_STATUSES.has(order.status))) return { ok: false as const, reason: "open_order" as const };
     const subscriber = await tx.subscriber.findUnique({ where: { email }, select: { id: true, status: true } });
+    // Read before the account and address book are erased: staff text quoting the name or a phone number is scrubbed too.
+    const profile = userId ? await tx.user.findUnique({ where: { id: userId }, select: { name: true } }) : null;
+    const addresses = userId ? await tx.address.findMany({ where: { userId }, select: { fullName: true, phone: true } }) : [];
+    const identifiers = personalIdentifiers({
+      emails: [email],
+      names: [
+        profile?.name, ...addresses.map((address) => address.fullName),
+        ...orders.flatMap((order) => [addressText(order.shippingAddress, "fullName"), addressText(order.billingAddress, "fullName")]),
+      ],
+      phones: [
+        ...addresses.map((address) => address.phone),
+        ...orders.flatMap((order) => [order.phone, addressText(order.shippingAddress, "phone"), addressText(order.billingAddress, "phone")]),
+      ],
+    });
 
     // Consent proof stays; the end of an active opt-in is appended like any other withdrawal.
     // Only a given consent can end: the account's own choice or a confirmed newsletter
@@ -451,19 +547,23 @@ export async function anonymiseCustomer(target: CustomerTarget, actorName: strin
           anonymizedAt: now,
           // A queued confirmation or shipment mail has no recipient left; the retry must not pick it up.
           confirmationEmailPending: false, shippedEmailPending: false,
-          timeline: { push: { at: now.toISOString(), event: "anonymised", detail: actorName } },
+          // Appended to the stored log (a `{ push }` on a Json column would replace it with the object);
+          // a cancellation reason quoting the person is blanked first, the entries themselves stay.
+          timeline: timelinePush({ timeline: scrubbedTimeline(order.timeline, identifiers) }, "anonymised", actorName, now),
         },
       });
     }
     const orderIds = orders.map((order) => order.id);
     if (orderIds.length) {
       await tx.couponRedemption.updateMany({ where: { orderId: { in: orderIds } }, data: { email: `anonymised@invalid` } });
-      // Notes the customer saw, and any staff text quoting the address, are free text that may identify the person.
-      await tx.orderNote.updateMany({
-        where: { orderId: { in: orderIds }, OR: [{ visibleToCustomer: true }, { body: { contains: email, mode: "insensitive" } }] },
-        data: { body: ANONYMISED_TEXT },
-      });
-      await tx.refund.updateMany({ where: { orderId: { in: orderIds }, reason: { contains: email, mode: "insensitive" } }, data: { reason: ANONYMISED_TEXT } });
+      // Notes the customer saw, and any staff text quoting the address, a name or a phone number, are free text that may
+      // identify the person. Matched here rather than with LIKE: a surname alone or a differently spaced number counts too.
+      const notes = await tx.orderNote.findMany({ where: { orderId: { in: orderIds } }, select: { id: true, body: true, visibleToCustomer: true } });
+      const noteIds = notes.filter((note) => note.visibleToCustomer || quotesPerson(note.body, identifiers)).map((note) => note.id);
+      if (noteIds.length) await tx.orderNote.updateMany({ where: { id: { in: noteIds } }, data: { body: ANONYMISED_TEXT } });
+      const refunds = await tx.refund.findMany({ where: { orderId: { in: orderIds } }, select: { id: true, reason: true } });
+      const refundIds = refunds.filter((refund) => quotesPerson(refund.reason, identifiers)).map((refund) => refund.id);
+      if (refundIds.length) await tx.refund.updateMany({ where: { id: { in: refundIds } }, data: { reason: ANONYMISED_TEXT } });
     }
     const tickets = await tx.ticket.findMany({ where: subjectTicketWhere(subject), select: { id: true, attachments: { select: { filename: true } } } });
     // The photos go before the rows that name them. Deleting the rows first and unlinking

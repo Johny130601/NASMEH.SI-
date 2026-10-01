@@ -42,7 +42,7 @@ export async function unlockMaintenanceAction(input: {
     const jar = await cookies();
     jar.set(
       MAINTENANCE_COOKIE,
-      maintenanceCookieValue(getEnv().AUTH_SECRET),
+      maintenanceCookieValue(getEnv().AUTH_SECRET, setting.passwordHash),
       {
         maxAge: MAINTENANCE_MAX_AGE_S,
         httpOnly: true,

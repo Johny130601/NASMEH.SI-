@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { completeEnrolmentAction } from "@/app/admin/2fa/actions";
-import { admin as copy } from "@/lib/copy";
+import { admin as copy } from "@/lib/copy/admin";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiInput } from "@/components/storefront/ui/UiInput";
 

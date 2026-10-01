@@ -70,6 +70,9 @@ async function fillWithdrawal(page: Page, input: { email: string; orderNumber: s
   await form.locator('[name="privacyAccepted"]').check();
   await form.getByRole("button", { name: "Pošlji odstop od pogodbe" }).click();
   await expect(page.locator("[data-withdrawal-success]")).toBeVisible();
+  // The confirmation with its reference is brought into view and focused (QA M14).
+  await expect(page.locator("[data-withdrawal-success] h3")).toBeFocused();
+  await expect(page.locator("[data-withdrawal-reference]")).toBeInViewport();
   return (await page.locator("[data-withdrawal-reference]").textContent())!;
 }
 
@@ -99,6 +102,9 @@ test("online withdrawal links the order by its e-mail, files a RETURN/WITHDRAWAL
   const ticket = await prisma.ticket.findUniqueOrThrow({ where: { reference } });
   expect(ticket).toMatchObject({ topic: "RETURN", reason: "WITHDRAWAL", orderId: order.id, orderProof: "EMAIL_NUMBER", email, privacyVersion: PRIVACY_NOTICE_VERSIONS.withdrawal });
   expect(ticket.details).toMatchObject({ kind: "withdrawal", items: "1 × Belilni trakci za zobe", goodsReceived: true, receivedAt: "2026-09-01", address: "Testna ulica 1, 1000 Ljubljana" });
+  // The composed message staff read carries the date in the Slovenian form, like the rows (QA T4-F11).
+  expect(ticket.message).toContain("Blago prejeto dne: 1. 9. 2026");
+  expect(ticket.message).not.toContain("2026-09-01");
   expect(ticket.details).not.toHaveProperty("claimedOrderNumber");
   expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe("PAID");
 
@@ -110,6 +116,8 @@ test("online withdrawal links the order by its e-mail, files a RETURN/WITHDRAWAL
   expect(staffBody).toContain("Odstop od pogodbe (14 dni)");
   expect(staffBody).toContain("Testna ulica 1, 1000 Ljubljana");
   expect(staffBody).toContain(order.number);
+  expect(staffBody).toContain("Blago prejeto dne: 1. 9. 2026");
+  expect(staffBody).not.toContain("Blago prejeto dne: 2026-09-01");
   expect(staffBody).toContain("učinkuje z obvestilom potrošnika");
   expect(staffBody).not.toContain("ne prekliče naročila");
   const customer = await waitForMailMessage(email);
@@ -219,6 +227,9 @@ test("adverse-event report validates a given batch number, routes structured fie
   await form.locator("#adverse-photos").setInputFiles({ name: "reakcija.png", mimeType: "image/png", buffer: photo });
   await form.getByRole("button", { name: "Pošlji prijavo" }).click();
   await expect(page.locator("[data-adverse-success]")).toBeVisible();
+  // The confirmation with its reference is brought into view and focused (QA M14).
+  await expect(page.locator("[data-adverse-success] h2")).toBeFocused();
+  await expect(page.locator("[data-adverse-reference]")).toBeInViewport();
   const reference = (await page.locator("[data-adverse-reference]").textContent())!;
 
   const ticket = await prisma.ticket.findUniqueOrThrow({ where: { reference }, include: { attachments: true } });

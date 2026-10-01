@@ -6,24 +6,37 @@ import {
   removeCartLineAction,
   updateCartLineAction,
 } from "@/app/(storefront)/actions/cart";
-import { cart } from "@/lib/copy";
+import { cart } from "@/lib/copy/cart";
 
 /** Cart line qty stepper (capped) + trash remove — client island. */
 export function CartLineControls({
   variantId,
   quantity,
   maxQuantity,
+  stockLimited = false,
+  soldOut = false,
 }: {
   variantId: string;
   quantity: number;
+  /** The line's cap: the per-order cap, or the stock when that is lower. */
   maxQuantity: number;
+  /** The cap is the stock, not the per-order cap: the notice must not call it a per-order limit (QA C2-F1). */
+  stockLimited?: boolean;
+  /**
+   * The line sold out while it sat in the cart: it can be lowered or removed,
+   * never raised, and the page states why instead of a cap notice.
+   */
+  soldOut?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [showCapNote, setShowCapNote] = useState(false);
+  // A sold-out line's ceiling is what it already holds.
+  const ceiling = soldOut ? Math.min(quantity, maxQuantity) : maxQuantity;
 
   const update = (next: number) => {
-    if (next > maxQuantity) {
+    if (next > ceiling) {
+      if (soldOut) return;
       setShowCapNote(true);
       return;
     }
@@ -65,7 +78,7 @@ export function CartLineControls({
           <button
             type="button"
             aria-label={cart.line.increase}
-            disabled={pending || quantity >= maxQuantity}
+            disabled={pending || quantity >= ceiling}
             onClick={() => update(quantity + 1)}
             className="flex h-10 w-10 items-center justify-center rounded-btn text-lg text-dark-1 transition-colors hover:bg-light-3 disabled:pointer-events-none disabled:opacity-40"
           >
@@ -84,9 +97,9 @@ export function CartLineControls({
           </svg>
         </button>
       </div>
-      {showCapNote || quantity >= maxQuantity ? (
-        <p className="text-xs text-warning" role="status">
-          {cart.line.maxQuantity}
+      {!soldOut && (showCapNote || quantity >= maxQuantity) ? (
+        <p className="text-xs text-warning" role="status" data-cap-note={stockLimited ? "stock" : "order"}>
+          {stockLimited ? cart.line.stockLimit : cart.line.maxQuantity(maxQuantity)}
         </p>
       ) : null}
     </div>

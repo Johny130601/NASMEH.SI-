@@ -17,7 +17,7 @@ async function registerViaUi(page: Page, email: string, password: string, market
   await page.goto("/registracija"); await dismissCmp(page);
   await page.getByLabel("Ime", { exact: true }).fill(name);
   await page.getByLabel("Priimek").fill("Uporabnik");
-  await page.getByLabel("E-pošta").fill(email);
+  await page.getByLabel("E-pošta", { exact: true }).fill(email);
   await page.getByLabel(/Geslo/).fill(password);
   await expect(page.locator("[data-marketing-optin]")).not.toBeChecked();
   await expect(page.locator("[data-register-form] [data-privacy-notice] a")).toHaveAttribute("href", "/politika-zasebnosti");
@@ -50,12 +50,12 @@ async function activate(page: Page, email: string, ignored: string[] = []) {
 }
 async function login(page: Page, email: string, password: string) {
   await page.goto("/prijava"); await dismissCmp(page);
-  await page.getByLabel("E-pošta").fill(email); await page.getByLabel("Geslo", { exact: true }).fill(password);
+  await page.getByLabel("E-pošta", { exact: true }).fill(email); await page.getByLabel("Geslo", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Prijava", exact: true }).click();
 }
 async function requestReset(page: Page, email: string, ignored: string[] = []) {
   await page.goto("/pozabljeno-geslo"); await dismissCmp(page);
-  await page.getByLabel("E-pošta").fill(email);
+  await page.getByLabel("E-pošta", { exact: true }).fill(email);
   await page.getByRole("button", { name: "Pošlji povezavo" }).click();
   await expect(page.locator("[data-forgot-success]")).toBeVisible();
   return mailToken(email, "ponastavi-geslo", ignored);
@@ -79,8 +79,10 @@ test("registration → read-only verification link → activation → login; con
   const token = await activate(page, email);
   const tokenRow = await prisma.authToken.findUniqueOrThrow({ where: { tokenHash: digest(token) } });
   expect(tokenRow.usedAt).not.toBeNull(); expect(JSON.stringify(tokenRow)).not.toContain(token);
+  // The used link of an active account leads to sign-in, not back to registration (QA T3-F5).
   await page.goto(`/potrdi-racun/${token}`);
-  await expect(page.getByRole("heading", { name: "Povezava ni veljavna" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Račun je že aktiven" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Na prijavo" })).toHaveAttribute("href", "/prijava");
   await login(page, email, password); await page.waitForURL(/\/racun/);
   await expect(page.getByText(/Živjo, Test/)).toBeVisible();
 });
@@ -193,6 +195,32 @@ test("login rejects a missing challenge through the real provider boundary", asy
   await expect(page.getByRole("main").getByRole("alert"))
     .toHaveText("Preverjanje ni uspelo. Potrdite, da niste robot, in poskusite znova.");
   await expect(page).toHaveURL(/error=bot_check/);
+});
+
+test("sign-in returns to the requested page; a failed attempt keeps the page and the typed address", async ({ page }) => {
+  const email = newEmail("callback"), password = "Geslo12345!";
+  await prisma.user.create({ data: { email, name: "Povratek Test", role: "CUSTOMER", emailVerified: new Date(), passwordHash: await bcrypt.hash(password, 4) } });
+  await page.goto("/racun/podatki");
+  await page.waitForURL(/\/prijava\?callbackUrl=%2Fracun%2Fpodatki/);
+  await dismissCmp(page);
+  const form = page.locator("[data-login-form]");
+  await form.getByLabel("E-pošta").fill(email);
+  await form.getByLabel("Geslo", { exact: true }).fill("NapacnoGeslo1!");
+  await form.getByRole("button", { name: "Prijava", exact: true }).click();
+  await page.waitForURL(/\/prijava\?error=credentials&callbackUrl=%2Fracun%2Fpodatki/);
+  await expect(form.getByLabel("E-pošta")).toHaveValue(email);
+  await form.getByLabel("Geslo", { exact: true }).fill(password);
+  await form.getByRole("button", { name: "Prijava", exact: true }).click();
+  await page.waitForURL(/\/racun\/podatki$/);
+  // A foreign target is never followed — nor a dot-segment path that normalises into "//host", signed in or not.
+  for (const path of ["/prijava", "/prijava/naprej"]) {
+    await page.goto(`${path}?callbackUrl=${encodeURIComponent("/.//evil.example/racun")}`);
+    await page.waitForURL(/\/racun$/);
+  }
+  await page.goto("/racun");
+  await page.context().clearCookies();
+  await page.goto(`/prijava?callbackUrl=${encodeURIComponent("https://evil.example/racun")}`);
+  await expect(page.locator("[data-login-form] input[name='callbackUrl']")).toHaveCount(0);
 });
 
 test("/racun/* redirects anonymous users to login", async ({ request }) => {

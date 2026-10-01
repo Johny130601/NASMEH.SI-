@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -5,16 +6,23 @@ import type { SubscriberStatus } from "@prisma/client";
 import { requirePagePermission } from "@/lib/admin/access";
 import { can } from "@/lib/admin/permissions";
 import { findCustomerAccountId, loadCustomer, loadGuest } from "@/lib/admin/customers";
+import { consentChoiceParts, consentKindLabel, consentVersionLabel } from "@/lib/admin/consent-display";
 import { formatEUR } from "@/lib/pricing";
 import { admin as copy } from "@/lib/copy";
 import { contact } from "@/lib/copy/contact";
 import type { TopicCode } from "@/lib/support/topics";
-import { OrderStatusPill } from "@/components/storefront/account/OrderStatusPill";
+import { AdminOrderStatusPill } from "@/components/admin/OrderStatusPill";
 import { CustomerActions } from "@/components/admin/CustomerActions";
 
 export const metadata: Metadata = { title: copy.customers.title, robots: { index: false, follow: false } };
 
 const d = copy.customers.detail;
+
+/** A copy line whose {date} stays on one line (QA round 2: dates never break inside). */
+function WithDate({ text, date }: { text: string; date: Date }) {
+  const [before, after = ""] = text.split("{date}");
+  return <>{before}<span className="whitespace-nowrap">{date.toLocaleDateString("sl-SI")}</span>{after}</>;
+}
 
 function OrdersTable({ orders }: { orders: Array<{ id: string; number: string; status: "PENDING" | "PAID" | "PROCESSING" | "SHIPPED" | "DELIVERED" | "CANCELLED" | "REFUNDED"; totalCents: number; refundedCents: number; createdAt: Date }> }) {
   if (orders.length === 0) return <p className="mt-3 text-sm text-mid-2">{d.noOrders}</p>;
@@ -22,8 +30,8 @@ function OrdersTable({ orders }: { orders: Array<{ id: string; number: string; s
     <ul className="mt-3 flex flex-col gap-2 text-sm">
       {orders.map((order) => (
         <li key={order.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-light-3 pt-2 first:border-t-0 first:pt-0">
-          <span><Link href={`/admin/narocila/${order.number}`} className="underline underline-offset-4">{order.number}</Link> · {order.createdAt.toLocaleDateString("sl-SI")}</span>
-          <span className="flex items-center gap-3"><OrderStatusPill status={order.status} /><span style={{ fontVariantNumeric: "tabular-nums" }}>{formatEUR(order.totalCents)}</span></span>
+          <span><Link href={`/admin/narocila/${order.number}`} className="whitespace-nowrap underline underline-offset-4">{order.number}</Link> · <span className="whitespace-nowrap">{order.createdAt.toLocaleDateString("sl-SI")}</span></span>
+          <span className="flex items-center gap-3"><AdminOrderStatusPill status={order.status} /><span style={{ fontVariantNumeric: "tabular-nums" }}>{formatEUR(order.totalCents)}</span></span>
         </li>
       ))}
     </ul>
@@ -35,7 +43,7 @@ function TicketsList({ tickets }: { tickets: Array<{ id: string; reference: stri
   return (
     <ul className="mt-3 flex flex-col gap-1 text-sm">
       {tickets.map((ticket) => (
-        <li key={ticket.id}><Link href={`/admin/podpora/${ticket.id}`} className="underline underline-offset-4">{ticket.reference}</Link> · {contact.topics[ticket.topic as TopicCode]?.label ?? ticket.topic} · {copy.tickets.statuses[ticket.status]}</li>
+        <li key={ticket.id}><Link href={`/admin/podpora/${ticket.id}`} className="whitespace-nowrap underline underline-offset-4">{ticket.reference}</Link> · {contact.topics[ticket.topic as TopicCode]?.label ?? ticket.topic} · {copy.tickets.statuses[ticket.status]}</li>
       ))}
     </ul>
   );
@@ -45,13 +53,23 @@ function ConsentsList({ consents }: { consents: Array<{ id: string; kind: string
   if (consents.length === 0) return <p className="mt-3 text-sm text-mid-2">{d.noConsents}</p>;
   return (
     <ul className="mt-3 flex flex-col gap-1 text-xs" data-customer-consents>
-      {consents.map((entry) => (
-        <li key={entry.id} className="flex flex-wrap gap-x-2">
-          <span className="text-mid-2" style={{ fontVariantNumeric: "tabular-nums" }}>{entry.createdAt.toLocaleString("sl-SI")}</span>
-          <span>{entry.kind} v{entry.version}</span>
-          <span className="break-all text-mid-1">{JSON.stringify(entry.choices)}</span>
-        </li>
-      ))}
+      {consents.map((entry) => {
+        const version = consentVersionLabel(entry.version);
+        return (
+          <li key={entry.id} className="flex flex-wrap gap-x-2" title={entry.version} data-consent-kind={entry.kind}>
+            <span className="whitespace-nowrap text-mid-2" style={{ fontVariantNumeric: "tabular-nums" }}>{entry.createdAt.toLocaleString("sl-SI")}</span>
+            <span className="font-medium">{consentKindLabel(entry.kind)}{version ? ` (${version})` : ""}</span>
+            {/* A token (an order number, a slug) never breaks inside; a phrase wraps between its words. */}
+            <span className="text-mid-1">
+              {consentChoiceParts(entry.choices, entry.kind).map((part, index) => (
+                <Fragment key={part.key}>
+                  {index ? " · " : ""}{part.label}: <span className={/\s/.test(part.value) ? undefined : "whitespace-nowrap"}>{part.value}</span>
+                </Fragment>
+              ))}
+            </span>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -72,14 +90,14 @@ function OtherRecords({ subscriber, backInStock, abandonedCheckouts }: {
         <dd>
           {backInStock.length === 0 ? copy.common.none : (
             <ul className="flex flex-col gap-0.5">
-              {backInStock.map((row) => <li key={row.id}>{row.product.title} · {d.subscriberStatuses[row.status]} · {row.createdAt.toLocaleDateString("sl-SI")}</li>)}
+              {backInStock.map((row) => <li key={row.id}>{row.product.title} · {d.subscriberStatuses[row.status]} · <span className="whitespace-nowrap">{row.createdAt.toLocaleDateString("sl-SI")}</span></li>)}
             </ul>
           )}
         </dd>
         <dt className="text-mid-1">{d.abandonedCheckouts}</dt>
         <dd>
           {abandonedCheckouts.length === 0 ? copy.common.none
-            : d.abandonedCheckoutsSummary.replace("{n}", String(abandonedCheckouts.length)).replace("{date}", abandonedCheckouts[0].updatedAt.toLocaleDateString("sl-SI"))}
+            : <WithDate text={d.abandonedCheckoutsSummary.replace("{n}", String(abandonedCheckouts.length))} date={abandonedCheckouts[0].updatedAt} />}
         </dd>
       </dl>
     </section>
@@ -108,7 +126,7 @@ export default async function AdminCustomerPage({ params, searchParams }: { para
         <p className="text-sm text-mid-1">{guest.email} · {copy.customers.types.guest}</p>
         <p className="mt-1 text-xs text-mid-2">{d.guestNote}</p>
         {guest.anonymizedAt ? <p className="mt-2 text-sm text-mid-2" data-customer-anonymised>{d.anonymised.replace("{date}", guest.anonymizedAt.toLocaleDateString("sl-SI"))}</p> : null}
-        <div className="mt-6 grid gap-4 xl:grid-cols-2">
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
           <section className="rounded-card border border-light-2 bg-white p-5" data-customer-orders>
             <h2 className="text-base font-medium">{d.orders}</h2>
             <p className="mt-1 text-xs text-mid-2">{d.orderCount}: {guest.orders.length} · {d.ltv}: {formatEUR(guest.ltvCents)}</p>
@@ -140,12 +158,13 @@ export default async function AdminCustomerPage({ params, searchParams }: { para
       <p className="text-sm text-mid-1" data-customer-email>{customer.email}</p>
       {customer.anonymizedAt ? <p className="mt-2 text-sm text-mid-2" data-customer-anonymised>{d.anonymised.replace("{date}", customer.anonymizedAt.toLocaleDateString("sl-SI"))}</p> : null}
 
-      <div className="mt-6 grid gap-4 xl:grid-cols-3">
+      {/* Three cards to a row only where each gets 18rem (1280 and up); beside the 16rem sidebar at 991 that is two, so the 9rem label column keeps room. The min() keeps one track inside the page at a large root font. */}
+      <div className="mt-6 grid gap-4 lg:grid-cols-[repeat(auto-fit,minmax(min(18rem,100%),1fr))]">
         <section className="rounded-card border border-light-2 bg-white p-5">
           <h2 className="text-base font-medium">{d.profile}</h2>
           <dl className="mt-3 grid grid-cols-[9rem_1fr] gap-y-1 text-sm">
             <dt className="text-mid-1">{d.role}</dt><dd>{copy.roles[customer.role]}</dd>
-            <dt className="text-mid-1">{d.registered}</dt><dd>{customer.createdAt.toLocaleDateString("sl-SI")}</dd>
+            <dt className="text-mid-1">{d.registered}</dt><dd className="whitespace-nowrap">{customer.createdAt.toLocaleDateString("sl-SI")}</dd>
             <dt className="text-mid-1">{d.verified}</dt><dd>{customer.emailVerified ? copy.common.yes : copy.common.no}</dd>
             <dt className="text-mid-1">{d.marketingOptIn}</dt><dd>{customer.marketingOptIn ? copy.common.yes : copy.common.no}</dd>
             <dt className="text-mid-1">{d.orderCount}</dt><dd>{customer.orders.length}</dd>
@@ -176,7 +195,7 @@ export default async function AdminCustomerPage({ params, searchParams }: { para
         </section>
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-3">
+      <div className="mt-4 grid gap-4 lg:grid-cols-[repeat(auto-fit,minmax(min(18rem,100%),1fr))]">
         <section className="rounded-card border border-light-2 bg-white p-5" data-customer-orders>
           <h2 className="text-base font-medium">{d.orders}</h2>
           <OrdersTable orders={customer.orders} />

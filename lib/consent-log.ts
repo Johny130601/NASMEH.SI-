@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
-import { account, auth, backInStock, checkout, footer } from "@/lib/copy";
+import { account } from "@/lib/copy/account";
+import { auth } from "@/lib/copy/auth";
+import { backInStock } from "@/lib/copy/backInStock";
+import { checkout } from "@/lib/copy/checkout";
+import { footer } from "@/lib/copy/footer";
 
 /**
  * The single write path to ConsentLog (GDPR Art. 7(1): the controller must be

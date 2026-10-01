@@ -3,11 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { clearKodaAction } from "@/app/(storefront)/actions/koda";
-import { cart, promo } from "@/lib/copy";
+import { cart } from "@/lib/copy/cart";
+import { promo } from "@/lib/copy/promo";
+import type { CouponType } from "@/lib/promo/coupons";
 import { UiIcon } from "../ui/UiIcon";
 
-/** Active-code pill in the cart summary (with terms sentence, §9.1). */
-export function ActiveCodePill({ code, rejected = false }: { code: string; rejected?: boolean }) {
+/** Active-code pill in the cart summary (with terms sentence, §9.1; a free-shipping code has its own, QA T6-10). */
+export function ActiveCodePill({ code, rejected = false, couponType = null }: { code: string; rejected?: boolean; couponType?: CouponType | null }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   return (
@@ -34,7 +36,7 @@ export function ActiveCodePill({ code, rejected = false }: { code: string; rejec
           <UiIcon name="close" className="h-4 w-4" />
         </button>
       </div>
-      <p className="mt-1 text-xs text-mid-2">{promo.terms}</p>
+      <p className="mt-1 text-xs text-mid-2">{promo.termsFor(couponType)}</p>
     </div>
   );
 }

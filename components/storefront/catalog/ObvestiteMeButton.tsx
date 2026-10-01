@@ -5,7 +5,7 @@ import {
   backInStockChallengeAction,
   subscribeBackInStockAction,
 } from "@/app/(storefront)/actions/backInStock";
-import { backInStock as copy } from "@/lib/copy";
+import { backInStock as copy } from "@/lib/copy/backInStock";
 import { ChallengeStatus, useLazyChallenge } from "../chrome/useLazyChallenge";
 import { UiButton } from "../ui/UiButton";
 import { UiInput } from "../ui/UiInput";

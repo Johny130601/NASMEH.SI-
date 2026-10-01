@@ -10,8 +10,10 @@ import { capturePayPalOrder } from "@/lib/payments/paypal";
 import type { PaymentIntentHandle } from "@/lib/payments/types";
 import { priceCartWithCoupon } from "@/lib/promo/coupons";
 import { resolveCouponInput } from "@/lib/promo/resolve";
-import { checkoutFormSchema } from "./checkout-schema";
+import { checkoutFormSchema, invalidFormFields } from "./checkout-schema";
 import { buildCheckoutPricing, quoteMatches } from "./quote";
+import { SoldOutLinesError } from "./sold-out";
+import { providerPaymentSettling } from "./confirmation-view";
 import { collectInventoryRequirements } from "./inventory";
 import { nextOrderNumber } from "./numbers";
 import { resolveLegalAcceptance } from "./legal-acceptance";
@@ -20,7 +22,8 @@ import { requestCheckoutSubscription, scheduleCheckoutSubscriptionMail } from ".
 export type PlaceOrderResult =
   | { ok: true; orderNumber: string; provider: PaymentIntentHandle["provider"]; clientSecret?: string;
       approvalUrl?: string; intentId?: string; paymentUnavailable?: boolean; paymentStatus?: string; providerState?: string; created?: boolean; totalCents: number }
-  | { ok: false; error: string };
+  /** `fields`: the form fields an `invalid_form` refusal names (QA M11). */
+  | { ok: false; error: string; fields?: string[] };
 
 /** Order first, PSP second. Stable provider idempotency keys recover timeouts. */
 export async function ensureOrderPayment(order: Order): Promise<PlaceOrderResult> {
@@ -47,7 +50,8 @@ export async function ensureOrderPayment(order: Order): Promise<PlaceOrderResult
       return { ok: true, orderNumber: order.number, provider: providerName, totalCents: order.totalCents, paymentUnavailable: true };
     }
     if (providerName === "paypal" && handle.status === "APPROVED") await capturePayPalOrder(handle.intentId);
-    if ((providerName === "stripe" && ["succeeded", "processing"].includes(handle.status ?? "")) || (providerName === "paypal" && ["APPROVED", "COMPLETED"].includes(handle.status ?? ""))) {
+    // The confirmation page reads the same set, so its face agrees with this answer (confirmation-view).
+    if (providerPaymentSettling(providerName, handle.status)) {
       return { ok: true, orderNumber: order.number, provider: providerName, totalCents: order.totalCents, paymentStatus: "AWAITING_WEBHOOK", providerState: handle.status };
     }
     if (handle.status === "canceled" || handle.status === "VOIDED") {
@@ -66,7 +70,7 @@ export async function ensureOrderPayment(order: Order): Promise<PlaceOrderResult
 
 export async function placeOrder(rawInput: unknown): Promise<PlaceOrderResult> {
   const parsed = checkoutFormSchema.safeParse(rawInput);
-  if (!parsed.success) return { ok: false, error: "invalid_form" };
+  if (!parsed.success) return { ok: false, error: "invalid_form", fields: invalidFormFields(parsed.error) };
   const input = parsed.data;
   const session = await auth();
   const resume = async (existing: Order): Promise<PlaceOrderResult> => {
@@ -150,6 +154,8 @@ export async function placeOrder(rawInput: unknown): Promise<PlaceOrderResult> {
       const duplicate = await db.order.findUnique({ where: { checkoutKey: input.checkoutKey } });
       if (duplicate) return resume(duplicate);
     }
+    // The quote's sold-out refusal answers like the stock check in the try block: `stock:` with the lines named.
+    if (error instanceof SoldOutLinesError) return { ok: false, error: `stock:${error.titles.join(", ")}` };
     const message = error instanceof Error ? error.message : "";
     if (["quote_changed", "empty_cart", "invalid_shipping_method"].includes(message)) return { ok: false, error: message };
     console.error("Order creation failed");

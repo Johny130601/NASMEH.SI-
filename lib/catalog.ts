@@ -2,6 +2,9 @@ import { db } from "@/lib/db";
 import { getPriceReductions } from "@/lib/omnibus";
 import { getLowStockThreshold } from "@/lib/settings";
 import { bundleSavings, type BundleSavings, type PriceReduction } from "@/lib/pricing";
+import { PURCHASABLE_PRODUCT_WHERE } from "@/lib/cart/visibility";
+import { isSoldOut, productHasSellableUnits, sellableStock } from "@/lib/bundle/availability";
+import { catalog as copy } from "@/lib/copy/catalog";
 
 /** Shared catalog product shape for cards across all surfaces. */
 export interface CatalogProduct {
@@ -16,6 +19,7 @@ export interface CatalogProduct {
    * raw compare-at is deliberately not on the card shape.
    */
   reduction: PriceReduction | null;
+  /** Units the shopper can buy: a bundle's is what its components can fill (lib/bundle/availability). */
   stock: number;
   /** Sold out for display: no stock and no backorder allowed (§14.2). */
   soldOut: boolean;
@@ -51,6 +55,18 @@ export interface Badge {
   style: "outline" | "solid" | "grey" | "warning" | "promo";
 }
 
+/** A collection as /trgovina renders it (§14.3): tab, banner, SEO fields. */
+export interface CatalogCollection {
+  slug: string;
+  title: string;
+  bannerImage: string | null;
+  bannerImageMobile: string | null;
+  hideBannerText: boolean;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  noindex: boolean;
+}
+
 const BADGE_STYLES = new Set(["outline", "solid", "grey", "warning", "promo"]);
 
 export function parseBadges(json: unknown): Badge[] {
@@ -74,6 +90,17 @@ export function parseBadges(json: unknown): Badge[] {
     }
     return [];
   });
+}
+
+/**
+ * Admin badges a card or PDP may show. A badge that merely says "sold out" is
+ * dropped: the computed sold-out pill states that when it is true, and an
+ * admin badge left on a restocked product would state it when it is not
+ * (UCPD Annex I point 7 — AGENTS §8.23).
+ */
+export function displayBadges(badges: Badge[]): Badge[] {
+  const soldOutLabel = copy.card.soldOut.trim().toLocaleLowerCase("sl");
+  return badges.filter((badge) => badge.label.trim().toLocaleLowerCase("sl") !== soldOutLabel);
 }
 
 function parseUnitPrice(json: unknown): CatalogProduct["unitPrice"] {
@@ -121,6 +148,102 @@ export function bundleSavingsFor(
   return savings.savingsCents > 0 ? savings : null;
 }
 
+const BASIC_ENTITIES: Readonly<Record<string, string>> = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: " " };
+
+/**
+ * Operator HTML as plain text: tags out, block boundaries as spaces, basic
+ * entities decoded, whitespace collapsed. For meta descriptions, JSON-LD and
+ * the search index — never for rendering (that is `sanitizeContentHtml`).
+ */
+export function plainTextFromHtml(html: string): string {
+  return html
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (entity, body: string) => {
+      if (body[0] === "#") {
+        const code = body[1] === "x" || body[1] === "X" ? parseInt(body.slice(2), 16) : parseInt(body.slice(1), 10);
+        return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "";
+      }
+      return BASIC_ENTITIES[body.toLowerCase()] ?? entity;
+    })
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** A meta description from the rich description: plain text, cut at a word under `max` characters. */
+export function descriptionSummary(html: string, max = 160): string {
+  const text = plainTextFromHtml(html);
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > max / 2 ? cut.slice(0, lastSpace) : cut).trim()}…`;
+}
+
+/** The human-readable product text a shopper could search for (lib/search): title apart, the rest joined. */
+export interface ProductSearchText {
+  title: string;
+  body: string;
+}
+
+const strings = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+
+/**
+ * Text a shopper might type, and nothing else: the title, the description,
+ * the merchandising text inside `customFields` (intro, bullets, USP chips)
+ * and the accordion, FAQ and education copy. Slugs, JSON keys, cross-sell
+ * handles and free-form metafields are left out — a search for "serum" must
+ * not match every product that cross-sells the serum (QA L7).
+ */
+export function productSearchText(product: {
+  title: string;
+  description: string;
+  customFields: unknown;
+  accordions: unknown;
+  faq: unknown;
+  education: unknown;
+}): ProductSearchText {
+  const fields = product.customFields && typeof product.customFields === "object" && !Array.isArray(product.customFields)
+    ? (product.customFields as Record<string, unknown>)
+    : {};
+  const accordions = product.accordions && typeof product.accordions === "object" && !Array.isArray(product.accordions)
+    ? Object.values(product.accordions as Record<string, unknown>).filter((value): value is string => typeof value === "string")
+    : [];
+  const faq = Array.isArray(product.faq)
+    ? product.faq.flatMap((entry) => (entry && typeof entry === "object" ? strings([(entry as { q?: unknown }).q, (entry as { a?: unknown }).a]) : []))
+    : [];
+  const education = Array.isArray(product.education)
+    ? product.education.flatMap((entry) => (entry && typeof entry === "object" ? strings([(entry as { heading?: unknown }).heading, (entry as { body?: unknown }).body]) : []))
+    : [];
+  const body = [
+    plainTextFromHtml(product.description),
+    typeof fields.intro === "string" ? fields.intro : "",
+    ...strings(fields.bullets),
+    ...strings(fields.uspChips),
+    ...accordions.map(plainTextFromHtml),
+    ...faq,
+    ...education,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return { title: product.title, body };
+}
+
+/**
+ * Whether a claim the product page shows carries the "^" marker that the
+ * guarantee accordion's title resolves (QA T1-14): the title, the description,
+ * the customFields text and the accordion, FAQ and education copy. The
+ * guarantee accordion's own body is the resolution, not a claim, so it does
+ * not count.
+ */
+export function hasCaretClaim(product: Parameters<typeof productSearchText>[0]): boolean {
+  const accordions = product.accordions && typeof product.accordions === "object" && !Array.isArray(product.accordions)
+    ? Object.fromEntries(Object.entries(product.accordions as Record<string, unknown>).filter(([key]) => key !== "guarantee"))
+    : product.accordions;
+  const text = productSearchText({ ...product, accordions });
+  return text.title.includes("^") || text.body.includes("^");
+}
+
 type ProductRow = Awaited<ReturnType<typeof fetchProducts>>[number];
 
 async function fetchProducts(where: object, orderBy: object) {
@@ -134,11 +257,13 @@ async function fetchProducts(where: object, orderBy: object) {
         where: { kind: { in: ["CARD", "GALLERY"] } },
         orderBy: { sortOrder: "asc" },
       },
+      // a bundle's availability is its components' (lib/bundle/availability)
       bundle: {
         select: {
           id: true,
           priceCents: true,
-          items: { select: { quantity: true, variant: { select: { priceCents: true } } } },
+          active: true,
+          items: { select: { quantity: true, variant: { select: { priceCents: true, stock: true, allowBackorder: true } } } },
         },
       },
     },
@@ -172,7 +297,8 @@ export function toCatalogProduct(
   const card = product.media.find((image) => image.kind === "CARD") ?? null;
   // the first gallery view that is not the card image itself
   const gallery = product.media.find((image) => image.kind === "GALLERY" && image.url !== card?.url) ?? null;
-  const soldOut = variant.stock <= 0 && !variant.allowBackorder;
+  const availability = sellableStock(variant, product.bundle);
+  const soldOut = isSoldOut(availability);
   const reduction = reductions.get(variant.id) ?? null;
   return {
     slug: product.slug,
@@ -181,15 +307,15 @@ export function toCatalogProduct(
     sku: variant.sku,
     priceCents: variant.priceCents,
     reduction,
-    stock: variant.stock,
+    stock: availability.stock,
     soldOut,
-    lowStock: soldOut ? null : lowStockUnits(variant.stock, lowStockThreshold),
-    backorderNote: variant.stock <= 0 && variant.allowBackorder ? variant.backorderNote : null,
+    lowStock: soldOut ? null : lowStockUnits(availability.stock, lowStockThreshold),
+    backorderNote: availability.stock <= 0 && availability.allowBackorder ? variant.backorderNote : null,
     maxCartQuantity: variant.maxCartQuantity,
     imageUrl: card?.url ?? null,
     imageAlt: card?.alt ?? product.title,
     hoverImageUrl: gallery?.url ?? null,
-    badges: parseBadges(product.badges),
+    badges: displayBadges(parseBadges(product.badges)),
     variantCount: product.variants.length,
     rating:
       rating && rating.count > 0
@@ -202,18 +328,21 @@ export function toCatalogProduct(
   };
 }
 
-/** Catalog products for /trgovina (sorted in JS — tiny catalog by design). */
-export async function getCatalogProducts(options?: {
-  collectionSlug?: string;
-}): Promise<CatalogProduct[]> {
+/** Which visibility flag the list honours (§14.2): the catalog's or the search's. */
+export type CatalogSurface = "catalog" | "search";
+
+/** The rows a public surface may list, with the card inputs batched (one history query, one ratings query). */
+async function loadListedProducts(options?: { collectionSlug?: string; surface?: CatalogSurface }) {
   const where = {
-    status: "ACTIVE" as const,
-    visibleInCatalog: true,
+    ...PURCHASABLE_PRODUCT_WHERE,
+    ...(options?.surface === "search" ? { visibleInSearch: true } : { visibleInCatalog: true }),
     ...(options?.collectionSlug
       ? { collections: { some: { collection: { slug: options.collectionSlug } } } }
       : {}),
   };
-  const rows = await fetchProducts(where, { createdAt: "asc" });
+  const rows = (await fetchProducts(where, { createdAt: "asc" }))
+    // HIDE (§14.2): a fully sold-out product without backorders leaves the lists.
+    .filter(productHasSellableUnits);
   const [ratings, reductions, lowStockThreshold] = await Promise.all([
     fetchRatings(rows.map((row) => row.id)),
     // card variant = cheapest (variants are ordered by price) — one batched history query
@@ -226,12 +355,17 @@ export async function getCatalogProducts(options?: {
     ),
     getLowStockThreshold(),
   ]);
+  return rows.flatMap((row) => {
+    const card = toCatalogProduct(row, ratings, reductions, lowStockThreshold);
+    return card ? [{ row, card }] : [];
+  });
+}
 
-  let products = rows
-    // HIDE (§14.2): a fully sold-out product without backorders leaves the lists.
-    .filter((row) => row.soldOutBehavior !== "HIDE" || row.variants.some((variant) => variant.stock > 0 || variant.allowBackorder))
-    .map((row) => toCatalogProduct(row, ratings, reductions, lowStockThreshold))
-    .filter((row): row is CatalogProduct => row !== null);
+/** Catalog products for /trgovina (sorted in JS — tiny catalog by design). */
+export async function getCatalogProducts(options?: {
+  collectionSlug?: string;
+}): Promise<CatalogProduct[]> {
+  let products = (await loadListedProducts({ collectionSlug: options?.collectionSlug })).map((entry) => entry.card);
 
   if (options?.collectionSlug) {
     // manual merchandising order = CollectionProduct position
@@ -247,4 +381,55 @@ export async function getCatalogProducts(options?: {
   }
 
   return products;
+}
+
+/** Every searchable product with its card and the text the search matches against (lib/search). */
+export async function getSearchCatalog(): Promise<Array<{ card: CatalogProduct; text: ProductSearchText }>> {
+  const entries = await loadListedProducts({ surface: "search" });
+  return entries.map(({ row, card }) => ({ card, text: productSearchText(row) }));
+}
+
+/**
+ * The collections /trgovina offers as tabs: those with at least one product
+ * the catalog lists, oldest first (the seed's merchandising order). A
+ * collection whose products are all drafts, hidden or gone has no tab.
+ */
+export async function getCatalogCollections(): Promise<CatalogCollection[]> {
+  const rows = await db.collection.findMany({
+    orderBy: { createdAt: "asc" },
+    select: {
+      slug: true,
+      title: true,
+      bannerImage: true,
+      bannerImageMobile: true,
+      hideBannerText: true,
+      seoTitle: true,
+      seoDescription: true,
+      noindex: true,
+      products: {
+        where: { product: { ...PURCHASABLE_PRODUCT_WHERE, visibleInCatalog: true } },
+        select: {
+          product: {
+            select: {
+              soldOutBehavior: true,
+              variants: { select: { stock: true, allowBackorder: true } },
+              bundle: { select: { items: { select: { quantity: true, variant: { select: { stock: true, allowBackorder: true } } } } } },
+            },
+          },
+        },
+      },
+    },
+  });
+  return rows
+    .filter((row) => row.products.some((entry) => productHasSellableUnits(entry.product)))
+    .map((row) => ({
+      slug: row.slug,
+      title: row.title,
+      bannerImage: row.bannerImage,
+      bannerImageMobile: row.bannerImageMobile,
+      hideBannerText: row.hideBannerText,
+      seoTitle: row.seoTitle,
+      seoDescription: row.seoDescription,
+      noindex: row.noindex,
+    }));
 }

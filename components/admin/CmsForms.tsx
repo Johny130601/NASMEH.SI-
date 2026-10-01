@@ -4,36 +4,43 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { saveBundleBuilderAction, saveMarqueeAction, savePopupAction, type CmsActionResult } from "@/app/admin/(shell)/vsebina/actions";
 import type { BundleBuilderInput, MarqueeInput, WelcomePopupInput } from "@/lib/admin/cms-schemas";
-import { admin as copy } from "@/lib/copy";
+import type { UnavailableLink } from "@/lib/content-links";
+import { admin as copy } from "@/lib/copy/admin";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiInput } from "@/components/storefront/ui/UiInput";
+import { ContentLinkWarning, unavailableLinksText } from "./ContentLinkWarning";
 
 const textareaClass = "w-full resize-y rounded-input border border-light-1 bg-white p-4 text-base outline-none focus:border-brand";
 
-function useSave(invalidText: string, errorTexts: Partial<Record<string, string>> = {}) {
+/** `initialLinks`: saved links that lead to a product page answering 404 (QA v-a), named until a save clears them. */
+function useSave(invalidText: string, errorTexts: Partial<Record<string, string>> = {}, initialLinks: UnavailableLink[] = []) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [deadLinks, setDeadLinks] = useState(initialLinks);
   const run = (task: () => Promise<CmsActionResult>, okText: string) => {
     setMessage(null);
     startTransition(async () => {
       try {
         const result = await task();
         setMessage(result.ok ? { ok: true, text: okText } : { ok: false, text: errorTexts[result.error] ?? invalidText });
-        if (result.ok) router.refresh();
+        if (result.ok) {
+          setDeadLinks(result.unavailableLinks ?? []);
+          router.refresh();
+        }
       } catch {
         setMessage({ ok: false, text: copy.common.error });
       }
     });
   };
   const status = message ? <p role="status" className={`text-sm ${message.ok ? "text-success" : "text-error"}`} data-cms-message>{message.text}</p> : null;
-  return { pending, run, status };
+  return { pending, run, status, deadLinks };
 }
 
-export function MarqueeForm({ initial }: { initial: MarqueeInput }) {
+export function MarqueeForm({ initial, unavailableLinks = [] }: { initial: MarqueeInput; unavailableLinks?: UnavailableLink[] }) {
   const c = copy.content.marquee;
   const [values, setValues] = useState(initial);
-  const { pending, run, status } = useSave(c.invalid);
+  const { pending, run, status, deadLinks } = useSave(c.invalid, {}, unavailableLinks);
   return (
     <form className="flex flex-col gap-4 rounded-card border border-light-2 bg-white p-5" data-marquee-form onSubmit={(event) => { event.preventDefault(); run(() => saveMarqueeAction(values), c.saved); }}>
       <UiInput label={c.fields.text} name="text" required maxLength={160} value={values.text} onChange={(event) => setValues({ ...values, text: event.target.value })} />
@@ -46,6 +53,7 @@ export function MarqueeForm({ initial }: { initial: MarqueeInput }) {
         <UiButton type="submit" variant="primary" disabled={pending} data-marquee-save>{c.save}</UiButton>
         {status}
       </div>
+      <ContentLinkWarning text={deadLinks.length ? unavailableLinksText(copy.content.links.marquee, deadLinks) : null} />
     </form>
   );
 }

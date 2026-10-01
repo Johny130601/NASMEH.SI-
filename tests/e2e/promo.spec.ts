@@ -24,7 +24,7 @@ async function addToCartViaUi(page: Page, slug: string) {
 
 async function fillWizard(page: Page, email: string) {
   await page.goto("/checkout");
-  await page.getByLabel("E-pošta").fill(email);
+  await page.getByLabel("E-pošta", { exact: true }).fill(email);
   await page.locator("[data-continue-contact]").click();
   await page.getByLabel("Ime in priimek").fill("Test Kupec");
   await page.getByLabel("Ulica").fill("Testna ulica");
@@ -107,9 +107,67 @@ test("removing the code restores totals", async ({ page }) => {
 test("/koda/FAKE99 → invalid state without breaking cart", async ({ page }) => {
   await addToCartViaUi(page, "belilni-trakci-za-zobe");
   await page.goto("/koda/FAKE99");
-  await expect(page).toHaveURL(/koda=neveljavna/);
-  await expect(page.getByText("Koda ni veljavna.")).toBeVisible();
+  // The refusal names the code and is shown once: the address drops the flag (QA C2-F2).
+  await expect(page.locator("[data-koda-notice]")).toHaveText("Koda FAKE99 ni veljavna.");
+  await expect(page).toHaveURL(/\/cart$/);
   await expect(page.locator("[data-cart-line]")).toHaveCount(1);
+  await page.reload();
+  await expect(page.locator("[data-koda-notice]")).toHaveCount(0);
+});
+
+test("/koda/UNKNOWN while a code is active → names the refused code and keeps the active one", async ({ page }) => {
+  await addToCartViaUi(page, "belilni-trakci-za-zobe");
+  await page.goto("/koda/TEST10");
+  await expect(page.locator("[data-active-code]")).toHaveText("TEST10");
+  await page.goto("/koda/FAKE99");
+  await expect(page.locator("[data-koda-notice]")).toHaveText("Koda FAKE99 ni veljavna. Aktivna ostaja koda TEST10.");
+  await expect(page.locator("[data-active-code]")).toHaveText("TEST10");
+  // the notice replaces the address through the App Router once shown (QA C2-F2)
+  await expect(page).toHaveURL(/\/cart$/);
+  await page.reload();
+  await expect(page.locator("[data-koda-notice]")).toHaveCount(0);
+  await expect(page.locator("[data-active-code]")).toHaveText("TEST10");
+});
+
+test("/koda refusal leaves the router's own address: a stepper refresh, back and a reload never bring it back (QA C2-F2)", async ({ page }) => {
+  await addToCartViaUi(page, "belilni-trakci-za-zobe");
+  await page.goto("/koda/TEST10");
+  await page.goto("/koda/FAKE99");
+  const notice = page.locator("[data-koda-notice]");
+  await expect(notice).toHaveText("Koda FAKE99 ni veljavna. Aktivna ostaja koda TEST10.");
+  await expect(page).toHaveURL(/\/cart$/);
+
+  // A server action and router refresh (the stepper) must not put the parameters back.
+  const line = page.locator("[data-cart-line='NAS-TRK-14']");
+  await line.getByLabel("Povečaj količino").click();
+  await expect(line.locator("span[aria-live]")).toHaveText("2");
+  await expect(page).toHaveURL(/\/cart$/);
+  // The notice the shopper read stays until they leave the cart.
+  await expect(notice).toHaveText("Koda FAKE99 ni veljavna. Aktivna ostaja koda TEST10.");
+
+  // Away and back through the router: the cart comes back without the refusal.
+  await line.getByRole("link", { name: /Belilni trakci/ }).first().click();
+  await expect(page).toHaveURL(/\/izdelek\//);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/cart$/);
+  await expect(page.locator("[data-cart-line='NAS-TRK-14']")).toBeVisible();
+  await expect(notice).toHaveCount(0);
+
+  await page.reload();
+  await expect(notice).toHaveCount(0);
+  await expect(page.locator("[data-active-code]")).toHaveText("TEST10");
+});
+
+test("/koda refusal: answering the cookie banner never brings the parameters back (QA C2-F2)", async ({ page }) => {
+  // A fresh visitor: the banner is still open when the refusal lands on the (empty) cart.
+  await page.goto("/koda/NIMAM");
+  const notice = page.locator("[data-koda-notice]");
+  await expect(notice).toHaveText("Koda NIMAM ni veljavna.");
+  await expect(page).toHaveURL(/\/cart$/);
+  await dismissCmp(page);
+  await expect(page).toHaveURL(/\/cart$/);
+  await page.reload();
+  await expect(notice).toHaveCount(0);
 });
 
 test("usage-limit exhaustion blocks the NEXT order's discount", async ({
@@ -267,6 +325,105 @@ test("welcome popup: delay → suppressions → dismiss session → thank-you st
       where: { key },
       data: { value: original.value! },
     });
+  }
+});
+
+test("welcome popup: a footer sign-up counts as this session's interaction, even while the delay runs (QA T7-F14)", async ({
+  page,
+}) => {
+  const key = "welcomePopup";
+  const original = await prisma.setting.findUniqueOrThrow({ where: { key } });
+  const withDelay = (delaySeconds: number) =>
+    prisma.setting.update({ where: { key }, data: { value: { ...(original.value as Record<string, unknown>), delaySeconds } } });
+  const email = `footer-popup-${Date.now()}@test.si`;
+  const DELAY = 8;
+  await withDelay(DELAY);
+
+  try {
+    // The delay starts once the consent banner is answered; the footer sign-up lands inside it.
+    await page.goto("/trgovina");
+    await dismissCmp(page);
+    const armed = Date.now();
+    const form = page.locator("[data-newsletter-form]");
+    await form.scrollIntoViewIfNeeded();
+    await form.getByRole("textbox", { name: "E-pošta" }).fill(email);
+    await form.getByRole("button", { name: "Prijavi se" }).click();
+    await expect(form.getByText(/Poslali smo vam potrditveno sporočilo/)).toBeVisible({ timeout: 15_000 });
+    expect(Date.now() - armed, "the sign-up must finish inside the popup delay").toBeLessThan(DELAY * 1000);
+    await page.waitForTimeout(Math.max(0, armed + DELAY * 1000 + 1500 - Date.now()));
+    await expect(page.locator("[data-welcome-popup]")).toHaveCount(0);
+
+    // Later pages in the same tab do not ask either.
+    await withDelay(1);
+    await page.goto("/");
+    await page.waitForTimeout(2500);
+    await expect(page.locator("[data-welcome-popup]")).toHaveCount(0);
+
+    // Control: without the sign-up the same setting opens the popup.
+    const fresh = await page.context().browser()!.newContext();
+    const other = await fresh.newPage();
+    await other.goto("/");
+    await dismissCmp(other);
+    await expect(other.locator("[data-welcome-popup]")).toBeVisible({ timeout: 10_000 });
+    await fresh.close();
+  } finally {
+    await prisma.setting.update({ where: { key }, data: { value: original.value! } });
+    await prisma.subscriber.deleteMany({ where: { email } });
+  }
+});
+
+test("welcome popup: the tab a confirmation link opens does not ask for the e-mail just confirmed (QA T7-F14)", async ({
+  page,
+}) => {
+  const key = "welcomePopup";
+  const original = await prisma.setting.findUniqueOrThrow({ where: { key } });
+  await prisma.setting.update({
+    where: { key },
+    data: { value: { ...(original.value as Record<string, unknown>), delaySeconds: 1 } },
+  });
+  const email = `confirm-popup-${Date.now()}@test.si`;
+
+  try {
+    // Footer sign-up on a suppressed path, so the popup never opens in this tab.
+    await page.goto("/sledi");
+    await dismissCmp(page);
+    const form = page.locator("[data-newsletter-form]");
+    await form.scrollIntoViewIfNeeded();
+    await form.getByRole("textbox", { name: "E-pošta" }).fill(email);
+    await form.getByRole("button", { name: "Prijavi se" }).click();
+    await expect(form.getByText(/Poslali smo vam potrditveno sporočilo/)).toBeVisible({ timeout: 15_000 });
+    const token = (await waitForMailTo(email)).match(/\/potrdi\/([a-f0-9]{48})/)?.[1];
+    expect(token).toBeTruthy();
+
+    // The mail link opens a new tab: same cookies, empty sessionStorage.
+    const openHomeFromConfirmation = async (confirm: boolean) => {
+      const tab = await page.context().newPage();
+      await tab.goto(`/potrdi/${token}`);
+      if (confirm) await tab.getByRole("button", { name: "Potrdi prijavo" }).click();
+      await expect(tab.getByText("Prijava potrjena 🎉")).toBeVisible({ timeout: 15_000 });
+      await tab.getByRole("link", { name: "Na domačo stran", exact: true }).click();
+      await tab.waitForURL((url) => url.pathname === "/");
+      await tab.waitForTimeout(2500);
+      await expect(tab.locator("[data-welcome-popup]")).toHaveCount(0);
+      await tab.close();
+    };
+    await openHomeFromConfirmation(true); // the confirm button's done state
+    await openHomeFromConfirmation(false); // a revisit: the server-rendered done state
+
+    // Control: another tab of the same guest without the confirmation still gets the popup.
+    const control = await page.context().newPage();
+    await control.goto("/");
+    await expect(control.locator("[data-welcome-popup]")).toBeVisible({ timeout: 10_000 });
+    await control.close();
+  } finally {
+    await prisma.setting.update({ where: { key }, data: { value: original.value! } });
+    const subscriber = await prisma.subscriber.findUnique({ where: { email } });
+    if (subscriber) {
+      await prisma.consentLog.deleteMany({
+        where: { kind: "marketing-email", choices: { path: ["subscriberId"], equals: subscriber.id } },
+      });
+      await prisma.subscriber.delete({ where: { id: subscriber.id } });
+    }
   }
 });
 

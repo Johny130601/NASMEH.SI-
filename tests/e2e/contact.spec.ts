@@ -83,6 +83,19 @@ async function fillMessage(page: Page, email: string, message: string) {
 async function submit(page: Page) {
   await page.getByRole("button", { name: contact.message.submit, exact: true }).click();
   await expect(page.locator("[data-contact-success]")).toBeVisible();
+  // The confirmation with its reference is brought into view and focused (QA M14).
+  await expect(page.locator("[data-contact-success] h2")).toBeFocused();
+  await expect(page.locator("[data-contact-reference]")).toBeInViewport();
+  // ...and it lands below the sticky header, not under it.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const heading = document.querySelector("[data-contact-success] h2")!.getBoundingClientRect();
+        const header = document.querySelector("header.ui-header")!.getBoundingClientRect();
+        return heading.top >= header.bottom - 1;
+      }),
+    )
+    .toBe(true);
   return (await page.locator("[data-contact-reference]").textContent())!;
 }
 

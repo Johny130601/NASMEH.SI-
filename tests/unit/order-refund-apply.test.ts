@@ -154,6 +154,15 @@ describe("applyRefundInTx", () => {
     expect(state.order.timeline.at(-1)).toMatchObject({ event: "cancelled" });
   });
 
+  it("settles a captured payment owed on a CANCELLED order: flag cleared, logged and mailed as a refund, not a second cancellation (QA M3)", async () => {
+    seed({ status: "CANCELLED", stockDeducted: false, refundRequired: true }, { amountCents: 10_000, finalStatus: "CANCELLED", restock: false });
+    const applied = await applyRefundInTx(tx as never, "refund-1");
+    expect(applied).toMatchObject({ full: true, status: "CANCELLED", event: "refunded" });
+    expect(state.order).toMatchObject({ status: "CANCELLED", refundedCents: 10_000, refundRequired: false });
+    expect(state.order.timeline.at(-1)).toMatchObject({ event: "refunded", detail: "cents:10000:staff@nasmeh.si" });
+    expect(mocks.adjustStock).not.toHaveBeenCalled();
+  });
+
   it("restocks a bundle line through the stock helper", async () => {
     seed(
       { items: [{ id: "item-1", variantId: "bundle-variant", quantity: 1, properties: { bundleComponents: [{ variantId: "variant-1", quantity: 2 }, { variantId: "variant-2", quantity: 1 }] } }] },

@@ -5,7 +5,7 @@ import {
   forgotPasswordAction,
   resetPasswordAction,
 } from "@/app/(storefront)/actions/auth";
-import { auth as copy } from "@/lib/copy";
+import { auth as copy } from "@/lib/copy/auth";
 import { UiButton } from "../ui/UiButton";
 import { UiInput } from "../ui/UiInput";
 import { useAuthChallenge, type AuthChallengeProps } from "./AuthChallenge";

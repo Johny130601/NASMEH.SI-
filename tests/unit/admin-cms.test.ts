@@ -6,18 +6,18 @@ vi.mock("@/lib/db", () => ({ db: {} }));
 
 import {
   CONTENT_TEMPLATES, HERO_CLAIM_FIELDS, HOME_SECTION_IDS, LEGAL_PAGE_SLUGS, RESERVED_SLUGS, SHADOWED_SLUGS, bundleBannerSchema, contentPageSchema, heroClaimLacksFootnote, heroSchema, homeSectionsSchema,
-  isReservedSlug, linkSchema, linkedPageSlug, marqueeSchema, menuItemsSchema, normaliseMenuItems, pageSlugSchema, protectedPageSlugs, routineBannerSchema, welcomePopupSchema,
+  featuredSlugs, isReservedSlug, isVideoPath, linkSchema, linkedPageSlug, marqueeSchema, menuItemsSchema, normaliseMenuItems, pageSlugSchema, protectedPageSlugs, routineBannerSchema, welcomePopupSchema,
 } from "@/lib/admin/cms-schemas";
 import { DEFAULT_LEGAL_LINKS } from "@/lib/settings-schemas";
 import { bundleBannerWithDefaults, heroToInput, normaliseHomeSections, routineBannerWithDefaults } from "@/lib/admin/cms";
 import { home } from "@/lib/copy";
 
 describe("linkSchema", () => {
-  it("accepts same-site paths, anchors and http(s) links and refuses scripts and protocol-relative URLs", () => {
-    for (const link of ["/trgovina?kolekcija=paketi#top", "/", "#izdelki", "https://instagram.com/nasmeh", "http://127.0.0.1:4317/x", " /kontakt "]) {
+  it("accepts same-site paths, anchors and https links and refuses plain http, scripts and protocol-relative URLs (QA T7-F15)", () => {
+    for (const link of ["/trgovina?kolekcija=paketi#top", "/", "#izdelki", "https://instagram.com/nasmeh", " /kontakt "]) {
       expect(linkSchema.safeParse(link).success, link).toBe(true);
     }
-    for (const link of ["javascript:alert(1)", "//evil.example", "trgovina", "#Izdelki", "mailto:a@b.si", "", "/with space"]) {
+    for (const link of ["javascript:alert(1)", "//evil.example", "trgovina", "#Izdelki", "mailto:a@b.si", "", "/with space", "http://127.0.0.1:4317/x", "http://nasmeh.si/"]) {
       expect(linkSchema.safeParse(link).success, link).toBe(false);
     }
     expect(linkSchema.parse(" /kontakt ")).toBe("/kontakt");
@@ -49,6 +49,21 @@ describe("homepage schemas", () => {
     expect(heroSchema.safeParse({ ...parsed, poster: "javascript:x", videoDesktop: "", videoMobile: "", promoOverlayHref: "" }).success).toBe(false);
     expect(heroSchema.safeParse({ ...parsed, title: "", videoDesktop: "", videoMobile: "", poster: "", promoOverlayHref: "" }).success).toBe(false);
     expect(parsed.footnote).toBe("");
+  });
+
+  it("takes hero videos only from the store itself: the media policy blocks any other origin (QA M13)", () => {
+    const base = { kicker: "", title: "Naslov", subtitle: "", ctaLabel: "Kupi", ctaHref: "#izdelki", videoDesktop: "", videoMobile: "", poster: "", imageAlt: "", promoOverlayText: "", promoOverlayHref: "" };
+    const video = "/uploads/media/knjiznica-medijev/0123456789abcdef01234567.mp4";
+    expect(heroSchema.parse({ ...base, videoMobile: video })).toMatchObject({ videoDesktop: null, videoMobile: video });
+    for (const external of ["https://cdn.example.com/hero.mp4", "//cdn.example.com/hero.mp4", "http://nasmeh.si/hero.mp4", "hero.mp4"]) {
+      const result = heroSchema.safeParse({ ...base, videoDesktop: external });
+      expect(result.success, external).toBe(false);
+      expect(result.error?.issues[0]?.path[0], external).toBe("videoDesktop");
+    }
+    // The poster is an image: https hosts stay allowed (img-src permits them).
+    expect(heroSchema.safeParse({ ...base, poster: "https://cdn.example.com/hero.webp" }).success).toBe(true);
+    expect(isVideoPath(video)).toBe(true);
+    expect(isVideoPath("/uploads/media/knjiznica-medijev/0123456789abcdef01234567.webp")).toBe(false);
   });
 
   it("hero footnote: optional plain text up to 300 characters, required once the subtitle carries a claim marker", () => {
@@ -131,7 +146,9 @@ describe("menu schema", () => {
     expect(menuItemsSchema.safeParse([{ label: "X", href: "javascript:void(0)" }]).success).toBe(false);
     expect(menuItemsSchema.safeParse([{ label: "", href: "/x" }]).success).toBe(false);
     expect(menuItemsSchema.safeParse([{ label: "X", href: "/x", color: "red" }]).success).toBe(false);
-    expect(menuItemsSchema.safeParse([{ label: "X", href: "/x", featured: ["a", "b", "c", "d", "e"] }]).success).toBe(false);
+    // Two featured cards fit the mega-menu and the drawer; the editor hint says so (QA T7-F4).
+    expect(menuItemsSchema.safeParse([{ label: "X", href: "/x", featured: ["a", "b", "c"] }]).success).toBe(false);
+    expect(featuredSlugs([{ featured: ["a", "b"] }, {}, { featured: ["b", "c"] }])).toEqual(["a", "b", "c"]);
     expect(menuItemsSchema.safeParse([{ label: "X", href: "/x", featured: ["bad slug"] }]).success).toBe(false);
     expect(menuItemsSchema.safeParse(Array.from({ length: 21 }, () => ({ label: "X", href: "/x" }))).success).toBe(false);
   });

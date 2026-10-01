@@ -12,6 +12,7 @@ import { sendOrderConfirmationEmail, type OrderConfirmationContent } from "@/lib
 import { EMAIL_TEMPLATE_DEFS, unknownPlaceholders } from "@/lib/email/template-defs";
 import { renderSample } from "@/lib/email/templates/render";
 import { returns } from "@/lib/copy/returns";
+import { formatEUR } from "@/lib/pricing";
 
 const order = {
   id: "order-1", number: "NS-2026-00042", email: "kupec@test.si", totalCents: 3989, shippingCents: 490, shippingMethod: "GLS — paketna dostava",
@@ -147,6 +148,36 @@ describe("sendOrderConfirmationEmail", () => {
     }
   });
 
+  it("shows the discount with its code and the included VAT so the lines add up to the total (QA 2026-09-29 M2)", async () => {
+    // 34,99 + 19,99 − 5,50 (TEST10) + 0,00 shipping = 49,48; VAT 22 % included = 8,92
+    const discounted = {
+      ...order, subtotalCents: 5498, discountCents: 550, couponCode: "TEST10", shippingCents: 0, totalCents: 4948, vatCents: 892, vatRatePercent: 22,
+      items: [...order.items, { id: "i2", title: "Ustna voda", quantity: 1, unitPriceCents: 1999 }],
+    } as unknown as Order & { items: OrderItem[] };
+    await sendOrderConfirmationEmail(discounted, content());
+    const { html } = sent();
+    expect(html).toContain(formatEUR(3499));
+    expect(html).toContain("1 × Ustna voda</td>");
+    expect(html).toContain("Popust (koda TEST10)</td>");
+    expect(html).toContain(`−${formatEUR(550)}`);
+    expect(html).toContain("Dostava (GLS — paketna dostava)</td>");
+    expect(html).toContain(formatEUR(4948));
+    expect(html).toContain(`vključen DDV 22 %: ${formatEUR(892)}`);
+    expect(html.indexOf("Popust")).toBeLessThan(html.indexOf("Dostava (GLS"));
+    expect(html.indexOf("Skupaj")).toBeLessThan(html.indexOf("vključen DDV"));
+  });
+
+  it("renders the same discount row inside an operator override's {{items}} and no row without a discount", async () => {
+    mocks.findUnique.mockResolvedValue({ key: "orderConfirmation", subject: "Hvala", bodyHtml: "<h1>Hvala</h1>{{items}}" });
+    await sendOrderConfirmationEmail({ ...order, discountCents: 300, couponCode: null } as unknown as Order & { items: OrderItem[] }, content());
+    expect(sent().html).toContain("Popust</td>");
+    expect(sent().html).toContain(`−${formatEUR(300)}`);
+    expect(sent().html).toContain(`vključen DDV 22 %: ${formatEUR(719)}`);
+    mocks.sendMail.mockClear();
+    await sendOrderConfirmationEmail({ ...order, discountCents: 0 } as unknown as Order & { items: OrderItem[] }, content());
+    expect(sent().html).not.toContain("Popust");
+  });
+
   it("gives the legal block a random attribute name per render, so no stable selector exists", async () => {
     await sendOrderConfirmationEmail(order, content());
     await sendOrderConfirmationEmail(order, content());
@@ -165,6 +196,10 @@ describe("orderConfirmation template definition", () => {
     expect(def.defaultBody).toContain("{{deliveryNote}}");
     expect(unknownPlaceholders("orderConfirmation", def.defaultSubject, def.defaultBody)).toEqual([]);
     expect(renderSample("orderConfirmation", null, null).html).toContain("Predviden rok dostave: 2–3 delovni dnevi.");
+    // The preview sample carries the rows a real mail has: a discount with its code and the VAT line.
+    expect(def.sample.items).toContain("Popust (koda TEST10)");
+    expect(def.sample.items).toContain("vključen DDV 22 %: 11,36");
+    expect(def.sample.total).toBe("62,98 €");
   });
 
   it("tells the operator that the delivery time is added when the template leaves it out", () => {

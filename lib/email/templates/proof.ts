@@ -1,4 +1,4 @@
-import { email as copy } from "@/lib/copy";
+import { email as copy } from "@/lib/copy/email";
 import { emailLayout, emailStyles } from "./layout";
 
 /** Phase 0 proof template (kept as the pipeline smoke test). */

@@ -6,7 +6,10 @@ import { addBundleToCartAction } from "@/app/(storefront)/actions/cart";
 import type { BundleBuilderView } from "@/lib/bundle/load";
 import { quoteKey } from "@/lib/bundle/quote";
 import { formatDdvLine, formatEUR, formatUnitPrice } from "@/lib/pricing";
-import { bundle as copy, cart, catalog } from "@/lib/copy";
+import { bundle as copy } from "@/lib/copy/bundle";
+import { cart } from "@/lib/copy/cart";
+import { catalog } from "@/lib/copy/catalog";
+import { promo } from "@/lib/copy/promo";
 import { UiIcon } from "../ui/UiIcon";
 import { UiPill } from "../ui/UiPill";
 import { UiButton } from "../ui/UiButton";
@@ -461,9 +464,15 @@ export function BundleBuilder({ view }: { view: BundleBuilderView }) {
               />
             </dl>
             {quote.discountCents > 0 && view.applyCouponCode ? (
-              <p className="mt-2 text-xs text-mid-2">
-                {copy.summary.discountCode(view.applyCouponCode)}
-              </p>
+              <>
+                <p className="mt-2 text-xs text-mid-2">
+                  {copy.summary.discountCode(view.applyCouponCode)}
+                </p>
+                {/* every code carries its terms sentence, as on the cart (§9.1, QA C2-F14) */}
+                <p className="mt-1 text-xs text-mid-2" data-bundle-code-terms>
+                  {promo.termsFor(view.applyCouponType)}
+                </p>
+              </>
             ) : null}
           </div>
 

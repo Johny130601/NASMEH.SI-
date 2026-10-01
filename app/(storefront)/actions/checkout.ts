@@ -8,7 +8,8 @@ import { clientAddress } from "@/lib/client-address";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { verifyTurnstile, isTestMode } from "@/lib/turnstile";
 import { placeOrder, type PlaceOrderResult } from "@/lib/orders/create";
-import { getCartLines } from "@/lib/cart/server";
+import { clampCartLines, getCartLines } from "@/lib/cart/server";
+import { hydrateCartLines } from "@/lib/cart/hydrate";
 import { signWebhookPayload, testEventId } from "@/lib/payments/webhook-verify";
 import { captureOrderCart, grantOrderAccess, hasOrderAccess } from "@/lib/orders/access";
 import { clearPurchasedCart, createPurchaserAccount } from "@/lib/orders/post-purchase";
@@ -38,10 +39,12 @@ export async function checkEmailExistsAction(input: {
 export async function captureCheckoutEmailAction(input: {
   email: string;
   checkoutKey: string;
-}): Promise<{ ok: boolean }> {
-  const email = z.email().safeParse(input.email?.trim().toLowerCase());
+}): Promise<{ ok: boolean; reason?: "invalid_email" }> {
+  // The same e-mail rule as the order (checkoutFormSchema); a refusal is named so the Kontakt step stays open (QA M11).
+  const email = z.string().trim().max(254).pipe(z.email()).safeParse(input.email?.trim().toLowerCase());
+  if (!email.success) return { ok: false, reason: "invalid_email" };
   const key = z.string().trim().min(8).max(64).safeParse(input.checkoutKey);
-  if (!email.success || !key.success) return { ok: false };
+  if (!key.success) return { ok: false };
 
   try {
     const session = await auth();
@@ -72,9 +75,19 @@ export async function placeOrderAction(
       : "";
   const human = await verifyTurnstile(token);
   if (!human) return { ok: false, error: "bot_check" };
-  const { checkoutFormSchema } = await import("@/lib/orders/checkout-schema");
+  const { checkoutFormSchema, invalidFormFields } = await import("@/lib/orders/checkout-schema");
   const parsed = checkoutFormSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "invalid_form" };
+  if (!parsed.success) return { ok: false, error: "invalid_form", fields: invalidFormFields(parsed.error) };
+  // The order is built from the hydrated quantities, which re-apply each line's cap (QA C2-F16); the stored
+  // cart is lowered to them before its fingerprint is taken, so the paid cart still matches and gets cleared.
+  try {
+    const principal = (await auth())?.user?.id ?? null;
+    const hydrated = await hydrateCartLines(await getCartLines(principal));
+    await clampCartLines(principal, new Map(hydrated.map((line) => [line.variantId, line.quantity])));
+  } catch (error) {
+    // Best effort: a failed alignment never blocks the order, the paid cart is then only not cleared automatically.
+    console.error("[placeOrderAction] cart alignment failed:", error instanceof Error ? error.name : "unknown");
+  }
   const expectedCart = await captureOrderCart();
   const result = await placeOrder(parsed.data);
   if (result.ok) {

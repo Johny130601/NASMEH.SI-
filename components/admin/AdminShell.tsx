@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { admin as copy } from "@/lib/copy";
+import { admin as copy } from "@/lib/copy/admin";
 import type { Permission, StaffRole } from "@/lib/admin/permissions";
 import { logoutAction } from "@/app/(storefront)/prijava/actions";
 import { AdminNav } from "./AdminNav";

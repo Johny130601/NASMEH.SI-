@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { deleteVariantAction, saveVariantAction, type CatalogActionResult } from "@/app/admin/(shell)/izdelki/actions";
 import type { VariantInput } from "@/lib/admin/catalog";
-import { admin as copy } from "@/lib/copy";
+import { admin as copy } from "@/lib/copy/admin";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiInput } from "@/components/storefront/ui/UiInput";
 
@@ -38,7 +38,9 @@ function readForm(data: FormData): VariantInput {
   };
 }
 
-function VariantForm({ productId, variant, onDone, deletable, priceLocked }: { productId: string; variant: VariantRow; onDone: (result: CatalogActionResult) => void; deletable: boolean; priceLocked: boolean }) {
+type DoneHandler = (result: CatalogActionResult, action?: "save" | "delete") => void;
+
+function VariantForm({ productId, variant, onDone, deletable, priceLocked }: { productId: string; variant: VariantRow; onDone: DoneHandler; deletable: boolean; priceLocked: boolean }) {
   const [pending, startTransition] = useTransition();
   const label = (name: string) => `${name}${variant.id ? ` (${variant.sku})` : ""}`;
   // UiInput derives ids from names; several variant forms share names on one page.
@@ -89,8 +91,8 @@ function VariantForm({ productId, variant, onDone, deletable, priceLocked }: { p
             onClick={() => {
               if (!window.confirm(c.confirmDelete)) return;
               startTransition(async () => {
-                try { onDone(await deleteVariantAction({ productId, variantId: variant.id! })); }
-                catch { onDone({ ok: false, error: "invalid" }); }
+                try { onDone(await deleteVariantAction({ productId, variantId: variant.id! }), "delete"); }
+                catch { onDone({ ok: false, error: "invalid" }, "delete"); }
               });
             }}
           >
@@ -107,9 +109,11 @@ function VariantForm({ productId, variant, onDone, deletable, priceLocked }: { p
 export function VariantEditor({ productId, variants, isBundle = false }: { productId: string; variants: VariantRow[]; isBundle?: boolean }) {
   const router = useRouter();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
-  const onDone = (result: CatalogActionResult) => {
+  const onDone: DoneHandler = (result, action = "save") => {
     if (result.ok) {
-      setMessage({ ok: true, text: result.armed ? `${c.saved} ${c.armed.replace("{count}", String(result.armed))}` : c.saved });
+      // A delete reports the delete, not a save (QA T6-12).
+      const text = action === "delete" ? c.deleted : result.armed ? `${c.saved} ${c.armed.replace("{count}", String(result.armed))}` : c.saved;
+      setMessage({ ok: true, text });
       router.refresh();
     } else {
       const text = result.error === "skuTaken" ? c.skuTaken : result.error === "lastVariant" ? c.lastVariant

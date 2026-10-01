@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   auth: vi.fn(), revalidate: vi.fn(),
   productFindUnique: vi.fn(), productCreate: vi.fn(), productUpdate: vi.fn(),
   variantCreate: vi.fn(), variantUpdate: vi.fn(), variantUpdateMany: vi.fn(), variantFindFirst: vi.fn(), variantFindMany: vi.fn(), variantDelete: vi.fn(),
-  subscriptionUpdateMany: vi.fn(), settingUpsert: vi.fn(),
+  subscriptionUpdateMany: vi.fn(), settingUpsert: vi.fn(), settingFindUnique: vi.fn(), menuFindMany: vi.fn(),
   collectionCreate: vi.fn(), collectionUpdate: vi.fn(), collectionFindUnique: vi.fn(), collectionDelete: vi.fn(),
   bundleCreate: vi.fn(), bundleUpdate: vi.fn(), bundleItemDeleteMany: vi.fn(), bundleItemCreateMany: vi.fn(),
   changePrice: vi.fn(), recordInitial: vi.fn(), setStock: vi.fn(), sendAlerts: vi.fn(), removeMedia: vi.fn(),
@@ -19,7 +19,8 @@ vi.mock("@/lib/db", () => {
     product: { findUnique: mocks.productFindUnique, create: mocks.productCreate, update: mocks.productUpdate },
     variant: { create: mocks.variantCreate, update: mocks.variantUpdate, updateMany: mocks.variantUpdateMany, findFirst: mocks.variantFindFirst, findMany: mocks.variantFindMany, delete: mocks.variantDelete },
     backInStockSubscription: { updateMany: mocks.subscriptionUpdateMany },
-    setting: { upsert: mocks.settingUpsert },
+    setting: { upsert: mocks.settingUpsert, findUnique: mocks.settingFindUnique },
+    menu: { findMany: mocks.menuFindMany },
     collection: { create: mocks.collectionCreate, update: mocks.collectionUpdate, findUnique: mocks.collectionFindUnique, delete: mocks.collectionDelete },
     bundle: { create: mocks.bundleCreate, update: mocks.bundleUpdate },
     bundleItem: { deleteMany: mocks.bundleItemDeleteMany, createMany: mocks.bundleItemCreateMany },
@@ -74,6 +75,8 @@ beforeEach(() => {
   mocks.subscriptionUpdateMany.mockResolvedValue({ count: 2 });
   mocks.settingUpsert.mockResolvedValue({});
   mocks.collectionUpdate.mockResolvedValue({});
+  mocks.settingFindUnique.mockResolvedValue(null);
+  mocks.menuFindMany.mockResolvedValue([]);
 });
 
 describe("catalog action permissions (direct calls)", () => {
@@ -112,7 +115,41 @@ describe("products and variants", () => {
     expect(mocks.recordInitial).toHaveBeenCalledWith(expect.anything(), { variantId: "cmf0variant00000000000002", priceCents: 2990 });
     mocks.productCreate.mockRejectedValueOnce(p2002("slug"));
     expect(await createProductAction({ title: "Trakci", slug: "trakci", sku: "NAS-TRK-14", priceCents: 2990 })).toEqual({ ok: false, error: "slugTaken" });
-    expect(await createProductAction({ title: "", slug: "trakci", sku: "NAS-TRK-14", priceCents: 2990 })).toEqual({ ok: false, error: "invalid" });
+    // A refused create names the field the form marks with its rule (QA T6-11, v-a).
+    expect(await createProductAction({ title: "", slug: "trakci", sku: "NAS-TRK-14", priceCents: 2990 })).toEqual({ ok: false, error: "invalid", field: "title" });
+  });
+
+  it("names the create-form field that failed: slug, SKU or price (QA v-a)", async () => {
+    expect(await createProductAction({ title: "QA", slug: "Neveljaven Slug!", sku: "QA-1", priceCents: 1500 })).toEqual({ ok: false, error: "invalid", field: "slug" });
+    expect(await createProductAction({ title: "QA", slug: "slabo-ime!", sku: "QA-1", priceCents: 1500 })).toEqual({ ok: false, error: "invalid", field: "slug" });
+    expect(await createProductAction({ title: "QA", slug: "qa-izdelek", sku: "!bad sku", priceCents: 1500 })).toEqual({ ok: false, error: "invalid", field: "sku" });
+    expect(await createProductAction({ title: "QA", slug: "qa-izdelek", sku: "QA-1", priceCents: 15.5 })).toEqual({ ok: false, error: "invalid", field: "priceCents" });
+    expect(mocks.productCreate).not.toHaveBeenCalled();
+  });
+
+  it("names the menus and home blocks that still link to a product a save takes off sale or renames (QA v-a)", async () => {
+    mocks.menuFindMany.mockResolvedValue([
+      { handle: "header", items: [{ label: "TRGOVINA", href: "/trgovina", children: [{ label: "Trakci", href: "/izdelek/trakci" }] }] },
+      { handle: "footer-trgovina", items: [{ label: "Trakci", href: "/izdelek/trakci" }] },
+    ]);
+    mocks.settingFindUnique.mockImplementation(async ({ where }: { where: { key: string } }) =>
+      (where.key === "home.hero" ? { value: { title: "T", subtitle: "S", ctaLabel: "K", ctaHref: "/izdelek/trakci" } } : null));
+    // Still on sale under the same slug: nothing to report and nothing read.
+    expect(await saveProductAction({ productId, basics, content })).toEqual({ ok: true });
+    expect(mocks.menuFindMany).not.toHaveBeenCalled();
+    // Hidden deal SKU, archived, draft: its page answers 404.
+    for (const change of [{ hiddenDeal: true }, { status: "ARCHIVED" as const }, { status: "DRAFT" as const }]) {
+      expect(await saveProductAction({ productId, basics: { ...basics, ...change }, content }), JSON.stringify(change)).toEqual({ ok: true, linkedFrom: ["header", "footer-trgovina", "hero"] });
+    }
+    // Renamed: the links still name the old slug.
+    expect(await saveProductAction({ productId, basics: { ...basics, slug: "trakci-novi" }, content })).toEqual({ ok: true, linkedFrom: ["header", "footer-trgovina", "hero"] });
+    // An active product whose bundle is withdrawn is off sale as well.
+    mocks.productFindUnique.mockResolvedValueOnce({ slug: "trakci", bundle: { active: false } });
+    expect(await saveProductAction({ productId, basics, content })).toEqual({ ok: true, linkedFrom: ["header", "footer-trgovina", "hero"] });
+    // Nothing links to it: a plain success.
+    mocks.menuFindMany.mockResolvedValue([]);
+    mocks.settingFindUnique.mockResolvedValue(null);
+    expect(await saveProductAction({ productId, basics: { ...basics, hiddenDeal: true }, content })).toEqual({ ok: true });
   });
 
   it("saves basics and content, structured merchandising keys winning over the JSON remainder", async () => {
@@ -125,6 +162,21 @@ describe("products and variants", () => {
     mocks.productUpdate.mockRejectedValueOnce(p2002("slug"));
     expect(await saveProductAction({ productId, basics, content })).toEqual({ ok: false, error: "slugTaken" });
     expect(mocks.revalidate).toHaveBeenCalledWith("/izdelek/trakci");
+  });
+
+  it("stores the description and accordion HTML sanitized (QA S1) and names the field a refused save failed on (QA T6-11)", async () => {
+    const hostile = "<p>Varno</p><script>alert(1)</script><img src=x onerror=alert(2)>";
+    expect(await saveProductAction({ productId, basics: { ...basics, description: hostile }, content: { ...content, accordions: { ...content.accordions, howItWorks: hostile, tested: "<a href=\"javascript:alert(3)\">x</a>" } } })).toEqual({ ok: true });
+    const data = mocks.productUpdate.mock.calls[0][0].data;
+    for (const html of [data.description, data.accordions.howItWorks, data.accordions.tested]) {
+      expect(html).not.toMatch(/<script|onerror|javascript:/i);
+    }
+    expect(data.description).toContain("<p>Varno</p>");
+    expect(await saveProductAction({ productId, basics: { ...basics, slug: "Ne Velja!" }, content })).toEqual({ ok: false, error: "invalid", field: "slug" });
+    expect(await saveProductAction({ productId, basics, content: { ...content, merchandising: { ...content.merchandising, uspChips: ["x".repeat(41)] } } })).toEqual({ ok: false, error: "invalid", field: "uspChips" });
+    expect(await saveProductAction({ productId, basics, content: { ...content, faq: [{ q: "", a: "odgovor" }] } })).toEqual({ ok: false, error: "invalid", field: "faq" });
+    expect(await saveProductAction({ productId: "", basics, content })).toEqual({ ok: false, error: "invalid" });
+    expect(mocks.productUpdate).toHaveBeenCalledTimes(1);
   });
 
   it("routes an existing variant's price through the price-history helper and its stock through the stock helper, then flushes armed alerts", async () => {
@@ -228,5 +280,22 @@ describe("collections and bundles", () => {
     expect(mocks.bundleItemCreateMany.mock.calls[0][0].data).toEqual([{ bundleId: "b1", variantId, quantity: 1 }, { bundleId: "b1", variantId: "v2", quantity: 2 }]);
     expect(mocks.changePrice).toHaveBeenCalledWith(expect.anything(), { variantId: "bundle-variant", priceCents: 4990 });
     expect(mocks.variantUpdate).toHaveBeenCalledWith({ where: { id: "bundle-variant" }, data: { maxCartQuantity: 1 } });
+    expect(mocks.menuFindMany).not.toHaveBeenCalled();
+  });
+
+  it("names the menus and home blocks that still link to a bundle saved inactive (QA v-a)", async () => {
+    mocks.productFindUnique.mockResolvedValue({ id: productId, slug: "paket-popolna-rutina", bundle: { id: "b1" }, variants: [{ id: "bundle-variant" }] });
+    mocks.variantFindMany.mockResolvedValue([{ id: variantId, productId: "other", product: { bundle: null } }]);
+    mocks.bundleUpdate.mockResolvedValue({});
+    mocks.bundleItemDeleteMany.mockResolvedValue({});
+    mocks.bundleItemCreateMany.mockResolvedValue({});
+    mocks.settingFindUnique.mockImplementation(async ({ where }: { where: { key: string } }) =>
+      (where.key === "home.hero" ? { value: { title: "T", subtitle: "S", ctaLabel: "K", ctaHref: "/trgovina", promoOverlayText: "P", promoOverlayHref: "/izdelek/paket-popolna-rutina" } } : null));
+    // The routine banner without a stored row links to the routine bundle by default.
+    expect(await saveBundleAction({ productId, priceCents: 4990, active: false, items: [{ variantId, quantity: 1 }] })).toEqual({ ok: true, linkedFrom: ["hero", "routineBanner"] });
+    expect(mocks.bundleUpdate).toHaveBeenCalledWith({ where: { id: "b1" }, data: { priceCents: 4990, active: false } });
+    mocks.settingFindUnique.mockClear();
+    expect(await saveBundleAction({ productId, priceCents: 4990, active: true, items: [{ variantId, quantity: 1 }] })).toEqual({ ok: true });
+    expect(mocks.settingFindUnique).not.toHaveBeenCalled();
   });
 });

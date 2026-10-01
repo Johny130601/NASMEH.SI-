@@ -1,6 +1,6 @@
 import type { Order } from "@prisma/client";
 import { formatEUR } from "@/lib/pricing";
-import { email as copy } from "@/lib/copy";
+import { email as copy } from "@/lib/copy/email";
 import { emailLayout, emailStyles } from "./layout";
 
 export type OrderStatusMailKind = "processing" | "delivered" | "cancelled" | "refunded";

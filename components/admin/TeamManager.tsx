@@ -7,9 +7,10 @@ import {
   createStaffMemberAction,
   resetStaffTotpAction,
   revokeStaffSessionsAction,
+  type TeamActionResult,
 } from "@/app/admin/(shell)/ekipa/actions";
 import { STAFF_ROLES, type StaffRole } from "@/lib/admin/permissions";
-import { admin as copy } from "@/lib/copy";
+import { admin as copy } from "@/lib/copy/admin";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiInput, UiFormField } from "@/components/storefront/ui/UiInput";
 
@@ -24,18 +25,33 @@ export interface TeamMember {
 
 const selectClass = "min-h-[2.75rem] rounded-input border border-light-1 bg-white px-3 text-sm outline-none focus:border-brand";
 
+/**
+ * A refusal the operator can act on says why (QA T5-11): the own e-mail in
+ * the create form, the own row, or a member that no longer exists. Anything
+ * else is the generic failure.
+ */
+export function teamMessage(result: TeamActionResult | { ok: false; error: "invalid" | "self" }, context: "create" | "member"): string {
+  if (result.ok) return copy.common.done;
+  switch (result.error) {
+    case "invalid": return context === "create" ? copy.team.invalidEmail : copy.common.error;
+    case "self": return context === "create" ? copy.team.selfEmail : copy.team.selfNote;
+    case "not_found": return copy.team.notFound;
+    default: return copy.common.error;
+  }
+}
+
 export function TeamManager({ actorId, members }: { actorId: string; members: TeamMember[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [created, setCreated] = useState<string | null>(null);
 
-  const run = (task: () => Promise<{ ok: boolean }>) => {
+  const run = (task: () => Promise<TeamActionResult>) => {
     setMessage(null);
     startTransition(async () => {
       try {
         const result = await task();
-        setMessage(result.ok ? copy.common.done : copy.common.error);
+        setMessage(teamMessage(result, "member"));
         router.refresh();
       } catch {
         setMessage(copy.common.error);
@@ -62,7 +78,7 @@ export function TeamManager({ actorId, members }: { actorId: string; members: Te
                 role: String(data.get("role") ?? "SUPPORT") as StaffRole,
               });
               if (!result.ok) {
-                setMessage(result.error === "invalid" ? copy.team.invalidEmail : copy.common.error);
+                setMessage(teamMessage(result, "create"));
                 return;
               }
               setCreated(
@@ -126,7 +142,12 @@ export function TeamManager({ actorId, members }: { actorId: string; members: Te
                         className={selectClass}
                         value={member.role}
                         disabled={pending}
-                        onChange={(event) => run(() => changeStaffRoleAction({ userId: member.id, role: event.target.value as StaffRole }))}
+                        onChange={(event) => {
+                          // Permissions change the moment the role does: ask first (QA N6). Declined, the select stays on the stored role.
+                          const role = event.target.value as StaffRole;
+                          if (!window.confirm(copy.team.confirmRoleChange.replace("{name}", member.name ?? member.email).replace("{role}", copy.roles[role]))) return;
+                          run(() => changeStaffRoleAction({ userId: member.id, role }));
+                        }}
                       >
                         {STAFF_ROLES.map((role) => <option key={role} value={role}>{copy.roles[role]}</option>)}
                       </select>

@@ -31,10 +31,13 @@ describe("addToCartAction stock rule", () => {
   it("accepts a sold-out variant that allows backorders and a stocked one", async () => {
     mocks.findUnique.mockResolvedValue(variant(0, true));
     expect(await addToCartAction({ variantId, quantity: 1 })).toEqual({ ok: true, count: 1, addedQuantity: 1 });
+    // a backorderable variant keeps its per-line cap at zero stock
+    expect(mocks.addToCart).toHaveBeenLastCalledWith(null, { variantId, quantity: 1 }, 5);
     mocks.findUnique.mockResolvedValue(variant(3, false));
     expect(await addToCartAction({ variantId, quantity: 1 })).toEqual({ ok: true, count: 1, addedQuantity: 1 });
     expect(mocks.addToCart).toHaveBeenCalledTimes(2);
-    expect(mocks.addToCart).toHaveBeenLastCalledWith(null, { variantId, quantity: 1 }, 5);
+    // a stocked one takes no more than its stock, the cap the cart reads it back under (QA C2-F16)
+    expect(mocks.addToCart).toHaveBeenLastCalledWith(null, { variantId, quantity: 1 }, 3);
   });
 
   it("still refuses variants of unpurchasable products", async () => {

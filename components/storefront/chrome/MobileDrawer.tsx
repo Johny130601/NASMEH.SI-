@@ -3,13 +3,16 @@
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import type { MenuItem } from "@/lib/settings";
-import { chrome as copy } from "@/lib/copy";
+import type { UtilityMenuItem } from "@/lib/menus";
+import { MAX_FEATURED_CARDS } from "@/lib/featured-cards";
+import { chrome as copy } from "@/lib/copy/chrome";
 import { UiIcon } from "../ui/UiIcon";
 import type { FeaturedCardData } from "./MegaMenu";
 
 /**
  * Mobile drawer (<768px): hamburger → panel with accordion groups, featured
- * cards, colored sale link. Esc closes; focus stays inside until dismissed.
+ * cards, colored sale links (child links too), and the utility menu at the
+ * bottom (QA M16). Esc closes; focus stays inside until dismissed.
  */
 export function MobileDrawer({
   items,
@@ -18,7 +21,7 @@ export function MobileDrawer({
 }: {
   items: MenuItem[];
   featuredCards: FeaturedCardData[];
-  utilityItems: MenuItem[];
+  utilityItems: UtilityMenuItem[];
 }) {
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -113,8 +116,9 @@ export function MobileDrawer({
                               <Link
                                 href={child.href}
                                 onClick={() => setOpen(false)}
-                                className="text-sm text-mid-1 transition-colors hover:text-dark-1"
+                                className={`inline-flex items-center gap-1.5 text-sm transition-colors ${child.color === "sale" ? "text-sale" : "text-mid-1 hover:text-dark-1"}`}
                               >
+                                {child.color === "sale" ? <UiIcon name="discount" className="h-4 w-4" /> : null}
                                 {child.label}
                               </Link>
                             </li>
@@ -122,7 +126,7 @@ export function MobileDrawer({
                         </ul>
                         {item.featured?.length ? (
                           <div className="grid grid-cols-2 gap-3 pb-2 pt-3" aria-label={copy.drawer.featured}>
-                            {item.featured.slice(0, 2).map((slug) => {
+                            {item.featured.slice(0, MAX_FEATURED_CARDS).map((slug) => {
                               const card = featuredCards.find((c) => c.slug === slug);
                               if (!card) return null;
                               return (
@@ -140,7 +144,8 @@ export function MobileDrawer({
                                       <img
                                         src={card.imageUrl}
                                         alt={card.imageAlt}
-                                        loading="lazy"
+                                        loading="eager"
+                                        decoding="async"
                                         className="h-full w-full object-cover"
                                       />
                                     ) : null}
@@ -179,9 +184,10 @@ export function MobileDrawer({
                     <Link
                       href={item.href}
                       onClick={() => setOpen(false)}
-                      className="inline-flex min-h-10 items-center gap-2 text-sm text-mid-1 transition-colors hover:text-dark-1"
+                      {...(item.href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                      className={`inline-flex min-h-10 items-center gap-2 text-sm transition-colors ${item.color === "sale" ? "text-sale" : "text-mid-1 hover:text-dark-1"}`}
                     >
-                      <UiIcon name="account" className="h-5 w-5" />
+                      {item.account ? <UiIcon name="account" className="h-5 w-5" /> : null}
                       {item.label}
                     </Link>
                   </li>

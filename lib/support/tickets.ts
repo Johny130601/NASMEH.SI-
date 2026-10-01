@@ -30,15 +30,23 @@ export async function resolveContactOrder(input: ContactInput, userId: string | 
  * Notices recorded without an order link that name this order number
  * (details.claimedOrderNumber) — a withdrawal or an adverse-event report — newest
  * first, so the order's admin page shows them to staff who handle the order but
- * cannot open the ticket queue.
+ * cannot open the ticket queue. `kind` tells the two apart (QA T4-F5): only a
+ * withdrawal belongs under the withdrawal wording, an adverse-event report is
+ * listed as another unlinked request.
  */
 export async function listUnlinkedTicketsClaimingOrder(orderNumber: string) {
-  return db.ticket.findMany({
+  const rows = await db.ticket.findMany({
     where: { orderId: null, details: { path: ["claimedOrderNumber"], equals: orderNumber } },
     select: { id: true, reference: true, topic: true, reason: true, status: true, createdAt: true },
     orderBy: { createdAt: "desc" },
     take: 20,
   });
+  return rows.map((row) => ({ ...row, kind: unlinkedTicketKind(row) }));
+}
+
+/** A withdrawal notice (RETURN/WITHDRAWAL, from either form) or any other request. */
+export function unlinkedTicketKind(ticket: { topic: string; reason: string | null }): "withdrawal" | "other" {
+  return ticket.topic === "RETURN" && ticket.reason === "WITHDRAWAL" ? "withdrawal" : "other";
 }
 
 /** RETURN: the money-back guarantee page asks for a photo of the product and packaging through this topic. */

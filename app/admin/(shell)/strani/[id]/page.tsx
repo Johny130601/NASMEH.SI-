@@ -7,6 +7,7 @@ import { protectedPageSlugs } from "@/lib/admin/cms-schemas";
 import { admin as copy } from "@/lib/copy";
 import { getLegalLinks } from "@/lib/settings";
 import { PageEditor } from "@/components/admin/PageEditor";
+import { sanitizeContentHtml } from "@/lib/security/html-sanitizer";
 
 export const metadata: Metadata = { title: copy.content.pages.title, robots: { index: false, follow: false } };
 
@@ -26,7 +27,7 @@ export default async function AdminPageEditorPage({ params }: { params: Promise<
         {page.published ? <Link href={`/${page.slug}`} className="text-sm underline underline-offset-4" target="_blank" rel="noopener noreferrer">{c.view}</Link> : null}
       </div>
       <h1 className="mt-3 text-[2rem]">{page.title}</h1>
-      <div className="mt-6 grid gap-4 xl:grid-cols-[3fr_2fr]">
+      <div className="mt-6 grid gap-4 lg:grid-cols-[3fr_2fr]">
         <PageEditor
           pageId={page.id}
           locked={locked}
@@ -35,7 +36,7 @@ export default async function AdminPageEditorPage({ params }: { params: Promise<
         <section className="rounded-card border border-light-2 bg-white p-5" data-page-preview>
           <h2 className="text-base font-medium">{c.preview}</h2>
           {page.body.trim() ? (
-            <div className="content-prose mt-4" dangerouslySetInnerHTML={{ __html: page.body }} />
+            <div className="content-prose mt-4" dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(page.body) }} />
           ) : (
             <p className="mt-4 text-sm text-mid-2">{c.previewEmpty}</p>
           )}

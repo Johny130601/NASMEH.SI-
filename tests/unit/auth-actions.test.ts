@@ -117,6 +117,23 @@ describe("auth actions", () => {
     mocks.update.mockResolvedValue({ count: 0 });
     expect(await resetPasswordAction({ token: raw, password: input.password, turnstileToken: "human" })).toEqual({ ok: false, error: copy.reset.genericError });
   });
+  it("names every field the server refuses at registration (QA T3-F4)", async () => {
+    const result = await registerAction({ ...input, firstName: "   ", lastName: "x".repeat(61), email: "qa@x", password: "kratko" });
+    expect(result).toEqual({
+      ok: false, error: copy.register.invalidInput,
+      fields: {
+        firstName: copy.register.fields.firstName, lastName: copy.register.fields.lastName,
+        email: copy.register.fields.email, password: copy.register.fields.password,
+      },
+    });
+    expect(await registerAction({ ...input, password: "x".repeat(73) })).toEqual({
+      ok: false, error: copy.register.invalidInput, fields: { password: copy.register.fields.password },
+    });
+    expect(mocks.human).not.toHaveBeenCalled(); expect(mocks.find).not.toHaveBeenCalled();
+  });
+  it("keeps a generic answer when no named field is at fault", async () => {
+    expect(await registerAction({ ...input, marketingOptIn: "yes" })).toEqual({ ok: false, error: copy.register.genericError });
+  });
   it("returns identical forgot-password results for absent, unverified and verified emails", async () => {
     const missing = await forgotPasswordAction(input);
     mocks.find.mockResolvedValueOnce({ id: "u", emailVerified: null });

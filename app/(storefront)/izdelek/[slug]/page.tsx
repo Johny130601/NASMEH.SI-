@@ -2,7 +2,23 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
-import { bundleSavingsFor, getCatalogProducts, lowStockUnits, parseBadges } from "@/lib/catalog";
+import {
+  bundleSavingsFor,
+  descriptionSummary,
+  displayBadges,
+  getCatalogProducts,
+  hasCaretClaim,
+  lowStockUnits,
+  parseBadges,
+  plainTextFromHtml,
+} from "@/lib/catalog";
+import {
+  addableUnits,
+  isSoldOut,
+  productHasSellableUnits,
+  sellableStock,
+} from "@/lib/bundle/availability";
+import { PURCHASABLE_PRODUCT_WHERE } from "@/lib/cart/visibility";
 import { getPriceReductions } from "@/lib/omnibus";
 import {
   formatEUR,
@@ -10,6 +26,7 @@ import {
   klarnaInstallmentCents,
   standardShippingMethod,
 } from "@/lib/pricing";
+import { sanitizeContentHtml } from "@/lib/security/html-sanitizer";
 import { getBundleBuilder, getLowStockThreshold, getShippingSettings } from "@/lib/settings";
 import { isTestMode } from "@/lib/turnstile";
 import { getEnv } from "@/lib/env";
@@ -37,9 +54,14 @@ interface Params {
   params: Promise<{ slug: string }>;
 }
 
+/**
+ * The product page answers only for what can be bought (lib/cart/visibility):
+ * a draft, an archived product, a hidden deal SKU and an inactive bundle are
+ * all 404 — nothing surfaces what the add-to-cart action would refuse.
+ */
 async function getProduct(slug: string) {
   return db.product.findFirst({
-    where: { slug, status: "ACTIVE" },
+    where: { slug, ...PURCHASABLE_PRODUCT_WHERE },
     include: {
       variants: { orderBy: { priceCents: "asc" } },
       media: {
@@ -65,10 +87,11 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const product = await getProduct(slug);
   if (!product) return {};
   // A hidden, fully sold-out product still answers but asks not to be indexed.
-  const hidden = product.soldOutBehavior === "HIDE" && !product.variants.some((variant) => variant.stock > 0 || variant.allowBackorder);
+  const hidden = !productHasSellableUnits(product);
   return buildMetadata({
     title: product.seoTitle ?? product.title,
-    description: product.seoDescription ?? product.description,
+    // the rich description as plain text when no SEO description is written (QA T6-07)
+    description: product.seoDescription || descriptionSummary(product.description),
     path: `/izdelek/${product.slug}`,
     image: product.media[0]?.url,
     noindex: hidden,
@@ -105,9 +128,15 @@ export default async function ProductPage({
   const education = Array.isArray(product.education)
     ? (product.education as Array<{ heading: string; body: string }>)
     : [];
-  const badges = parseBadges(product.badges);
-  const soldOut = variant.stock <= 0 && !variant.allowBackorder;
-  const backorder = variant.stock <= 0 && variant.allowBackorder;
+  // A bundle's availability is its components' (lib/bundle/availability), the
+  // same figure the cards, the sitemap and the add-to-cart action use.
+  const availability = sellableStock(variant, product.bundle);
+  const soldOut = isSoldOut(availability);
+  const backorder = availability.stock <= 0 && availability.allowBackorder;
+  // The computed sold-out pill states the sold-out fact; an admin badge saying the same is dropped.
+  const badges = displayBadges(parseBadges(product.badges));
+  // Operator HTML is sanitised on render as well as on save (AGENTS §8.24, QA S1).
+  const description = product.description.trim() ? sanitizeContentHtml(product.description) : "";
 
   // Omnibus gate (lib/pricing priceReduction): strikethrough + 30-day line
   // only with a history-backed prior price above the current price.
@@ -135,11 +164,17 @@ export default async function ProductPage({
 
   const reduction = reductions.get(variant.id) ?? null;
   // the real remaining units, only while the stock is at or under the admin's threshold
-  const lowStock = soldOut ? null : lowStockUnits(variant.stock, lowStockThreshold);
+  const lowStock = soldOut ? null : lowStockUnits(availability.stock, lowStockThreshold);
+  // the units one add may take: the per-line cap, and no more than the stock can fill
+  const maxQuantity = Math.max(1, addableUnits(availability, variant.maxCartQuantity));
   // Delivery accordion and trust row from the shipping Setting (the cart's standard method and threshold)
   const deliveryEstimate = standardShippingMethod(shipping.methods, shipping.standardCostCents)?.estimate.trim() || null;
   const freeThreshold = shipping.freeThresholdCents > 0 ? formatEUR(shipping.freeThresholdCents) : null;
   const deliveryShipping = copy.delivery.shipping({ estimate: deliveryEstimate, freeThreshold });
+  const unitPrice = cf.unitPrice
+    ? formatUnitPrice(variant.priceCents, cf.unitPrice.quantity, cf.unitPrice.unit)
+    : null;
+  const klarnaEnabled = !soldOut && product.klarnaEligible && getEnv().STRIPE_KLARNA_ENABLED === "true";
 
   const rating =
     reviewAggregate.count > 0
@@ -160,7 +195,8 @@ export default async function ProductPage({
     "@type": "Product",
     name: product.title,
     sku: variant.sku,
-    description: product.seoDescription ?? product.description,
+    // structured data carries text, never markup
+    description: product.seoDescription || plainTextFromHtml(product.description),
     image: product.media.map((m) => `${base}${m.url}`),
     brand: { "@type": "Brand", name: common.siteName },
     offers: {
@@ -170,7 +206,9 @@ export default async function ProductPage({
       price: (variant.priceCents / 100).toFixed(2),
       availability: soldOut
         ? "https://schema.org/OutOfStock"
-        : "https://schema.org/InStock",
+        : backorder
+          ? "https://schema.org/BackOrder"
+          : "https://schema.org/InStock",
     },
     ...reviewStructuredData(product.reviews),
   };
@@ -201,10 +239,16 @@ export default async function ProductPage({
         }
       : null;
 
+  // A marker only where a claim resolves to it: the guarantee title carries its
+  // caret only when a claim this page shows is marked "^" (QA T1-14) — the
+  // description, the intro, bullets and chips, or the accordion, FAQ and education text.
+  const guaranteeTitle = hasCaretClaim(product)
+    ? copy.accordions.guarantee
+    : copy.accordions.guarantee.replace(/^\^/, "");
   const accordionItems = [
     { key: "howItWorks", title: copy.accordions.howItWorks },
     { key: "inci", title: copy.accordions.inci },
-    { key: "guarantee", title: copy.accordions.guarantee },
+    { key: "guarantee", title: guaranteeTitle },
     { key: "tested", title: copy.accordions.tested },
   ]
     .filter((item) => accordionBodies[item.key])
@@ -213,7 +257,7 @@ export default async function ProductPage({
       content: (
         <div
           className="content-prose"
-          dangerouslySetInnerHTML={{ __html: accordionBodies[item.key] }}
+          dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(accordionBodies[item.key]) }}
         />
       ),
     }));
@@ -229,7 +273,7 @@ export default async function ProductPage({
       <JsonLd data={breadcrumbLd} />
       {faqLd ? <JsonLd data={faqLd} /> : null}
 
-      <div className="mx-auto max-w-(--container-wide) px-(--padding) pb-32 pt-6">
+      <div className="mx-auto max-w-(--container-wide) px-(--padding) pb-10 pt-6">
         {/* 1. Breadcrumbs */}
         <nav aria-label={copy.breadcrumbs.shop}>
           <ol className="flex flex-wrap items-center gap-2 text-xs text-mid-2">
@@ -272,7 +316,7 @@ export default async function ProductPage({
                       : index === 1
                         ? { loading: "eager" }
                         : { loading: "lazy" })}
-                    className="aspect-[0.6875] w-full object-cover transition-transform duration-700 ease-out-quart group-hover:scale-[1.04]"
+                    className="aspect-[0.6875] w-full object-cover transition-transform duration-500 ease-out-quart group-hover:scale-[1.04]"
                   />
                 </div>
               ))
@@ -280,10 +324,10 @@ export default async function ProductPage({
           </div>
 
           <div>
-            {/* 3. Badge + H1 */}
-            <div className="flex flex-wrap items-center gap-2">
+            {/* 3. Badge + H1 — the computed sold-out pill, then the admin badges (never one that repeats it) */}
+            <div className="flex flex-wrap items-center gap-2" data-pdp-badges>
               {soldOut ? (
-                <BadgePill badge={{ label: "Razprodano", style: "grey" }} />
+                <BadgePill badge={{ label: catalog.card.soldOut, style: "grey" }} />
               ) : null}
               {badges.map((badge) => (
                 <BadgePill key={badge.label} badge={badge} />
@@ -291,14 +335,16 @@ export default async function ProductPage({
             </div>
             <h1 className="mt-3 text-[2rem] md:text-[2.5rem]">{product.title}</h1>
 
-            {/* 4. Rating summary */}
+            {/* 4. Rating summary — one count, linked to the reviews (a tap-sized target) */}
             <div className="mt-2">
-              <RatingStars rating={rating} />
               {rating ? (
-                <a href="#mnenja" className="ml-2 text-xs text-mid-2 underline underline-offset-2">
-                  ({rating.count})
+                <a href="#mnenja" className="inline-flex items-center gap-1.5 py-1 text-mid-2" data-rating-link>
+                  <RatingStars rating={rating} showCount={false} />
+                  <span className="text-xs underline underline-offset-2">({rating.count})</span>
                 </a>
-              ) : null}
+              ) : (
+                <RatingStars rating={rating} />
+              )}
             </div>
 
             {/* 5. USP chips (max 3) */}
@@ -315,7 +361,7 @@ export default async function ProductPage({
               </ul>
             ) : null}
 
-            {/* 6. Intro + checkmark bullets */}
+            {/* 6. Intro + checkmark bullets, then the rich description (operator HTML, sanitised) */}
             {cf.intro ? (
               <p className="mt-5 text-sm leading-6 text-mid-1">{cf.intro}</p>
             ) : null}
@@ -328,6 +374,13 @@ export default async function ProductPage({
                   </li>
                 ))}
               </ul>
+            ) : null}
+            {description ? (
+              <div
+                className="content-prose mt-5 text-sm leading-6 text-mid-1"
+                data-pdp-description
+                dangerouslySetInnerHTML={{ __html: description }}
+              />
             ) : null}
 
             {/* 7. Accordion set #1 — server-rendered bodies (asterisk claims resolve here) */}
@@ -360,9 +413,8 @@ export default async function ProductPage({
                   ))}
                 </ul>
                 {savings ? (
-                  <p className="mt-4 border-t border-light-3 pt-3 text-sm font-medium text-dark-1">
-                    {copy.bundle.savingsLine} {formatEUR(savings.valueCents)}{" "}
-                    {copy.bundle.savingsSave} {savings.savingsPercent} %
+                  <p className="mt-4 border-t border-light-3 pt-3 text-sm font-medium text-dark-1" data-bundle-savings>
+                    {copy.bundle.savingsLine(formatEUR(savings.valueCents), savings.savingsPercent)}
                   </p>
                 ) : null}
               </div>
@@ -391,16 +443,8 @@ export default async function ProductPage({
                   {copy.buyBox.omnibusPrefix}: {formatEUR(reduction.priorPriceCents)}
                 </p>
               ) : null}
-              {cf.unitPrice ? (
-                <p className="mt-1 text-xs text-mid-2">
-                  (
-                  {formatUnitPrice(
-                    variant.priceCents,
-                    cf.unitPrice.quantity,
-                    cf.unitPrice.unit,
-                  )}
-                  )
-                </p>
+              {unitPrice ? (
+                <p className="mt-1 text-xs text-mid-2">({unitPrice})</p>
               ) : null}
               {lowStock !== null ? (
                 <p className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-dark-1" data-low-stock>
@@ -411,7 +455,7 @@ export default async function ProductPage({
               {backorder ? (
                 <p className="mt-2 text-sm text-warning" data-backorder-note>{copy.buyBox.backorder}{variant.backorderNote ? ` ${variant.backorderNote}` : ""}</p>
               ) : null}
-              {!soldOut && product.klarnaEligible && env.STRIPE_KLARNA_ENABLED === "true" ? (
+              {klarnaEnabled ? (
                 <p className="mt-1 text-xs text-mid-2">
                   {copy.buyBox.klarnaPrefix}{" "}
                   {formatEUR(klarnaInstallmentCents(variant.priceCents))}{" "}
@@ -426,7 +470,7 @@ export default async function ProductPage({
                   sku={variant.sku}
                   title={product.title}
                   priceCents={variant.priceCents}
-                  maxQuantity={variant.maxCartQuantity}
+                  maxQuantity={maxQuantity}
                   soldOut={soldOut}
                   testToken={testToken}
                   imageUrl={product.media[0]?.url ?? null}
@@ -520,14 +564,17 @@ export default async function ProductPage({
         ) : null}
       </div>
 
-      {/* 15. Sticky bottom buy bar */}
+      {/* 15. Sticky bottom buy bar — the last child of <main>, so it sticks to the viewport
+          bottom while the page scrolls and comes to rest above the footer, never over it */}
       <StickyBuyBar
-        klarnaEnabled={product.klarnaEligible && env.STRIPE_KLARNA_ENABLED === "true"}
+        klarnaEnabled={klarnaEnabled}
         productSlug={product.slug}
         variantId={variant.id}
         sku={variant.sku}
         title={product.title}
         priceCents={variant.priceCents}
+        unitPrice={unitPrice}
+        maxQuantity={maxQuantity}
         soldOut={soldOut}
         testToken={testToken}
         imageUrl={product.media[0]?.url ?? null}

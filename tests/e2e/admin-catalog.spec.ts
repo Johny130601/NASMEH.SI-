@@ -175,7 +175,7 @@ test("owner creates, prices, illustrates, restocks, hides and backorders a produ
       await shop.locator("[data-buy-box]").getByRole("button", { name: "Dodaj v košarico" }).click();
       await expect(shop.locator("[data-cart-badge]")).toHaveText("1");
       await shop.goto("/checkout");
-      await shop.getByLabel("E-pošta").fill(shopper);
+      await shop.getByLabel("E-pošta", { exact: true }).fill(shopper);
       await shop.locator("[data-continue-contact]").click();
       await shop.getByLabel("Ime in priimek").fill("Kupec Prednaročilo");
       await shop.getByLabel("Ulica").fill("Testna ulica");

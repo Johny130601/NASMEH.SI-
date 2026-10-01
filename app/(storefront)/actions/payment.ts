@@ -3,14 +3,18 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { buildCheckoutPricing, type CheckoutQuote } from "@/lib/orders/quote";
+import { buildCheckoutPricing, quoteFailureReason, type CheckoutQuote, type QuoteFailure } from "@/lib/orders/quote";
+import { SoldOutLinesError } from "@/lib/orders/sold-out";
 import { hasOrderAccess } from "@/lib/orders/access";
 import { capturePayPalOrder } from "@/lib/payments/paypal";
 import { ensureOrderPayment, type PlaceOrderResult } from "@/lib/orders/create";
 
-export async function quoteCheckoutAction(input: unknown): Promise<{ ok: true; quote: CheckoutQuote } | { ok: false }> {
+/** `soldOut`: the titles of the lines that sold out in the cart, with the `sold_out` reason only. */
+export async function quoteCheckoutAction(input: unknown): Promise<{ ok: true; quote: CheckoutQuote } | { ok: false; reason: QuoteFailure; soldOut?: string[] }> {
   try { return { ok: true, quote: (await buildCheckoutPricing(input)).quote }; }
-  catch { return { ok: false }; }
+  catch (error) {
+    return { ok: false, reason: quoteFailureReason(error), ...(error instanceof SoldOutLinesError ? { soldOut: error.titles } : {}) };
+  }
 }
 
 export async function capturePayPalAction(input: unknown): Promise<{ ok: boolean }> {

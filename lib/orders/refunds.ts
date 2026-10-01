@@ -73,14 +73,25 @@ export function refundedQuantities(refunds: Array<Pick<Refund, "status" | "lines
   return map;
 }
 
+/**
+ * A payment captured for an order the store could not fulfil (a stock-out at
+ * capture, a payment landing after a cancellation or an erasure): the order is
+ * CANCELLED or still PENDING, `paidAt` is set and `refundRequired` flags the
+ * money owed. Such an order is refundable exactly once, in full.
+ */
+export function owesCapturedPayment(order: Pick<Order, "status" | "paidAt"> & { refundRequired?: boolean }): boolean {
+  return (order.status === "CANCELLED" || order.status === "PENDING") && order.refundRequired === true && !!order.paidAt;
+}
+
 /** Pure validation and arithmetic; the caller holds the order lock. */
 export function planRefund(
-  order: Pick<Order, "status" | "paidAt" | "totalCents" | "refundedCents" | "shippingCents" | "vatRatePercent">,
+  order: Pick<Order, "status" | "paidAt" | "totalCents" | "refundedCents" | "shippingCents" | "vatRatePercent"> & { refundRequired?: boolean },
   items: Array<Pick<OrderItem, "id" | "quantity" | "unitPriceCents">>,
   refunds: Array<Pick<Refund, "status" | "lines" | "shippingRefunded">>,
   request: Pick<RefundRequest, "lines" | "refundShipping" | "adjustmentCents">,
 ): RefundPlan {
-  if (!REFUNDABLE_STATUSES.has(order.status) || !order.paidAt) return { ok: false, reason: "not_refundable" };
+  const settlesCapture = owesCapturedPayment(order);
+  if ((!REFUNDABLE_STATUSES.has(order.status) && !settlesCapture) || !order.paidAt) return { ok: false, reason: "not_refundable" };
   const prior = refundedQuantities(refunds);
   const lines: RefundLineInput[] = [];
   let lineCents = 0;
@@ -94,11 +105,18 @@ export function planRefund(
   }
   const shippingAlreadyRefunded = refunds.some((refund) => refund.status !== "FAILED" && refund.shippingRefunded);
   if (request.refundShipping && (shippingAlreadyRefunded || order.shippingCents <= 0)) return { ok: false, reason: "invalid_lines" };
-  if (!Number.isSafeInteger(request.adjustmentCents) || Math.abs(request.adjustmentCents) > order.totalCents) return { ok: false, reason: "amount" };
+  const grossCents = lineCents + (request.refundShipping ? order.shippingCents : 0);
+  // A negative adjustment offsets what is refunded (a coupon discount can exceed the order total:
+  // a 60 % code on lines plus shipping), so it is bounded by the gross value, not by the total.
+  if (!Number.isSafeInteger(request.adjustmentCents) || request.adjustmentCents > order.totalCents || -request.adjustmentCents > grossCents) {
+    return { ok: false, reason: "amount" };
+  }
   if (lines.length === 0 && !request.refundShipping && request.adjustmentCents === 0) return { ok: false, reason: "invalid_lines" };
-  const amountCents = lineCents + (request.refundShipping ? order.shippingCents : 0) + request.adjustmentCents;
+  const amountCents = grossCents + request.adjustmentCents;
   const remaining = order.totalCents - order.refundedCents;
   if (amountCents <= 0 || amountCents > remaining) return { ok: false, reason: "amount" };
+  // Money owed for an unfulfilled order goes back whole: a partial refund would leave the flag set and the queue never clearing.
+  if (settlesCapture && amountCents !== remaining) return { ok: false, reason: "amount" };
   return { ok: true, amountCents, vatCents: refundVatCents(amountCents, order.vatRatePercent), lines, full: amountCents === remaining };
 }
 
@@ -125,7 +143,11 @@ function restockTargets(item: OrderItem, quantity: number): Array<{ variantId: s
   return item.variantId ? [{ variantId: item.variantId, delta: quantity }] : [];
 }
 
-interface AppliedRefund { orderId: string; amountCents: number; full: boolean; status: string; armed: number; skippedVariants: number }
+interface AppliedRefund {
+  orderId: string; amountCents: number; full: boolean; status: string; armed: number; skippedVariants: number;
+  /** What the timeline records: "cancelled" only when this refund is what cancelled the order. */
+  event: "cancelled" | "refunded" | "partially_refunded";
+}
 
 function timelineWith(order: Order, entries: Array<{ event: string; detail?: string }>): Prisma.InputJsonValue {
   const result = entries.reduce<Order>(
@@ -168,8 +190,9 @@ export async function applyRefundInTx(tx: Prisma.TransactionClient, refundId: st
       }
     }
   }
-  const event = status === "CANCELLED" ? "cancelled" : full ? "refunded" : "partially_refunded";
-  const entries = [{ event, detail: `cents:${row.amountCents}:${row.actorName}` }];
+  // An order already CANCELLED (a stock-out at capture) is not cancelled again: the money went back.
+  const event: AppliedRefund["event"] = status === "CANCELLED" && current.status !== "CANCELLED" ? "cancelled" : full ? "refunded" : "partially_refunded";
+  const entries = [{ event: event as string, detail: `cents:${row.amountCents}:${row.actorName}` }];
   if (skippedVariants > 0) entries.push({ event: "restock_skipped", detail: `variants:${skippedVariants}:${row.actorName}` });
   await tx.order.update({
     where: { id: current.id },
@@ -179,14 +202,15 @@ export async function applyRefundInTx(tx: Prisma.TransactionClient, refundId: st
       timeline: timelineWith(current, entries),
     },
   });
-  return { orderId: current.id, amountCents: row.amountCents, full, status, armed, skippedVariants };
+  return { orderId: current.id, amountCents: row.amountCents, full, status, armed, skippedVariants, event };
 }
 
 async function afterApply(applied: AppliedRefund) {
   if (applied.armed > 0) {
     try { await sendPendingRestockAlerts(); } catch (error) { console.error("Restock alerts remain queued", error instanceof Error ? error.name : "unknown"); }
   }
-  await notifyOrderStatus(applied.orderId, applied.status === "CANCELLED" ? "cancelled" : "refunded", { amountCents: applied.amountCents });
+  // The refund mail names the amount; the cancellation mail is for the order this refund cancelled.
+  await notifyOrderStatus(applied.orderId, applied.event === "cancelled" ? "cancelled" : "refunded", { amountCents: applied.amountCents });
 }
 
 export interface RefundResolution { applied: number; interrupted: number; failed: number }
@@ -354,4 +378,44 @@ export async function cancelOrder(orderId: string, input: { actorId: string | nu
     actorId: input.actorId, actorName: input.actorName, finalStatus: "CANCELLED",
   });
   return result.ok ? { ok: true, refunded: true } : result;
+}
+
+/**
+ * The whole request a captured-but-unfulfillable order needs: every line not
+ * yet refunded, the shipping when it was not, and an adjustment that makes the
+ * amount exactly the remaining balance (a coupon discount lowered the total
+ * below the line prices). Pure; `refundCapturedPayment` feeds it to
+ * `refundOrder`, and `cancelOrder` computes the same shape for a paid order.
+ */
+export function fullRefundRequest(order: Pick<Order, "totalCents" | "refundedCents" | "shippingCents">, items: Array<Pick<OrderItem, "id" | "quantity" | "unitPriceCents">>, refunds: Array<Pick<Refund, "status" | "lines" | "shippingRefunded">>): Pick<RefundRequest, "lines" | "refundShipping" | "adjustmentCents"> {
+  const prior = refundedQuantities(refunds);
+  const lines = items
+    .map((item) => ({ orderItemId: item.id, quantity: item.quantity - (prior.get(item.id) ?? 0) }))
+    .filter((line) => line.quantity > 0);
+  const shippingAlreadyRefunded = refunds.some((refund) => refund.status !== "FAILED" && refund.shippingRefunded);
+  const refundShipping = !shippingAlreadyRefunded && order.shippingCents > 0;
+  const covered = lines.reduce((sum, line) => sum + (items.find((item) => item.id === line.orderItemId)?.unitPriceCents ?? 0) * line.quantity, 0)
+    + (refundShipping ? order.shippingCents : 0);
+  return { lines, refundShipping, adjustmentCents: order.totalCents - order.refundedCents - covered };
+}
+
+/**
+ * Settles the awaiting-refund queue (§14.7, M3): the captured amount of an
+ * order flagged `refundRequired` goes back to the buyer in full through the
+ * same three-step path as every operator refund (Refund row first, provider
+ * keyed by the row id, then the local apply). Nothing is restocked — the
+ * stock was never deducted for such an order — and the apply clears the flag,
+ * so the dashboard and list banners stop counting it. The order keeps or
+ * takes CANCELLED: it was never fulfilled.
+ */
+export async function refundCapturedPayment(orderId: string, input: { actorId: string | null; actorName: string; reason: string }): Promise<RefundResult> {
+  await resolvePendingRefunds(orderId);
+  const order = await db.order.findUnique({ where: { id: orderId }, include: { items: true, refunds: true } });
+  if (!order) return { ok: false, reason: "not_found" };
+  if (!owesCapturedPayment(order) || order.totalCents - order.refundedCents <= 0) return { ok: false, reason: "not_refundable" };
+  return refundOrder(orderId, {
+    ...fullRefundRequest(order, order.items, order.refunds),
+    reason: input.reason.trim().slice(0, 500) || "refund_required", restock: false,
+    actorId: input.actorId, actorName: input.actorName, finalStatus: "CANCELLED",
+  });
 }

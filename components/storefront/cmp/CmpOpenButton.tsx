@@ -1,7 +1,7 @@
 "use client";
 
 import { useConsent } from "./ConsentProvider";
-import { footer as copy } from "@/lib/copy";
+import { footer as copy } from "@/lib/copy/footer";
 
 /** Footer "Nastavitve piškotkov" — reopens the CMP (spec §3.4). */
 export function CmpOpenButton() {

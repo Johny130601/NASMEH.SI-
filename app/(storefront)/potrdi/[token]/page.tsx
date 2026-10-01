@@ -9,6 +9,7 @@ import { newsletter as copy } from "@/lib/copy";
 import { confirmNewsletterAction } from "@/app/(storefront)/actions/newsletter";
 import { TokenActionForm } from "@/components/storefront/TokenActionForm";
 import { UiButton } from "@/components/storefront/ui/UiButton";
+import { MarkWelcomeSeen } from "@/components/storefront/MarkWelcomeSeen";
 
 export const dynamic = "force-dynamic";
 
@@ -50,8 +51,11 @@ export default async function ConfirmSubscriptionPage({
     );
   }
 
+  // The confirmation tab opens from the mail with an empty sessionStorage: the welcome popup must not
+  // ask for the address just confirmed (QA T7-F14).
   const success = (
     <>
+      <MarkWelcomeSeen />
       <h1 className="text-[2rem]">{copy.confirm.titleOk}</h1>
       <p className="mt-4 text-sm text-mid-1">{copy.confirm.bodyOk}</p>
       <p className="mt-4 text-xs text-mid-2">

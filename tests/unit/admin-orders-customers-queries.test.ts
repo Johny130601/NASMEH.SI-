@@ -8,7 +8,7 @@ vi.mock("@/lib/db", () => ({ db: {
 vi.mock("@/lib/orders/refunds", () => ({ refundedQuantities: () => new Map() }));
 vi.mock("@/lib/support/photos", () => ({ removeSupportPhotos: vi.fn() }));
 
-import { ordersCsv, orderWhere, parseOrderFilters } from "@/lib/admin/orders";
+import { csvCell, csvDateTime, csvEur, likeEscaped, ordersCsv, orderWhere, parseOrderFilters } from "@/lib/admin/orders";
 import { listCustomers, parseCustomerFilters } from "@/lib/admin/customers";
 
 beforeEach(() => { vi.resetAllMocks(); mocks.subscriberFindMany.mockResolvedValue([]); });
@@ -50,8 +50,36 @@ describe("order filters", () => {
     }]);
     const csv = await ordersCsv(parseOrderFilters({}));
     expect(csv.startsWith("﻿number;createdAt;status;email;name;country;items;totalEur;refundedEur;provider;trackingNumber;carrier\r\n")).toBe(true);
-    expect(csv).toContain('NS-2026-00001;2026-09-10T10:00:00.000Z;PAID;ana@test.si;"Ana ""Ančka""; Kovač";SI;3;');
+    // T5-05: the timestamp is Europe/Ljubljana (CEST here), amounts plain numbers with a decimal comma.
+    expect(csv).toContain('NS-2026-00001;2026-09-10 12:00:00;PAID;ana@test.si;"Ana ""Ančka""; Kovač";SI;3;"39,89";"0,00";stripe;;');
     expect(csv.endsWith("\r\n")).toBe(true);
+  });
+
+  it("neutralises cells a spreadsheet would run as a formula (S2) and leaves numbers alone", () => {
+    expect(csvCell("=HYPERLINK(\"http://evil\",\"x\")")).toBe("\"'=HYPERLINK(\"\"http://evil\"\",\"\"x\"\")\"");
+    expect(csvCell("+1")).toBe("\"'+1\"");
+    expect(csvCell("-2")).toBe("\"'-2\"");
+    expect(csvCell("@SUM(A1)")).toBe("\"'@SUM(A1)\"");
+    expect(csvCell("\tcmd")).toBe("\"'\tcmd\"");
+    expect(csvCell("\rcmd")).toBe("\"'\rcmd\"");
+    expect(csvCell("Ana Kovač")).toBe("Ana Kovač");
+    expect(csvCell("O'Brien")).toBe("\"O'Brien\"");
+    expect(csvCell(3)).toBe("3");
+    expect(csvCell(-1)).toBe("-1");
+    expect(csvEur(3989)).toBe("39,89");
+    expect(csvEur(0)).toBe("0,00");
+    expect(csvEur(100)).toBe("1,00");
+    expect(csvDateTime(new Date("2026-01-10T23:30:00Z"))).toBe("2026-01-11 00:30:00");
+  });
+
+  it("treats % and _ in the search as literal characters in every term (T5-06)", () => {
+    const where = orderWhere(parseOrderFilters({ q: "50%_a" }), []);
+    expect(where.OR).toEqual([
+      { number: { contains: "50\\%\\_a", mode: "insensitive" } },
+      { email: { contains: "50\\%\\_a", mode: "insensitive" } },
+      { trackingNumber: { contains: "50\\%\\_A" } },
+    ]);
+    expect(likeEscaped("a\\b")).toBe("a\\\\b");
   });
 });
 
@@ -120,6 +148,11 @@ describe("customer list", () => {
     mocks.queryRaw.mockResolvedValue([]);
     await listCustomers(parseCustomerFilters({ q: "50%_a" }));
     expect(mocks.queryRaw.mock.calls[0][1]).toBe("%50\\%\\_a%");
+    // The account filter escapes too: Prisma's `contains` passes wildcards through (T5-06).
+    expect(mocks.userFindMany.mock.calls[0][0].where.OR).toEqual([
+      { email: { contains: "50\\%\\_a", mode: "insensitive" } },
+      { name: { contains: "50\\%\\_a", mode: "insensitive" } },
+    ]);
   });
 
   it("paginates the merged list in pages of fifty", async () => {

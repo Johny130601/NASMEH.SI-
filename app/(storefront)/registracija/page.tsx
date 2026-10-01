@@ -16,7 +16,7 @@ export default async function RegisterPage() {
 
 
   return (
-    <AuthShell title={copy.register.title} subtitle={copy.register.subtitle}>
+    <AuthShell title={copy.register.title} subtitle={copy.register.subtitle} social>
       <RegisterForm {...getAuthChallengeProps()} privacyHref={(await getLegalLinks()).privacy} />
       <p className="mt-4 text-center text-sm">
         <Link href="/prijava" className="text-mid-1 underline underline-offset-2">

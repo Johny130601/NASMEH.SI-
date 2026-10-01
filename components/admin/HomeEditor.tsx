@@ -5,11 +5,13 @@ import { useState, useTransition, type ReactNode } from "react";
 import {
   saveBundleBannerAction, saveHeroAction, saveHomeSectionsAction, saveRoutineBannerAction, type CmsActionResult,
 } from "@/app/admin/(shell)/vsebina/actions";
-import { heroClaimLacksFootnote, type BundleBannerInput, type HeroInput, type RoutineBannerInput } from "@/lib/admin/cms-schemas";
+import { heroClaimLacksFootnote, isVideoPath, type BundleBannerInput, type HeroInput, type RoutineBannerInput } from "@/lib/admin/cms-schemas";
 import type { HomeSectionSetting } from "@/lib/settings";
-import { admin as copy } from "@/lib/copy";
+import type { UnavailableLink } from "@/lib/content-links";
+import { admin as copy } from "@/lib/copy/admin";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiInput } from "@/components/storefront/ui/UiInput";
+import { ContentLinkWarning, unavailableLinksText } from "./ContentLinkWarning";
 
 const c = copy.content.home;
 const textareaClass = "w-full resize-y rounded-input border border-light-1 bg-white p-4 text-base outline-none focus:border-brand";
@@ -26,24 +28,33 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function useSave() {
+/**
+ * Save state of one block. `links`: the block's saved links that lead to a product page answering 404
+ * (QA v-a) and the template that says what the storefront does instead; named on load and after a save.
+ */
+function useSave(links?: { template: string; initial: UnavailableLink[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [deadLinks, setDeadLinks] = useState(links?.initial ?? []);
   const run = (task: () => Promise<CmsActionResult>, okText: string) => {
     setMessage(null);
     startTransition(async () => {
       try {
         const result = await task();
-        setMessage(result.ok ? { ok: true, text: okText } : { ok: false, text: c.invalid });
-        if (result.ok) router.refresh();
+        setMessage(result.ok ? { ok: true, text: okText } : { ok: false, text: result.error === "videoExternal" ? c.hero.videoExternal : c.invalid });
+        if (result.ok) {
+          setDeadLinks(result.unavailableLinks ?? []);
+          router.refresh();
+        }
       } catch {
         setMessage({ ok: false, text: copy.common.error });
       }
     });
   };
   const status = message ? <p role="status" className={`text-sm ${message.ok ? "text-success" : "text-error"}`}>{message.text}</p> : null;
-  return { pending, run, status };
+  const warning = <ContentLinkWarning text={links && deadLinks.length ? unavailableLinksText(links.template, deadLinks) : null} />;
+  return { pending, run, status, warning };
 }
 
 export function SectionsEditor({ initial }: { initial: HomeSectionSetting[] }) {
@@ -81,14 +92,18 @@ export function SectionsEditor({ initial }: { initial: HomeSectionSetting[] }) {
   );
 }
 
-export function HeroEditor({ initial, media }: { initial: HeroInput; media: MediaOption[] }) {
+export function HeroEditor({ initial, media, unavailableLinks = [] }: { initial: HeroInput; media: MediaOption[]; unavailableLinks?: UnavailableLink[] }) {
   const [hero, setHero] = useState(initial);
-  const { pending, run, status } = useSave();
+  // Library images for the poster, library videos (MP4/WebM, same origin) for the two video fields.
+  const images = media.filter((item) => !isVideoPath(item.url));
+  const videos = media.filter((item) => isVideoPath(item.url));
+  const { pending, run, status, warning } = useSave({ template: copy.content.links.hero, initial: unavailableLinks });
   const field = (key: keyof HeroInput) => ({ value: hero[key] ?? "", onChange: (event: React.ChangeEvent<HTMLInputElement>) => setHero({ ...hero, [key]: event.target.value }) });
   return (
     <form onSubmit={(event) => { event.preventDefault(); run(() => saveHeroAction(hero), c.hero.saved); }} data-hero-form>
       <Section title={c.hero.title}>
-        <datalist id="media-urls">{media.map((item) => <option key={item.url} value={item.url}>{item.alt || item.url}</option>)}</datalist>
+        <datalist id="media-urls">{images.map((item) => <option key={item.url} value={item.url}>{item.alt || item.url}</option>)}</datalist>
+        <datalist id="media-videos">{videos.map((item) => <option key={item.url} value={item.url}>{item.alt || item.url}</option>)}</datalist>
         <div className="grid gap-4 md:grid-cols-2">
           <UiInput label={c.hero.fields.kicker} name="kicker" maxLength={40} {...field("kicker")} />
           <UiInput label={c.hero.fields.title} name="title" required maxLength={120} {...field("title")} />
@@ -110,8 +125,8 @@ export function HeroEditor({ initial, media }: { initial: HeroInput; media: Medi
           <UiInput label={c.hero.fields.ctaHref} name="ctaHref" required maxLength={500} {...field("ctaHref")} />
           <UiInput label={c.hero.fields.poster} name="poster" list="media-urls" maxLength={500} hint={c.hero.mediaHint} {...field("poster")} />
           <UiInput label={c.hero.fields.imageAlt} name="imageAlt" maxLength={200} {...field("imageAlt")} />
-          <UiInput label={c.hero.fields.videoDesktop} name="videoDesktop" maxLength={500} {...field("videoDesktop")} />
-          <UiInput label={c.hero.fields.videoMobile} name="videoMobile" maxLength={500} {...field("videoMobile")} />
+          <UiInput label={c.hero.fields.videoDesktop} name="videoDesktop" list="media-videos" maxLength={500} hint={c.hero.videoHint} {...field("videoDesktop")} />
+          <UiInput label={c.hero.fields.videoMobile} name="videoMobile" list="media-videos" maxLength={500} hint={c.hero.videoHint} {...field("videoMobile")} />
           <UiInput label={c.hero.fields.promoOverlayText} name="promoOverlayText" maxLength={120} {...field("promoOverlayText")} />
           <UiInput label={c.hero.fields.promoOverlayHref} name="promoOverlayHref" maxLength={500} {...field("promoOverlayHref")} />
         </div>
@@ -119,14 +134,15 @@ export function HeroEditor({ initial, media }: { initial: HeroInput; media: Medi
           <UiButton type="submit" variant="primary" disabled={pending} data-hero-save>{c.hero.save}</UiButton>
           {status}
         </div>
+        {warning}
       </Section>
     </form>
   );
 }
 
-export function BundleBannerEditor({ initial }: { initial: BundleBannerInput }) {
+export function BundleBannerEditor({ initial, unavailableLinks = [] }: { initial: BundleBannerInput; unavailableLinks?: UnavailableLink[] }) {
   const [banner, setBanner] = useState(initial);
-  const { pending, run, status } = useSave();
+  const { pending, run, status, warning } = useSave({ template: copy.content.links.banner, initial: unavailableLinks });
   return (
     <form onSubmit={(event) => { event.preventDefault(); run(() => saveBundleBannerAction(banner), c.bundleBanner.saved); }} data-bundle-banner-form>
       <Section title={c.bundleBanner.title}>
@@ -139,18 +155,20 @@ export function BundleBannerEditor({ initial }: { initial: BundleBannerInput }) 
           <UiButton type="submit" variant="primary" disabled={pending} data-bundle-banner-save>{c.bundleBanner.save}</UiButton>
           {status}
         </div>
+        {warning}
       </Section>
     </form>
   );
 }
 
-export function RoutineBannerEditor({ initial, media }: { initial: RoutineBannerInput; media: MediaOption[] }) {
+export function RoutineBannerEditor({ initial, media, unavailableLinks = [] }: { initial: RoutineBannerInput; media: MediaOption[]; unavailableLinks?: UnavailableLink[] }) {
   const [banner, setBanner] = useState(initial);
-  const { pending, run, status } = useSave();
+  const images = media.filter((item) => !isVideoPath(item.url));
+  const { pending, run, status, warning } = useSave({ template: copy.content.links.banner, initial: unavailableLinks });
   return (
     <form onSubmit={(event) => { event.preventDefault(); run(() => saveRoutineBannerAction(banner), c.routineBanner.saved); }} data-routine-banner-form>
       <Section title={c.routineBanner.title}>
-        <datalist id="media-urls-routine">{media.map((item) => <option key={item.url} value={item.url}>{item.alt || item.url}</option>)}</datalist>
+        <datalist id="media-urls-routine">{images.map((item) => <option key={item.url} value={item.url}>{item.alt || item.url}</option>)}</datalist>
         <div className="grid gap-4 md:grid-cols-2">
           <UiInput label={c.routineBanner.fields.title} name="routineTitle" required maxLength={160} value={banner.title} onChange={(event) => setBanner({ ...banner, title: event.target.value })} />
           <UiInput label={c.routineBanner.fields.href} name="routineHref" required maxLength={500} value={banner.href} onChange={(event) => setBanner({ ...banner, href: event.target.value })} />
@@ -165,6 +183,7 @@ export function RoutineBannerEditor({ initial, media }: { initial: RoutineBanner
           <UiButton type="submit" variant="primary" disabled={pending} data-routine-banner-save>{c.routineBanner.save}</UiButton>
           {status}
         </div>
+        {warning}
       </Section>
     </form>
   );

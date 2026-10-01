@@ -262,6 +262,45 @@ export async function setLineQuantity(
   return next;
 }
 
+/**
+ * Lowers stored quantities to the ones hydration reads them back as (QA
+ * C2-F16: `hydrateCartLines` clamps each line under its cap). Order creation
+ * prices those clamped quantities, while the order receipt and the post-payment
+ * clear fingerprint the STORED cart; placing an order therefore aligns the
+ * stored cart first, or a paid cart that once held more than its cap would
+ * never be cleared. Lines are only ever lowered; nothing is written when every
+ * line already fits. Returns whether the stored cart changed.
+ */
+export async function clampCartLines(
+  userId: string | null,
+  caps: ReadonlyMap<string, number>,
+): Promise<boolean> {
+  const over = (line: CartLine) => {
+    const cap = caps.get(line.variantId);
+    return cap !== undefined && cap > 0 && line.quantity > cap;
+  };
+  if (userId) {
+    const stored = await getCartLines(userId);
+    const lowered = stored.filter(over);
+    if (lowered.length === 0) return false;
+    await db.$transaction(async (tx) => {
+      const cart = await getOrCreateDbCart(userId, tx);
+      for (const line of lowered) {
+        const cap = caps.get(line.variantId)!;
+        await tx.cartItem.updateMany({
+          where: { cartId: cart.id, variantId: line.variantId, quantity: { gt: cap } },
+          data: { quantity: cap },
+        });
+      }
+    });
+    return true;
+  }
+  const lines = await readGuestCart();
+  if (!lines.some(over)) return false;
+  await writeGuestCart(lines.map((line) => (over(line) ? { ...line, quantity: caps.get(line.variantId)! } : line)));
+  return true;
+}
+
 export async function removeLine(
   userId: string | null,
   variantId: string,

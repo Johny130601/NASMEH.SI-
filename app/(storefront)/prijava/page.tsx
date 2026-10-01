@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { buildMetadata } from "@/lib/seo";
@@ -7,6 +8,8 @@ import { auth as copy } from "@/lib/copy";
 import { AuthShell } from "@/components/storefront/auth/AuthShell";
 import { LoginForm } from "@/components/storefront/auth/LoginForm";
 import { getAuthChallengeProps } from "@/lib/auth-challenge";
+import { customerLanding, LOGIN_EMAIL_COOKIE, safeCallbackPath, staffLanding } from "@/lib/auth-callback";
+import { isStaffRole } from "@/lib/admin/permissions";
 
 export const metadata: Metadata = buildMetadata({
   title: copy.login.title,
@@ -17,15 +20,18 @@ export const metadata: Metadata = buildMetadata({
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; verificirano?: string; reset?: string }>;
+  searchParams: Promise<{ error?: string; verificirano?: string; reset?: string; geslo?: string; callbackUrl?: string }>;
 }) {
+  const { error, verificirano, reset, geslo, callbackUrl } = await searchParams;
+  // The page the shopper asked for (mail links, the checkout hint), validated as a relative path (QA T3-F1).
+  const callback = safeCallbackPath(callbackUrl);
   const session = await auth();
-  if (session?.user) redirect("/racun");
-
-  const { error, verificirano, reset } = await searchParams;
+  if (session?.user) redirect(isStaffRole(session.user.role) ? staffLanding(callback) : customerLanding(callback));
+  // A failed attempt keeps the typed address (QA T3-F2).
+  const defaultEmail = error ? (await cookies()).get(LOGIN_EMAIL_COOKIE)?.value ?? "" : "";
 
   return (
-    <AuthShell title={copy.login.title} subtitle={copy.login.subtitle}>
+    <AuthShell title={copy.login.title} subtitle={copy.login.subtitle} social>
       {error === "unverified" ? (
         <p role="alert" className="mb-4 rounded-card border border-error bg-white p-4 text-sm text-error">
           {copy.login.unverified}
@@ -40,13 +46,18 @@ export default async function LoginPage({
           {copy.login.verifiedOk}
         </p>
       ) : null}
+      {geslo ? (
+        <p role="status" className="mb-4 rounded-card border border-success bg-white p-4 text-sm text-success" data-password-changed>
+          {copy.login.passwordChanged}
+        </p>
+      ) : null}
       {reset ? (
         <p role="status" className="mb-4 rounded-card border border-success bg-white p-4 text-sm text-success">
           {copy.login.resetOk}
         </p>
       ) : null}
 
-      <LoginForm {...getAuthChallengeProps()} />
+      <LoginForm {...getAuthChallengeProps()} callbackUrl={callback} defaultEmail={defaultEmail} />
 
       <p className="mt-4 text-center text-sm">
         <Link href="/pozabljeno-geslo" className="text-mid-1 underline underline-offset-2">

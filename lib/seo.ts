@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { common } from "@/lib/copy";
+import { common } from "@/lib/copy/common";
 
-const DEFAULT_OG_IMAGE = "/og-default.svg";
+// A raster file: Facebook, X and LinkedIn do not render SVG share images (QA 2026-09-29, T1-16).
+const DEFAULT_OG_IMAGE = "/og-default.png";
 
 /**
  * Public origin of the store (canonicals, sitemap, mail links, coupon links),
@@ -58,16 +59,19 @@ export function buildMetadata({
 }: SeoInput): Metadata {
   const url = `${siteUrl()}${path}`;
   const ogImage = image ?? DEFAULT_OG_IMAGE;
+  // A page without its own description must not override the root layout's default with
+  // `undefined` (Next merges the key, and the page then has no meta description — QA T7-F7).
+  const described = description ? { description } : {};
   return {
     title,
-    description,
+    ...described,
     alternates: { canonical: url },
     ...(noindex
       ? { robots: { index: false, follow: false } }
       : {}),
     openGraph: {
       title,
-      description,
+      ...described,
       url,
       siteName: common.siteName,
       locale: "sl_SI",
@@ -77,7 +81,7 @@ export function buildMetadata({
     twitter: {
       card: "summary_large_image",
       title,
-      description,
+      ...described,
       images: [ogImage],
     },
   };

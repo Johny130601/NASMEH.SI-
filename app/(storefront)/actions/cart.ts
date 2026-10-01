@@ -4,9 +4,12 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { variantIsPurchasable } from "@/lib/cart/visibility";
+import { isSoldOut, sellableStock } from "@/lib/bundle/availability";
+import { lineQuantityCap } from "@/lib/cart/hydrate";
 import {
   addToCart,
   ensureCartLines,
+  getCartLines,
   removeLine,
   setLineQuantity,
 } from "@/lib/cart/server";
@@ -29,6 +32,66 @@ export interface CartActionResult {
 }
 
 /**
+ * What the gates read about a variant: its cap and stock, and the product's
+ * purchasability — including a fixed bundle's "Aktiven" switch and its
+ * components' stock (lib/bundle/availability), because a bundle's own stock
+ * row is never decremented.
+ */
+const VARIANT_GATE_SELECT = {
+  id: true,
+  maxCartQuantity: true,
+  stock: true,
+  allowBackorder: true,
+  product: {
+    select: {
+      status: true,
+      hiddenDeal: true,
+      bundle: {
+        select: {
+          active: true,
+          items: { select: { quantity: true, variant: { select: { stock: true, allowBackorder: true } } } },
+        },
+      },
+    },
+  },
+} as const;
+
+interface GatedVariant {
+  maxCartQuantity: number;
+  stock: number;
+  allowBackorder: boolean;
+  product: {
+    status: "DRAFT" | "ACTIVE" | "ARCHIVED";
+    hiddenDeal: boolean;
+    bundle?: {
+      active: boolean;
+      items: Array<{ quantity: number; variant: { stock: number; allowBackorder: boolean } }>;
+    } | null;
+  };
+}
+
+/** The shared purchasability rule (lib/cart/visibility), a withdrawn bundle included. */
+function isPurchasable(variant: GatedVariant): boolean {
+  const { status, hiddenDeal, bundle } = variant.product;
+  return variantIsPurchasable({ status, hiddenDeal, bundle: bundle ?? null });
+}
+
+/** The stock the shopper can buy: a bundle's is what its components can fill. */
+function availabilityOf(variant: GatedVariant) {
+  return sellableStock(variant, variant.product.bundle ?? null);
+}
+
+/**
+ * The most units a line may hold: the per-line cap and no more than the stock
+ * (a bundle's components) can fill unless backorders are allowed. It is the
+ * very cap the cart reads every line back under (lib/cart/hydrate), so an add
+ * the cart would shrink is answered as capped, never confirmed (AGENTS §8.23).
+ */
+function lineCapOf(variant: GatedVariant): number {
+  return lineQuantityCap(variant.maxCartQuantity, variant, variant.product.bundle ?? null);
+}
+
+/**
  * Cart mutations (AGENTS §5.2): the client sends INTENT — variant id +
  * quantity ONLY. Prices/maxCartQuantity/stock are re-read from the DB on
  * every call; a client-sent price is ignored by design (zod strips it).
@@ -36,15 +99,9 @@ export interface CartActionResult {
 async function resolveVariant(variantId: string) {
   const variant = await db.variant.findUnique({
     where: { id: variantId },
-    select: {
-      id: true,
-      maxCartQuantity: true,
-      stock: true,
-      allowBackorder: true,
-      product: { select: { status: true, hiddenDeal: true } },
-    },
+    select: VARIANT_GATE_SELECT,
   });
-  if (!variant || !variantIsPurchasable(variant.product)) return null;
+  if (!variant || !isPurchasable(variant)) return null;
   return variant;
 }
 
@@ -57,13 +114,13 @@ export async function addToCartAction(input: unknown): Promise<CartActionResult>
   if (!parsed.success) return { ok: false, count: 0 };
 
   const variant = await resolveVariant(parsed.data.variantId);
-  if (!variant || (variant.stock <= 0 && !variant.allowBackorder)) return { ok: false, count: 0 };
+  if (!variant || isSoldOut(availabilityOf(variant))) return { ok: false, count: 0 };
 
   const session = await auth();
   const { lines, addedQuantity } = await addToCart(
     session?.user?.id ?? null,
     parsed.data,
-    variant.maxCartQuantity,
+    lineCapOf(variant),
   );
   // The cap clamps silently: an add that changed nothing must not answer ok.
   if (addedQuantity <= 0) return { ok: false, count: countOf(lines), capped: true };
@@ -78,11 +135,20 @@ export async function updateCartLineAction(input: unknown): Promise<CartActionRe
   if (!variant) return { ok: false, count: 0 };
 
   const session = await auth();
+  // A line that sold out in the cart may be lowered or removed, never raised. Its cap
+  // falls back to the per-line cap (hydration keeps the stored quantity so order
+  // creation names the stock-out), so the stored quantity is the limit here.
+  if (isSoldOut(availabilityOf(variant))) {
+    const current = await getCartLines(session?.user?.id ?? null);
+    const stored = current.find((line) => line.variantId === parsed.data.variantId)?.quantity ?? 0;
+    if (parsed.data.quantity > stored) return { ok: false, count: countOf(current), capped: true };
+  }
   const lines = await setLineQuantity(
     session?.user?.id ?? null,
     parsed.data.variantId,
     parsed.data.quantity,
-    variant.maxCartQuantity,
+    // a line never outgrows what its stock or components can fill (at least 1, so a line is lowered, never removed here)
+    Math.max(1, lineCapOf(variant)),
   );
   return { ok: true, count: countOf(lines) };
 }
@@ -144,13 +210,7 @@ export async function addBundleToCartAction(input: unknown): Promise<BundleAddRe
   // One round trip for the whole set, with the same gates the single add applies.
   const variants = await db.variant.findMany({
     where: { id: { in: [baseVariantId, ...addOnIds] } },
-    select: {
-      id: true,
-      maxCartQuantity: true,
-      stock: true,
-      allowBackorder: true,
-      product: { select: { status: true, hiddenDeal: true } },
-    },
+    select: VARIANT_GATE_SELECT,
   });
   const byId = new Map(variants.map((variant) => [variant.id, variant]));
 
@@ -160,13 +220,13 @@ export async function addBundleToCartAction(input: unknown): Promise<BundleAddRe
   ];
   const lines = wanted.filter((line) => {
     const variant = byId.get(line.variantId);
-    if (!variant || !variantIsPurchasable(variant.product)) return false;
-    return variant.allowBackorder || variant.stock > 0;
+    if (!variant || !isPurchasable(variant)) return false;
+    return !isSoldOut(availabilityOf(variant));
   });
   if (lines.length === 0) return { ok: false, count: 0 };
 
   const maxByVariant = new Map(
-    lines.map((line) => [line.variantId, byId.get(line.variantId)!.maxCartQuantity]),
+    lines.map((line) => [line.variantId, lineCapOf(byId.get(line.variantId)!)]),
   );
 
   const session = await auth();

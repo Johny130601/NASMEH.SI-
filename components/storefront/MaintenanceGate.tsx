@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
 import { unlockMaintenanceAction } from "@/app/(storefront)/actions/maintenance";
-import { maintenance as copy } from "@/lib/copy";
+import { maintenance as copy } from "@/lib/copy/maintenance";
 import { UiButton } from "./ui/UiButton";
 import { UiInput } from "./ui/UiInput";
 
@@ -30,7 +30,8 @@ export function MaintenanceGate({ message }: { message?: string }) {
     <main className="flex min-h-screen items-center justify-center px-(--padding)">
       <section className="w-full max-w-md rounded-card border border-light-2 bg-white p-8 text-center">
         <h1 className="text-[2rem]">{copy.title}</h1>
-        <p className="mt-3 text-sm text-mid-1">{message ?? copy.body}</p>
+        {/* An empty or blank operator message means "none": the default text is shown (QA T7-F9). */}
+        <p className="mt-3 text-sm text-mid-1">{message?.trim() || copy.body}</p>
         <form onSubmit={onSubmit} className="mt-8 flex flex-col gap-4 text-left">
           <UiInput
             label={copy.passwordLabel}

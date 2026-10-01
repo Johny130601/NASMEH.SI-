@@ -4,7 +4,7 @@ import { requirePagePermission } from "@/lib/admin/access";
 import { countRefundRequired, listOrders, ORDER_STATUSES, parseOrderFilters, type OrderFilters } from "@/lib/admin/orders";
 import { formatEUR } from "@/lib/pricing";
 import { admin as copy } from "@/lib/copy";
-import { OrderStatusPill } from "@/components/storefront/account/OrderStatusPill";
+import { AdminOrderStatusPill } from "@/components/admin/OrderStatusPill";
 
 export const metadata: Metadata = { title: copy.orders.title, robots: { index: false, follow: false } };
 
@@ -98,10 +98,10 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
               <tr><td colSpan={10} className="px-4 py-4 text-mid-2">{copy.orders.empty}</td></tr>
             ) : result.rows.map((row) => (
               <tr key={row.id} className="border-t border-light-2" data-order-row={row.number}>
-                <td className="px-4 py-3 font-medium"><Link href={`/admin/narocila/${row.number}`} className="underline underline-offset-4">{row.number}</Link>{row.refundRequired ? <span className="ml-2 rounded-btn bg-warning/20 px-2 py-0.5 text-xs">!</span> : null}</td>
-                <td className="px-4 py-3 text-mid-1" style={{ fontVariantNumeric: "tabular-nums" }}>{row.createdAt.toLocaleDateString("sl-SI")}</td>
+                <td className="px-4 py-3 font-medium"><Link href={`/admin/narocila/${row.number}`} className="whitespace-nowrap underline underline-offset-4">{row.number}</Link>{row.refundRequired ? <span className="ml-2 whitespace-nowrap rounded-btn bg-warning/20 px-2 py-0.5 text-xs" data-refund-required-tag>{copy.orders.detail.refundRequiredTag}</span> : null}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-mid-1" style={{ fontVariantNumeric: "tabular-nums" }}>{row.createdAt.toLocaleDateString("sl-SI")}</td>
                 <td className="px-4 py-3">{row.customerName || copy.common.none}<br /><span className="text-xs text-mid-1">{row.email}</span></td>
-                <td className="px-4 py-3"><OrderStatusPill status={row.status} /></td>
+                <td className="px-4 py-3"><AdminOrderStatusPill status={row.status} /></td>
                 <td className="px-4 py-3 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>{row.itemCount}</td>
                 <td className="px-4 py-3 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>{formatEUR(row.totalCents)}</td>
                 <td className="px-4 py-3 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>{row.refundedCents ? formatEUR(row.refundedCents) : copy.common.none}</td>

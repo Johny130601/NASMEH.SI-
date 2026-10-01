@@ -47,9 +47,13 @@ export function selectedLine(count: number): string {
   return `${count} ${dodatekForm(count)} ${izbranForm(count)}`;
 }
 
-/** "2 izdelka za beljenje + 3 dodatki" — what the summary says is in the bundle. */
+/**
+ * "2 izdelka + 3 dodatki" — what the summary says is in the bundle. No
+ * product category is named: the builder starts from any product, and
+ * "za beljenje" on a mouthwash is a claim it does not make (QA C2-F19).
+ */
 export function bundleContents(units: number, addOns: number): string {
-  const base = `${units} ${izdelekForm(units)} za beljenje`;
+  const base = `${units} ${izdelekForm(units)}`;
   if (addOns === 0) return base;
   return `${base} + ${addOns} ${dodatekForm(addOns)}`;
 }
@@ -63,7 +67,8 @@ const OFFER_SUBTITLES: Record<number, string> = {
 const OFFER_SUBTITLE_FALLBACK = "Zaloga za dlje";
 
 export const bundle = {
-  title: "Sestavite svojo rutino za beljenje",
+  /** Product-neutral: the page opens from a mouthwash as well as from the strips (QA C2-F19). */
+  title: "Sestavite svojo rutino",
   subtitle: "Izberite ponudbo. Dodajte dodatke.",
 
   /** The chosen product, beside the offer grid. */

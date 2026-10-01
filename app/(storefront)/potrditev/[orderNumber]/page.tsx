@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cache } from "react";
 import { z } from "zod";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
@@ -8,6 +9,8 @@ import { getEnv } from "@/lib/env";
 import { formatDdvLine, formatEUR } from "@/lib/pricing";
 import { deliveryEstimate, getShippingMethods } from "@/lib/tracking";
 import { buildMetadata } from "@/lib/seo";
+import type { PendingOrderView } from "@/lib/orders/confirmation-view";
+import { pendingOrderViewFromQuery, resolvePendingOrderView } from "@/lib/orders/confirmation-query";
 import { orders } from "@/lib/copy";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { CreateAccountForm } from "@/components/storefront/checkout/CreateAccountForm";
@@ -19,31 +22,74 @@ import type { EcommerceEvent } from "@/lib/analytics";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = buildMetadata({
-  title: orders.confirmation.paidTitle,
-  path: "/potrditev",
-  noindex: true,
+type RouteParams = Promise<{ orderNumber: string }>;
+type RouteQuery = Promise<Record<string, string | string[] | undefined>>;
+
+const PAID_STATUSES = ["PAID", "PROCESSING", "SHIPPED", "DELIVERED"];
+
+/**
+ * The order this visitor may see, or null (unknown number, no access). One
+ * lookup per request, shared by the page and its title.
+ */
+const loadVisibleOrder = cache(async (rawNumber: string) => {
+  const parsed = z.object({ orderNumber: z.string().min(1).max(80) }).safeParse({ orderNumber: rawNumber });
+  if (!parsed.success) return null;
+  const order = await db.order.findUnique({
+    where: { number: parsed.data.orderNumber },
+    include: { items: true },
+  });
+  if (!order || !(await hasOrderAccess(order, await auth()))) return null;
+  return order;
 });
+
+/**
+ * The face of a PENDING order: the query hint checked against the order, which
+ * may ask the payment provider — at most once per request, shared by the page
+ * and its title.
+ */
+const loadPendingView = cache(async (rawNumber: string, hinted: PendingOrderView): Promise<PendingOrderView> => {
+  const order = await loadVisibleOrder(rawNumber);
+  return order?.status === "PENDING" ? resolvePendingOrderView(order, hinted) : hinted;
+});
+
+/** The heading for the order's state; the tab says the same (an unpaid order is never "potrjeno"). */
+function confirmationTitle(status: string, view: PendingOrderView): string {
+  if (PAID_STATUSES.includes(status)) return orders.confirmation.paidTitle;
+  if (status === "CANCELLED") return orders.confirmation.cancelledTitle;
+  if (status === "REFUNDED") return orders.confirmation.refundedTitle;
+  return view === "awaiting" ? orders.confirmation.pendingTitle : orders.confirmation.unpaidTitle;
+}
+
+export async function generateMetadata({ params, searchParams }: { params: RouteParams; searchParams: RouteQuery }): Promise<Metadata> {
+  const { orderNumber } = await params;
+  const order = await loadVisibleOrder(orderNumber);
+  return buildMetadata({
+    title: order
+      ? confirmationTitle(order.status, await loadPendingView(orderNumber, pendingOrderViewFromQuery(await searchParams)))
+      : orders.confirmation.metaTitle,
+    path: "/potrditev",
+    noindex: true,
+  });
+}
 
 /** Order confirmation page (§8.4): NS number, summary, estimates, invites. */
 export default async function ConfirmationPage({
   params,
+  searchParams,
 }: {
-  params: Promise<{ orderNumber: string }>;
+  params: RouteParams;
+  searchParams: RouteQuery;
 }) {
-  const parsed = z.object({ orderNumber: z.string().min(1).max(80) }).safeParse(await params);
-  if (!parsed.success) notFound();
-  const { orderNumber } = parsed.data;
-  const order = await db.order.findUnique({
-    where: { number: orderNumber },
-    include: { items: true },
-  });
-  const session = await auth();
-  if (!order || !(await hasOrderAccess(order, session))) notFound();
+  const { orderNumber } = await params;
+  const order = await loadVisibleOrder(orderNumber);
+  if (!order) notFound();
 
-  const paid = ["PAID", "PROCESSING", "SHIPPED", "DELIVERED"].includes(order.status);
+  const paid = PAID_STATUSES.includes(order.status);
   const cancelled = order.status === "CANCELLED";
   const refunded = order.status === "REFUNDED";
+  // A PENDING order: a payment just submitted waits for its webhook; any other visit came to pay, and so
+  // does a submitted attempt that has failed since (QA 2026-09-30).
+  const view = await loadPendingView(orderNumber, pendingOrderViewFromQuery(await searchParams));
   const purchaser = await getOrderReceipt(order);
   // Same source as the confirmation and shipped mails: the chosen method's configured estimate.
   const estimate = paid ? deliveryEstimate(order.shippingMethod, await getShippingMethods()) : null;
@@ -88,14 +134,25 @@ export default async function ConfirmationPage({
           <h1 className="text-[2rem]">{orders.confirmation.refundedTitle}</h1>
           <p className="mt-3 max-w-lg text-sm text-mid-1">{orders.confirmation.refundedBody}</p>
         </>
-      ) : (
+      ) : view === "awaiting" ? (
         <>
           <h1 className="text-[2rem]">{orders.confirmation.pendingTitle}</h1>
           <p className="mt-3 max-w-lg text-sm text-mid-1">
             {orders.confirmation.pendingBody}
           </p>
           <PendingOrderRefresh />
-          <ResumeOrderPayment key={order.number} orderNumber={order.number}
+          <ResumeOrderPayment key={order.number} orderNumber={order.number} awaiting
+            stripeKey={env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? null}
+            paypalClientId={env.PAYPAL_CLIENT_ID ?? null} />
+        </>
+      ) : (
+        <>
+          {/* Nothing is in flight: the payment is the one action, with no refresh ahead of it. */}
+          <h1 className="text-[2rem]">{orders.confirmation.unpaidTitle}</h1>
+          <p className="mt-3 max-w-lg text-sm text-mid-1" data-unpaid-order>
+            {orders.confirmation.unpaidBody}
+          </p>
+          <ResumeOrderPayment key={order.number} orderNumber={order.number} awaiting={false}
             stripeKey={env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? null}
             paypalClientId={env.PAYPAL_CLIENT_ID ?? null} />
         </>

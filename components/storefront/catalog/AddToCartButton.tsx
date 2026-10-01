@@ -6,7 +6,7 @@ import { addToCartAction } from "@/app/(storefront)/actions/cart";
 import { buildAddToCartEvent } from "@/lib/analytics";
 import { dispatchCartAdded } from "@/lib/cart/added-event";
 import { pushEvent } from "@/components/storefront/analytics/TrackViewItem";
-import { catalog } from "@/lib/copy";
+import { catalog } from "@/lib/copy/catalog";
 import { UiButton } from "../ui/UiButton";
 
 /**

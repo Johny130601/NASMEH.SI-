@@ -4,7 +4,8 @@ import { unlink } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import bcrypt from "bcryptjs";
-import { enrolledTotpFields, loginStaff, prisma, waitForMailMessage } from "./helpers";
+import { signRatingToken } from "@/lib/reviews/rating-token";
+import { E2E_AUTH_SECRET, enrolledTotpFields, loginStaff, prisma, waitForMailMessage } from "./helpers";
 
 const JOB_HEADERS = { authorization: "Bearer jobs_e2e_secret" };
 const PASSWORD = "ReviewTest123!";
@@ -65,7 +66,11 @@ test("request email → signed five-star link → two photos → moderation → 
     const mail = await waitForMailMessage(f.order.email);
     const token = starToken(`${mail.HTML ?? ""} ${mail.Text ?? ""}`, 5); expect(token).toBeTruthy();
     expect((await prisma.reviewRequest.findUnique({ where: { orderId: f.order.id } }))?.sentAt).not.toBeNull();
-    expect((await request.get(`/oceni/hitro/${token.slice(0, -1)}!`, { maxRedirects: 0 })).status()).toBe(400);
+    // A tampered (or expired) star link is a page in the site layout with a way forward, not a bare 400 (QA T3-R2).
+    const invalid = await request.get(`/oceni/hitro/${token.slice(0, -1)}!`, { maxRedirects: 0 });
+    expect(invalid.status()).toBe(200);
+    const invalidHtml = await invalid.text();
+    expect(invalidHtml).toContain("Povezava za oceno ni več veljavna"); expect(invalidHtml).toContain('href="/racun"'); expect(invalidHtml).not.toContain("data-review-form");
     const unauthenticated = await request.get(`/oceni/${f.order.items[0].id}?r=forged`);
     expect(unauthenticated.status()).toBe(404); expect(await unauthenticated.text()).not.toContain("data-review-form");
     await page.goto(`/oceni/hitro/${token}`); await dismissCmp(page);
@@ -141,6 +146,21 @@ test("request email → signed five-star link → two photos → moderation → 
     else await prisma.setting.deleteMany({ where: { key: "reviews.requestDelayDays" } });
     await cleanup(f);
   }
+});
+
+test("a review without a photo is accepted from the star link (QA M1)", async ({ page }) => {
+  const f = await fixture();
+  try {
+    const token = signRatingToken({ orderItemId: f.order.items[0].id, rating: 4 }, E2E_AUTH_SECRET);
+    await page.goto(`/oceni/hitro/${token}`); await dismissCmp(page);
+    await expect(page.locator('[data-star="4"]')).toBeChecked();
+    await page.getByLabel("Vaše mnenje").fill(`No photo ${f.id}`);
+    // The photo input stays untouched: its empty part must not count as an upload.
+    await page.getByRole("button", { name: "Oddaj mnenje" }).click();
+    await expect(page.locator("[data-review-success]")).toContainText("Hvala za mnenje");
+    const review = await prisma.review.findUniqueOrThrow({ where: { orderItemId: f.order.items[0].id } });
+    expect(review.rating).toBe(4); expect(review.photos).toEqual([]); expect(review.text).toBe(`No photo ${f.id}`);
+  } finally { await cleanup(f); }
 });
 
 test("SSR counts more than ten published reviews, retains low-star filters, and excludes rejected evidence", async ({ page, request }) => {

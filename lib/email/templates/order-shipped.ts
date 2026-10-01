@@ -1,5 +1,5 @@
 import type { Order } from "@prisma/client";
-import { email as copy } from "@/lib/copy";
+import { email as copy } from "@/lib/copy/email";
 import { emailLayout, emailStyles } from "./layout";
 
 export interface ShippedEmailDetails {

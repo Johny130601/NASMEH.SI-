@@ -19,12 +19,29 @@ const registerSchema = z.object({
   marketingOptIn: z.boolean().default(false),
   turnstileToken: humanTokenSchema,
 });
-export interface AuthFormResult { ok: boolean; error?: string }
+export type RegisterField = "firstName" | "lastName" | "email" | "password";
+export interface AuthFormResult {
+  ok: boolean;
+  error?: string;
+  /** Registration names the fields the server refused, so the form can mark them (QA T3-F4). */
+  fields?: Partial<Record<RegisterField, string>>;
+}
+
+const REGISTER_FIELDS: readonly RegisterField[] = ["firstName", "lastName", "email", "password"];
 
 /** Registration is consent-atomic; repeat submissions never overwrite an account. */
 export async function registerAction(input: unknown): Promise<AuthFormResult> {
   const parsed = registerSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: copy.register.invalidInput };
+  if (!parsed.success) {
+    const fields: Partial<Record<RegisterField, string>> = {};
+    for (const issue of parsed.error.issues) {
+      const field = REGISTER_FIELDS.find(name => name === issue.path[0]);
+      if (field) fields[field] = copy.register.fields[field];
+    }
+    return Object.keys(fields).length
+      ? { ok: false, error: copy.register.invalidInput, fields }
+      : { ok: false, error: copy.register.genericError };
+  }
   if (!await verifyTurnstile(parsed.data.turnstileToken)) return { ok: false, error: copy.botCheck };
   const { email, password, firstName, lastName, marketingOptIn } = parsed.data;
   try {

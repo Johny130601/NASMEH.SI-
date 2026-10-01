@@ -1,13 +1,36 @@
 import { z } from "zod";
+import { MAX_FEATURED_CARDS } from "@/lib/featured-cards";
 
 /** CMS form schemas (§14.10, §14.11), safe to import from client components. */
 
 const text = (max: number) => z.string().trim().max(max);
 const required = (max: number) => z.string().trim().min(1).max(max);
-/** Same-site paths (with query/hash), same-page anchors or absolute http(s) links; no javascript: or protocol-relative URLs. */
-export const linkSchema = z.string().trim().min(1).max(500).regex(/^(?:\/(?!\/)[^\s]*|#[a-z0-9-]+|https?:\/\/[^\s]+)$/);
+/**
+ * Same-site paths (with query/hash), same-page anchors or absolute https links — what every CMS hint
+ * promises (QA T7-F15); no plain http, javascript: or protocol-relative URLs.
+ */
+export const linkSchema = z.string().trim().min(1).max(500).regex(/^(?:\/(?!\/)[^\s]*|#[a-z0-9-]+|https:\/\/[^\s]+)$/);
 const optionalLink = z.union([z.literal(""), linkSchema]).transform((value) => value || null);
 const optionalMedia = z.union([z.literal(""), linkSchema]).transform((value) => value || null);
+/**
+ * A hero video is a same-site file (the media library serves /uploads/media/…): the content security
+ * policy allows media only from the store's own origin, so an external video URL would never play
+ * (QA M13). It is refused with its own message instead of being stored and silently blocked.
+ */
+export const siteVideoPathSchema = z.string().trim().max(500).regex(/^\/(?!\/)[^\s?#]+$/);
+const optionalVideo = z.union([z.literal(""), siteVideoPathSchema]).transform((value) => value || null);
+
+/** Library files a hero video field lists (by extension; the library stores videos as uploaded). */
+export function isVideoPath(url: string): boolean {
+  return /\.(?:mp4|webm)$/i.test(url);
+}
+
+/**
+ * What one library upload may weigh. A Server Action request carries at most 10 MB
+ * (next.config.ts bodySizeLimit), so the library sends one file per request and a
+ * video stays under that with room for the multipart envelope (QA T7-F6).
+ */
+export const MEDIA_UPLOAD_LIMITS = { imageBytes: 4 * 1024 * 1024, videoBytes: 9 * 1024 * 1024 } as const;
 
 // ---------- homepage ----------
 
@@ -39,8 +62,8 @@ export const heroSchema = z.object({
   footnote: text(300).default(""),
   ctaLabel: required(40),
   ctaHref: linkSchema,
-  videoDesktop: optionalMedia,
-  videoMobile: optionalMedia,
+  videoDesktop: optionalVideo,
+  videoMobile: optionalVideo,
   poster: optionalMedia,
   imageAlt: text(200),
   promoOverlayText: text(120),
@@ -127,10 +150,18 @@ const menuLeafSchema = z.object({
   href: linkSchema,
   color: z.enum(MENU_COLORS).optional(),
 });
+export { MAX_FEATURED_CARDS };
 export const menuItemSchema = menuLeafSchema.extend({
   children: z.array(menuLeafSchema).max(12).optional(),
-  featured: z.array(z.string().trim().toLowerCase().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)).max(4).optional(),
+  featured: z.array(z.string().trim().toLowerCase().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)).max(8)
+    .refine((slugs) => new Set(slugs).size <= MAX_FEATURED_CARDS, { message: "featured" })
+    .optional(),
 });
+
+/** Every featured slug of a menu tree, once each: the save action checks that each names a product a shopper can buy (QA T7-F4, v-a). */
+export function featuredSlugs(items: Array<{ featured?: string[] }>): string[] {
+  return [...new Set(items.flatMap((item) => item.featured ?? []))];
+}
 export const menuItemsSchema = z.array(menuItemSchema).max(20);
 export type MenuItemInput = z.input<typeof menuItemSchema>;
 

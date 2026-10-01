@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
-import { checkout } from "@/lib/copy";
+import { checkout } from "@/lib/copy/checkout";
 import { wordingVersion } from "@/lib/consent-log";
 
 /**

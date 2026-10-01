@@ -14,7 +14,7 @@ export default async function StaffAccountPage() {
   return (
     <section className="mx-auto max-w-2xl">
       <h1 className="text-[2rem]">{copy.account.title}</h1>
-      <dl className="mt-6 grid gap-3 rounded-card border border-light-2 bg-white p-5 text-sm sm:grid-cols-[10rem_1fr]">
+      <dl className="mt-6 grid gap-3 rounded-card border border-light-2 bg-white p-5 text-sm md:grid-cols-[10rem_1fr]">
         <dt className="text-mid-1">{copy.team.columns.email}</dt><dd className="font-medium">{staff.email}</dd>
         <dt className="text-mid-1">{copy.shell.roleLabel}</dt><dd className="font-medium">{copy.roles[staff.role]}</dd>
         <dt className="text-mid-1">{copy.account.mfaStatus}</dt>

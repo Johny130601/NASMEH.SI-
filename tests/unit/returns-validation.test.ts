@@ -48,8 +48,17 @@ describe("withdrawal form validation", () => {
     expect(input).toMatchObject({ topic: "RETURN", reason: "WITHDRAWAL", orderNumber: "NS-2026-00042", orderEmail: "ziva@example.test", privacyAccepted: true });
     expect(input.message).toContain("odstopam od pogodbe");
     expect(input.message).toContain("1 × Belilni trakci");
-    expect(input.message).toContain("Blago prejeto dne: 2026-09-01");
+    // Staff read the receipt date the Slovenian way in the message as in the rows (QA T4-F11); details keep ISO.
+    expect(input.message).toContain("Blago prejeto dne: 1. 9. 2026");
+    expect(input.message).not.toContain("2026-09-01");
     expect(input.message).toContain("Opomba: Embalaža nepoškodovana");
+    expect(input.message.split("\n")).toEqual([
+      returns.withdrawal.staffMessage.intro("1 × Belilni trakci"),
+      "Številka naročila: NS-2026-00042",
+      "Blago prejeto dne: 1. 9. 2026",
+      "Naslov potrošnika: Testna ulica 1, 1000 Ljubljana",
+      "Opomba: Embalaža nepoškodovana",
+    ]);
     expect(input.details).toEqual({
       kind: "withdrawal", statutoryBasis: WITHDRAWAL_STATUTORY_BASIS, goodsReceived: true,
       address: "Testna ulica 1, 1000 Ljubljana", receivedAt: "2026-09-01", items: "1 × Belilni trakci", note: "Embalaža nepoškodovana",

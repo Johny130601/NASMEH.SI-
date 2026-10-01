@@ -1,5 +1,15 @@
 /** Homepage copy (Setting-driven parts live in Setting `home.hero`). */
 export const home = {
+  /**
+   * The home <title> is absolute (the "%s | Nasmeh.si" template would read "Nasmeh.si | Nasmeh.si")
+   * and the description says what the store sells (QA L1, T7-F8). `heading` is the page's <h1>
+   * when an operator hides the hero section, which otherwise carries it (QA T7-F15).
+   */
+  seo: {
+    title: "Nasmeh.si — beljenje zob doma: belilni trakci, ustna voda in serum",
+    description: "Belilni trakci, ustna voda in serum korektor barve zob za domačo nego nasmeha. Cene z DDV, dostava po Sloveniji in varno spletno plačilo.",
+    heading: "Nasmeh.si — izdelki za domače beljenje zob",
+  },
   hero: {
     kicker: "Kmalu",
     title: "Nov standard domačega beljenja zob",

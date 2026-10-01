@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { saveShippingAction, saveTrackingTemplatesAction } from "@/app/admin/(shell)/nastavitve/actions";
 import { TRACKING_CARRIER_KEYS } from "@/lib/settings-schemas";
-import { admin as copy } from "@/lib/copy";
+import { admin as copy } from "@/lib/copy/admin";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiInput } from "@/components/storefront/ui/UiInput";
 import { SettingsSection, useSettingsSave } from "./SettingsForms";

@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
 import { createCouponAction, deleteCouponAction, saveCouponAction, type CouponActionResult } from "@/app/admin/(shell)/kuponi/actions";
 import { COUPON_TYPES, type CouponInput } from "@/lib/admin/coupons-schema";
-import { admin as copy, promo } from "@/lib/copy";
+import { admin as copy } from "@/lib/copy/admin";
+import { promo } from "@/lib/copy/promo";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiFormField, UiInput } from "@/components/storefront/ui/UiInput";
 
@@ -13,9 +14,11 @@ const selectClass = "min-h-[3.25rem] w-full rounded-input border border-light-1 
 const multiClass = "min-h-[8rem] w-full rounded-input border border-light-1 bg-white p-2 text-sm outline-none focus:border-brand";
 const textareaClass = "w-full resize-y rounded-input border border-light-1 bg-white p-4 text-base outline-none focus:border-brand";
 
-function errorText(result: Extract<CouponActionResult, { ok: false }>): string {
+/** `code`: the code as submitted, so a format refusal names it (QA T6-11). */
+export function errorText(result: Extract<CouponActionResult, { ok: false }>, code = ""): string {
   switch (result.error) {
     case "codeTaken": return c.editor.codeTaken;
+    case "codeInvalid": return c.editor.codeInvalid.replace("{code}", code.trim().toUpperCase());
     case "used": return c.editor.used;
     case "not_found": return copy.common.error;
     default: return c.editor.invalid;
@@ -46,7 +49,7 @@ export function CouponCreateForm() {
               eligibleProductIds: [], eligibleCollectionSlugs: [], eligibleEmails: [], excludedProductIds: [], active: true,
             });
             if (result.ok && result.id) router.push(`/admin/kuponi/${result.id}`);
-            else if (!result.ok) setError(errorText(result));
+            else if (!result.ok) setError(errorText(result, String(data.get("code") ?? "")));
           } catch {
             setError(copy.common.error);
           }
@@ -110,7 +113,7 @@ export function CouponEditor({ couponId, initial, deletable, products, collectio
           try {
             const result = await saveCouponAction({ couponId, coupon: { ...values, eligibleEmails: emails.split(/[\n,;]+/).map((entry) => entry.trim()).filter(Boolean) } });
             if (result.ok) { setMessage({ ok: true, text: c.editor.saved }); router.refresh(); }
-            else setMessage({ ok: false, text: errorText(result) });
+            else setMessage({ ok: false, text: errorText(result, values.code) });
           } catch {
             setMessage({ ok: false, text: copy.common.error });
           }
@@ -190,7 +193,7 @@ export function CouponEditor({ couponId, initial, deletable, products, collectio
                 try {
                   const result = await deleteCouponAction({ couponId });
                   if (result.ok) router.push("/admin/kuponi");
-                  else setMessage({ ok: false, text: errorText(result) });
+                  else setMessage({ ok: false, text: errorText(result, values.code) });
                 } catch {
                   setMessage({ ok: false, text: copy.common.error });
                 }

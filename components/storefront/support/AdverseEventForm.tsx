@@ -8,6 +8,7 @@ import { ADVERSE_REPORTER_TYPES } from "@/lib/support/topics";
 import { useAuthChallenge, type AuthChallengeProps } from "../auth/AuthChallenge";
 import { UiButton } from "../ui/UiButton";
 import { UiFormField, UiInput } from "../ui/UiInput";
+import { ResultHeading } from "../ui/ResultHeading";
 
 const selectClass = "min-h-[3.25rem] w-full rounded-input border border-light-1 bg-white px-4 text-base outline-none focus:border-brand";
 const textareaClass = "w-full resize-y rounded-input border border-light-1 bg-white p-4 text-base outline-none focus:border-brand";
@@ -75,7 +76,7 @@ export function AdverseEventForm({
 
   if (reference) return (
     <div role="status" data-adverse-success className="rounded-card border border-success bg-white p-6 md:p-8">
-      <h2 className="text-2xl font-semibold">{copy.success.title}</h2>
+      <ResultHeading className="text-2xl font-semibold">{copy.success.title}</ResultHeading>
       <p className="mt-3 leading-relaxed text-mid-1">{copy.success.body}</p>
       <p className="mt-6 text-sm font-medium">{copy.success.reference}</p>
       <p data-adverse-reference className="mt-1 break-all text-xl font-semibold text-brand">{reference}</p>

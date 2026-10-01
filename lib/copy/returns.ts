@@ -49,11 +49,36 @@ export const returns = {
     },
     errors: {
       invalid: "Preverite vnesene podatke: vsa polja razen opombe so obvezna. Če ste blago že prejeli, vpišite datum prevzema, ki ne sme biti v prihodnosti.",
+      /** A server-side refusal names the first field to correct (QA T4-F6); keys are the form field names. */
+      fields: {
+        name: "Vpišite ime in priimek (2 do 120 znakov).",
+        email: "Vpišite veljaven e-poštni naslov, ki ste ga uporabili ob naročilu.",
+        address: "Vpišite svoj naslov (vsaj 5 znakov).",
+        orderNumber: "Vpišite številko naročila v obliki NS-2026-00001.",
+        deliveryStatus: "Označite, ali ste blago že prejeli.",
+        receivedAt: "Vpišite datum prevzema blaga; ne sme biti v prihodnosti.",
+        items: "Naštejte blago, od katerega odstopate (vsaj 5 znakov).",
+        note: "Opomba je predolga (največ 2000 znakov).",
+        privacyAccepted: "Potrdite seznanjenost z obdelavo osebnih podatkov.",
+      },
       challenge: "Preverjanje ni uspelo. Potrdite, da niste robot, in poskusite znova.",
       /** Not expected for this form: lib/support/tickets.ts records an unmatched notice without an order link. */
       orderNotFound: "Naročila s to številko in e-pošto ni bilo mogoče samodejno povezati. Odstop lahko pravočasno sporočite tudi po e-pošti ali pošti z vzorčnim obrazcem.",
       failed: "Obrazca ni bilo mogoče poslati. Poskusite znova ali nam pišite po e-pošti.",
       conflict: "Obrazec s to oznako je bil že oddan z drugačnimi podatki. Osvežite stran za nov obrazec.",
+    },
+    /**
+     * The notice as composed for staff (Ticket.message: the admin inbox and the staff mail), the
+     * Annex I(B) model wording with the form's answers (lib/support/validation.ts). The receipt date
+     * arrives already in the Slovenian form "1. 9. 2026", like the structured rows (QA T4-F11).
+     */
+    staffMessage: {
+      intro: (items: string) => `Obveščam vas, da odstopam od pogodbe za nakup naslednjega blaga: ${items}`,
+      orderNumber: (orderNumber: string) => `Številka naročila: ${orderNumber}`,
+      receivedAt: (date: string) => `Blago prejeto dne: ${date}`,
+      notReceived: "Blago še ni prejeto",
+      address: (address: string) => `Naslov potrošnika: ${address}`,
+      note: (note: string) => `Opomba: ${note}`,
     },
   },
   withdrawalPdf: {

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePagePermission } from "@/lib/admin/access";
-import { listProducts, parseProductFilters, PRODUCT_LIST_LIMIT, PRODUCT_STATUSES } from "@/lib/admin/catalog";
+import { listProducts, parseProductFilters, PRODUCT_LIST_LIMIT, PRODUCT_STATUSES, productStockLevel } from "@/lib/admin/catalog";
 import { DEFAULT_LOW_STOCK_THRESHOLD } from "@/lib/admin/dashboard";
 import { parseBadges } from "@/lib/catalog";
 import { getSetting } from "@/lib/settings";
@@ -59,7 +59,7 @@ export default async function AdminProductsPage({ searchParams }: { searchParams
               <tr><td colSpan={8} className="px-4 py-4 text-mid-2">{c.empty}</td></tr>
             ) : products.map((product) => {
               const stock = product.variants.reduce((sum, variant) => sum + variant.stock, 0);
-              const low = product.variants.some((variant) => variant.stock <= threshold && !variant.allowBackorder);
+              const level = productStockLevel(product.variants, threshold);
               return (
                 <tr key={product.id} className="border-t border-light-2" data-product-row={product.slug}>
                   <td className="px-4 py-3 font-medium">
@@ -69,7 +69,10 @@ export default async function AdminProductsPage({ searchParams }: { searchParams
                   <td className="px-4 py-3 text-mid-1">{product.slug}</td>
                   <td className="px-4 py-3">{c.statuses[product.status]}{!product.visibleInCatalog ? ` · ${copy.common.no}` : ""}</td>
                   <td className="px-4 py-3 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>{product.variants[0] ? formatEUR(product.variants[0].priceCents) : copy.common.none}</td>
-                  <td className={`px-4 py-3 text-right ${low ? "text-warning" : ""}`} style={{ fontVariantNumeric: "tabular-nums" }} data-product-stock={stock}>{stock}</td>
+                  <td className="px-4 py-3 text-right" style={{ fontVariantNumeric: "tabular-nums" }} data-product-stock-level={level ?? undefined}>
+                    <span data-product-stock={stock}>{stock}</span>
+                    {level ? <span className={`ml-2 whitespace-nowrap rounded-btn px-2 py-0.5 text-xs font-medium ${level === "out" ? "bg-error text-white" : "bg-warning text-dark-1"}`}>{level === "out" ? c.stockOut : c.stockLow}</span> : null}
+                  </td>
                   <td className="px-4 py-3 text-mid-1">{parseBadges(product.badges).map((badge) => badge.label).join(", ") || copy.common.none}</td>
                   <td className="px-4 py-3 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>{product._count.backInStock}</td>
                   <td className="px-4 py-3 text-mid-1">{product.updatedAt.toLocaleDateString("sl-SI")}</td>

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getSetting, SETTING_KEYS, type MaintenanceSetting } from "@/lib/settings";
+import { getMaintenance } from "@/lib/settings";
 import { buildMetadata } from "@/lib/seo";
 import { maintenance as copy } from "@/lib/copy";
 import { MaintenanceGate } from "@/components/storefront/MaintenanceGate";
@@ -18,6 +18,7 @@ export const metadata: Metadata = buildMetadata({
  * catalog data can leak into the RSC payload.
  */
 export default async function VzdrzevanjePage() {
-  const setting = await getSetting<MaintenanceSetting>(SETTING_KEYS.maintenance);
-  return <MaintenanceGate message={setting?.message} />;
+  // Validated reader (AGENTS §8.17): a malformed row shows the default text.
+  const setting = await getMaintenance();
+  return <MaintenanceGate message={setting.message} />;
 }

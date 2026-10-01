@@ -7,6 +7,7 @@ import { buildMetadata } from "@/lib/seo";
 import { adverse as copy } from "@/lib/copy/adverse";
 import { getLegalLinks } from "@/lib/settings";
 import { getContactSettings } from "@/lib/support/settings";
+import { shopToday } from "@/lib/support/validation";
 import { AdverseEventForm } from "@/components/storefront/support/AdverseEventForm";
 
 export const dynamic = "force-dynamic";
@@ -44,7 +45,7 @@ export default async function AdverseEventPage() {
           requestKey={randomUUID()}
           products={products}
           defaults={{ name: session?.user?.name ?? "", email: session?.user?.email ?? "" }}
-          maxDate={new Date().toISOString().slice(0, 10)}
+          maxDate={shopToday()}
           privacyHref={legalLinks.privacy}
         />
         <aside className="rounded-card bg-light-3 p-6" aria-labelledby="adverse-channel-title">

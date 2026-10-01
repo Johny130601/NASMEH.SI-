@@ -20,14 +20,16 @@ export const tracking = {
   result: {
     title: "Stanje pošiljke",
     orderTitle: "Vaše naročilo",
+    numberLabel: "Številka naročila",
     statusLabel: "Status",
     carrierLabel: "Prevoznik",
     trackingLabel: "Številka sledenja",
     trackLink: "Spremljaj pošiljko pri prevozniku",
     noTracking: "Številka sledenja bo na voljo ob odpremi.",
-    shippedAtLabel: "Odposlano",
+    /** Dates carry their own label, so a row never repeats the status word (QA T4-F10). */
+    shippedAtLabel: "Datum odpreme",
     estimateLabel: "Predviden prihod",
-    deliveredAtLabel: "Dostavljeno",
+    deliveredAtLabel: "Datum dostave",
     methodLabel: "Način dostave",
     itemsLabel: "Izdelkov",
     totalLabel: "Znesek",
@@ -40,4 +42,8 @@ export const tracking = {
     failed: "Preverjanje trenutno ni mogoče. Poskusite znova.",
   },
   pending: "Preverjamo …",
+  /** Shown only without JavaScript: the form then keeps its values but cannot run the checked lookup.
+   * The contact form needs JavaScript too, so the way forward is the seller's e-mail address (a mailto link). */
+  noScript: "Za preverjanje pošiljke potrebujete JavaScript. Omogočite ga v brskalniku.",
+  noScriptMail: "Lahko nam tudi pišete na",
 } as const;

@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import bcrypt from "bcryptjs";
 import { expect, test, type Page } from "@playwright/test";
 import {
   prisma,
@@ -32,7 +34,7 @@ async function addToCartViaUi(page: Page, slug: string, times = 1) {
 
 async function fillWizard(page: Page, email: string) {
   await page.goto("/checkout");
-  await page.getByLabel("E-pošta").fill(email);
+  await page.getByLabel("E-pošta", { exact: true }).fill(email);
   await page.locator("[data-continue-contact]").click();
 
   await page.getByLabel("Ime in priimek").fill("Test Kupec");
@@ -152,6 +154,16 @@ test("SCA failure → retry path → success", async ({ page }) => {
     orderBy: { createdAt: "desc" },
   });
   expect(pending.status).toBe("PENDING");
+
+  // A "payment submitted" marker left in the address bar or the history does not outlive the
+  // attempt: the order records the failure, so the page leads with the payment and does not poll.
+  const revisit = await page.context().newPage();
+  await revisit.goto(`/potrditev/${pending.number}?placilo=oddano`);
+  await expect(revisit.getByRole("heading", { name: "Dokončajte plačilo" })).toBeVisible();
+  await expect(revisit).toHaveTitle(/^Dokončajte plačilo/);
+  await expect(revisit.getByRole("button", { name: "Osveži stanje" })).toHaveCount(0);
+  await expect(revisit.locator("[data-resume-payment]")).toBeVisible();
+  await revisit.close();
 
   await page.locator("[data-test-pay-success]").click();
   await page.waitForURL(/\/potrditev\/NS-/, { timeout: 20_000 });
@@ -328,4 +340,96 @@ test("paypal webhook path: signed CAPTURE.COMPLETED → PAID; duplicate → alre
     },
   });
   expect(bad.status()).toBe(400);
+});
+
+test("checkout validation never dead-ends: fields say what to fix, the rail keeps its totals, free shipping reads free on every method (QA M11, C2-F7, C2-F10)", async ({ page }) => {
+  await addToCartViaUi(page, "belilni-trakci-za-zobe", 2); // 69,98 € ≥ the free-shipping threshold
+  await page.goto("/checkout");
+  const contact = page.locator("[data-step='0']");
+  await expect(page.locator("[data-checkout-total]")).toBeVisible();
+
+  // An address without a top-level domain: the rail keeps its totals while typing, and continuing marks the field.
+  await page.getByLabel("E-pošta", { exact: true }).fill("qa2@x");
+  await expect(page.locator("[data-checkout-summary]")).toHaveAttribute("aria-busy", "false");
+  await expect(page.locator("[data-checkout-total]")).toBeVisible();
+  await page.locator("[data-continue-contact]").click();
+  await expect(contact.getByRole("alert")).toContainText("Vnesite veljaven e-poštni naslov");
+  await expect(contact).toHaveAttribute("data-open", "true");
+  await page.getByLabel("E-pošta", { exact: true }).fill(`m11-${Date.now()}@test.si`);
+  await expect(contact.getByRole("alert")).toHaveCount(0);
+  await page.locator("[data-continue-contact]").click();
+
+  const shipping = page.locator("[data-step='1']");
+  await expect(shipping).toHaveAttribute("data-open", "true");
+  for (const price of await shipping.locator("[data-method-price]").all()) await expect(price).toHaveText("Brezplačna");
+
+  await page.getByLabel("Telefon (za kurirja)").fill("abc");
+  await page.getByLabel("Ime in priimek").fill("   ");
+  await page.getByLabel("Ulica").fill("Testna ulica");
+  await page.getByLabel("Hišna številka").fill("12");
+  await page.getByLabel("Kraj").fill("Ljubljana");
+  await page.getByLabel("Poštna številka").fill("0999");
+  // A blank-after-trim name is marked on continue, never a silently disabled button.
+  await expect(page.locator("[data-continue-shipping]")).toBeEnabled();
+  await page.locator("[data-continue-shipping]").click();
+  await expect(shipping.getByText("To polje je obvezno.")).toBeVisible();
+  await expect(shipping.getByText("Vnesite veljavno telefonsko številko", { exact: false })).toBeVisible();
+  await expect(shipping.getByText("Preverite obliko poštne številke", { exact: false })).toBeVisible();
+  await expect(shipping).toHaveAttribute("data-open", "true");
+  await page.getByLabel("Ime in priimek").fill("Test Kupec");
+  await expect(shipping.getByText("To polje je obvezno.")).toHaveCount(0);
+
+  await page.getByLabel("Telefon (za kurirja)").fill("+386 40 123 456");
+  await page.getByLabel("Poštna številka").fill("1000");
+  await expect(shipping.getByRole("alert")).toHaveCount(0);
+  await page.locator("[data-continue-shipping]").click();
+  await expect(page.locator("[data-step='2']")).toHaveAttribute("data-open", "true");
+});
+
+test("\"Vnesite nov naslov\" empties the delivery fields a saved address filled (QA 2026-09-30)", async ({ page }) => {
+  const key = randomUUID();
+  const password = "Checkout123!";
+  const user = await prisma.user.create({
+    data: {
+      email: `novi-naslov-${key}@test.si`, name: "Veronika Beta", role: "CUSTOMER", emailVerified: new Date(),
+      passwordHash: await bcrypt.hash(password, 10),
+      addresses: { create: {
+        label: "Dom", fullName: "Veronika Beta", line1: "Slovenska cesta 12", postalCode: "1000",
+        city: "Ljubljana", country: "SI", phone: "+386 41 222 333", isDefault: true,
+      } },
+    },
+  });
+  try {
+    await page.goto("/prijava");
+    await dismissCmp(page);
+    const form = page.locator("[data-login-form]");
+    await form.getByLabel("E-pošta").fill(user.email);
+    await form.getByLabel("Geslo", { exact: true }).fill(password);
+    await form.getByRole("button", { name: "Prijava", exact: true }).click();
+    await page.waitForURL(/\/racun/);
+
+    await addToCartViaUi(page, "ustna-voda-globinsko-ciscenje");
+    await page.goto("/checkout");
+    await page.locator("[data-continue-contact]").click();
+    const picker = page.locator("[data-saved-addresses]");
+    await expect(page.getByLabel("Ulica", { exact: true })).toHaveValue("Slovenska cesta");
+
+    await picker.selectOption({ label: "Vnesite nov naslov" });
+    // Nothing of the saved address may ride along with a half-typed new one; the recipient is the account name.
+    for (const label of ["Telefon (za kurirja)", "Ulica", "Hišna številka", "Kraj", "Poštna številka"]) {
+      await expect(page.getByLabel(label, { exact: true })).toHaveValue("");
+    }
+    await expect(page.getByLabel("Ime in priimek", { exact: true })).toHaveValue("Veronika Beta");
+    // The wizard's country <select> sits inside its <label>, whose text includes every <option>,
+    // so an exact label match cannot find it; the field name is the stable handle.
+    await expect(page.locator("[data-checkout-wizard] select[name='country']")).toHaveValue("SI");
+    // Picking the saved row again fills it back in.
+    await picker.selectOption({ label: "Dom — Slovenska cesta 12, 1000 Ljubljana" });
+    await expect(page.getByLabel("Hišna številka", { exact: true })).toHaveValue("12");
+  } finally {
+    await prisma.cart.deleteMany({ where: { userId: user.id } });
+    await prisma.abandonedCheckout.deleteMany({ where: { email: user.email } });
+    await prisma.address.deleteMany({ where: { userId: user.id } });
+    await prisma.user.delete({ where: { id: user.id } });
+  }
 });

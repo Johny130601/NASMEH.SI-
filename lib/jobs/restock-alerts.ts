@@ -4,6 +4,7 @@ import { getEnv } from "@/lib/env";
 import { siteUrl } from "@/lib/seo";
 import { sendBackInStockAlertEmail } from "@/lib/email/mailer";
 import { signUnsubscribeToken } from "@/lib/back-in-stock/unsubscribe-token";
+import { isSoldOut, sellableStock } from "@/lib/bundle/availability";
 
 const LEASE_MS = 5 * 60 * 1000;
 
@@ -42,14 +43,26 @@ export async function sendPendingRestockAlerts(now = new Date(), limit = 50) {
 
       const subscription = await db.backInStockSubscription.findUnique({
         where: { id: row.id },
-        include: { variant: true, product: { include: { variants: { orderBy: { priceCents: "asc" } } } } },
+        include: {
+          variant: true,
+          product: {
+            include: {
+              variants: { orderBy: { priceCents: "asc" } },
+              bundle: { include: { items: { include: { variant: { select: { stock: true, allowBackorder: true } } } } } },
+            },
+          },
+        },
       });
+      // A bundle's stock is its components' (lib/bundle/availability): a component restock arms it.
+      const bundle = subscription?.product.bundle ?? null;
+      const available = (candidate: { stock: number; allowBackorder: boolean }) => !isSoldOut(sellableStock(candidate, bundle));
       const variant = subscription?.variant
-        ?? subscription?.product.variants.find((candidate) => candidate.stock > 0)
+        ?? subscription?.product.variants.find(available)
         ?? subscription?.product.variants[0]
         ?? null;
       if (!subscription || subscription.status !== "CONFIRMED" || subscription.notifiedAt
-        || subscription.product.status !== "ACTIVE" || !variant || variant.stock <= 0) {
+        || subscription.product.status !== "ACTIVE" || subscription.product.hiddenDeal || (bundle && !bundle.active)
+        || !variant || !available(variant)) {
         // Sold out again (or withdrawn) before sending: disarm and keep the
         // subscription for the next restock instead of mailing a dead link.
         await db.backInStockSubscription.updateMany({

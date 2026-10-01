@@ -11,7 +11,7 @@ export const reviews = {
     textLabel: "Vaše mnenje",
     textPlaceholder: "Kako vam je izdelek ustrezal?",
     photosLabel: "Fotografije (največ 4)",
-    photosNote: "JPG, PNG ali WebP, do 2 MB na fotografijo.",
+    photosNote: "JPG, PNG ali WebP, do 2 MB na fotografijo. Večje fotografije pred pošiljanjem samodejno pomanjšamo.",
     sensitivityLabel: "Stopnja občutljivosti zob",
     sensitivityOptions: ["Nizka", "Srednja", "Visoka"] as const,
     recommendLabel: "Bi izdelek priporočili?",
@@ -26,10 +26,22 @@ export const reviews = {
       count: "Največ 4 fotografije.",
       mime: "Dovoljeni so samo JPG, PNG in WebP.",
       size: "Fotografija je prevelika (največ 2 MB).",
+      request: "Fotografije so skupaj prevelike za eno pošiljanje. Izberite manj ali manjše fotografije in poskusite znova.",
       content: "Fotografije ni mogoče odpreti. Izberite veljavno fotografijo JPG, PNG ali WebP.",
     },
   },
+  /** /oceni/hitro/<token> with a tampered or expired (30 days) star link: the explanation and the two ways forward. */
+  invalidLink: {
+    title: "Povezava za oceno ni več veljavna",
+    body: "Povezave iz e-pošte za oceno veljajo 30 dni. Ta je potekla ali pa je bila spremenjena.",
+    account: "Če ste naročilo oddali z uporabniškim računom, lahko mnenje oddate pri naročilu v svojem računu.",
+    accountCta: "Pojdi v svoj račun",
+    contact: "Naročilo brez računa? Pišite nam in poslali vam bomo novo povezavo.",
+    contactCta: "Kontakt",
+  },
   display: {
+    /** The star group's accessible name; the value arrives with the decimal comma ("3,5"). */
+    ratingAria: (value: string) => `Ocena ${value} od 5`,
     title: "Mnenja kupcev",
     basedOn: "na podlagi",
     reviewsCount: "mnenj",

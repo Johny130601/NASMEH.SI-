@@ -6,7 +6,7 @@ import { readKodaCode } from "@/lib/koda";
 import { getPriceReductions } from "@/lib/omnibus";
 import { withReducedFlags } from "@/lib/promo/reductions";
 import { resolveCouponInput } from "@/lib/promo/resolve";
-import type { CouponLine } from "@/lib/promo/coupons";
+import type { CouponLine, CouponType } from "@/lib/promo/coupons";
 import type { PromoSettings } from "@/lib/promo";
 import type { PriceReduction } from "@/lib/pricing";
 import { getBundleBuilder, getShippingSettings, getVatRatePercent } from "@/lib/settings";
@@ -63,6 +63,8 @@ export interface BundleBuilderView {
   defaultMask: number;
   /** The code the submit will apply, or null when there is nothing to apply. */
   applyCouponCode: string | null;
+  /** That code's type, which picks its terms sentence (§9.1: every code shows one); null with no code to apply. */
+  applyCouponType: CouponType | null;
   /** A code the shopper already carries; it is kept, never replaced. */
   activeCouponCode: string | null;
   /** Lines already in the cart that this module does not own. */
@@ -113,7 +115,8 @@ function isBuildable(product: LoadedProduct | null): product is LoadedProduct {
     product !== null &&
     product.variants.length > 0 &&
     product.bundle === null &&
-    variantIsPurchasable({ status: product.status, hiddenDeal: product.hiddenDeal })
+    // not a bundle (checked above), so no bundle switch applies
+    variantIsPurchasable({ status: product.status, hiddenDeal: product.hiddenDeal, bundle: null })
   );
 }
 
@@ -291,6 +294,8 @@ export async function loadBundleBuilder(
     defaultOfferIndex,
     defaultMask: (1 << addOnProducts.length) - 1,
     applyCouponCode: activeCode ? null : config.couponCode || null,
+    // without a code of the shopper's own, the coupon priced above is the configured one
+    applyCouponType: activeCode ? null : (coupon?.type ?? null),
     activeCouponCode: activeCode,
     otherLineCount: otherLines.length,
     subscriptionRow: config.subscriptionRow,

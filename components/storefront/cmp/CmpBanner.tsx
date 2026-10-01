@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useConsent } from "./ConsentProvider";
-import { cmp as copy } from "@/lib/copy";
+import { cmp as copy } from "@/lib/copy/cmp";
 import { UiButton } from "../ui/UiButton";
 
 type CategoryKey = "analytics" | "marketing";
@@ -149,10 +149,11 @@ function CategoryRow({
           checked ? "bg-brand" : "bg-light-1"
         }`}
       >
+        {/* The knob slides on transform, never on `left` (AGENTS §8.23, QA L5). */}
         <span
           aria-hidden="true"
-          className={`absolute top-0.5 h-5 w-5 rounded-btn bg-white shadow transition-all ${
-            checked ? "left-[1.375rem]" : "left-0.5"
+          className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-btn bg-white shadow transition-transform duration-200 ease-out-quart ${
+            checked ? "translate-x-5" : "translate-x-0"
           }`}
         />
       </button>

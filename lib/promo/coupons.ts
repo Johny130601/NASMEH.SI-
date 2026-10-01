@@ -44,6 +44,8 @@ export type CouponRejection =
   | "usage_limit"
   | "customer_limit"
   | "not_eligible"
+  /** Restricted to listed e-mail addresses and the context's address is not one of them — or, in the cart, not known yet. */
+  | "email_restricted"
   | "already_applied";
 
 export interface CouponContext {
@@ -123,7 +125,7 @@ export function evaluateCoupon(
     coupon.eligibleEmails !== null &&
     !coupon.eligibleEmails.includes(ctx.email.toLowerCase())
   )
-    return { ok: false, rejection: "not_eligible" };
+    return { ok: false, rejection: "email_restricted" };
 
   const subtotalCents = lines.reduce((sum, line) => sum + lineTotal(line), 0);
   if (coupon.minSpendCents !== null && subtotalCents < coupon.minSpendCents)

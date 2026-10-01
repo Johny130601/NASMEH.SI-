@@ -87,9 +87,9 @@ export default async function AdminCustomersPage({ searchParams }: { searchParam
                 <td className="px-4 py-3 text-mid-1">{row.email}</td>
                 <td className="px-4 py-3">{copy.customers.types[row.type]}</td>
                 <td className="px-4 py-3 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>{row.orders}</td>
-                <td className="px-4 py-3 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>{formatEUR(row.ltvCents)}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>{formatEUR(row.ltvCents)}</td>
                 <td className="px-4 py-3">{row.marketingOptIn === null ? copy.common.none : row.marketingOptIn ? copy.common.yes : copy.common.no}</td>
-                <td className="px-4 py-3 text-mid-1">{row.since ? row.since.toLocaleDateString("sl-SI") : copy.common.none}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-mid-1" style={{ fontVariantNumeric: "tabular-nums" }}>{row.since ? row.since.toLocaleDateString("sl-SI") : copy.common.none}</td>
               </tr>
             ))}
           </tbody>

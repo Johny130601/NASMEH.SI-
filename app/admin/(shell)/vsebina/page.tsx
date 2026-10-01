@@ -24,7 +24,7 @@ export default async function AdminContentPage() {
     <section className="mx-auto max-w-(--container-wide)" data-admin-content>
       <h1 className="text-[2rem]">{c.title}</h1>
       <p className="mt-2 max-w-2xl text-sm text-mid-1">{c.intro}</p>
-      <ul className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <ul className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {CARDS.map(({ href, card }) => (
           <li key={href}>
             <Link href={href} className="block h-full rounded-card border border-light-2 bg-white p-5 transition-colors hover:border-brand" data-content-card={card}>

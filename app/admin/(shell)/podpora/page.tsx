@@ -61,12 +61,12 @@ export default async function AdminTicketsPage({ searchParams }: { searchParams:
               <tr><td colSpan={8} className="px-4 py-4 text-mid-2">{copy.tickets.empty}</td></tr>
             ) : result.tickets.map((ticket) => (
               <tr key={ticket.id} className="border-t border-light-2" data-ticket-row={ticket.reference}>
-                <td className="px-4 py-3 font-medium"><Link href={`/admin/podpora/${ticket.id}`} className="underline underline-offset-4">{ticket.reference}</Link></td>
-                <td className="px-4 py-3 text-mid-1" style={{ fontVariantNumeric: "tabular-nums" }}>{ticket.createdAt.toLocaleDateString("sl-SI")}</td>
+                <td className="whitespace-nowrap px-4 py-3 font-medium"><Link href={`/admin/podpora/${ticket.id}`} className="underline underline-offset-4">{ticket.reference}</Link></td>
+                <td className="whitespace-nowrap px-4 py-3 text-mid-1" style={{ fontVariantNumeric: "tabular-nums" }}>{ticket.createdAt.toLocaleDateString("sl-SI")}</td>
                 <td className="px-4 py-3">{contact.topics[ticket.topic].label}</td>
                 <td className="px-4 py-3 text-mid-1">{ticket.reason && Object.hasOwn(contact.reasons, ticket.reason) ? contact.reasons[ticket.reason as ReasonCode] : ticket.reason ?? copy.common.none}</td>
                 <td className="px-4 py-3">{ticket.name}<br /><span className="text-xs text-mid-1">{ticket.email}</span></td>
-                <td className="px-4 py-3">{ticket.orderNumber ? <Link href={`/admin/narocila/${ticket.orderNumber}`} className="underline underline-offset-4">{ticket.orderNumber}</Link> : copy.common.none}</td>
+                <td className="whitespace-nowrap px-4 py-3">{ticket.orderNumber ? <Link href={`/admin/narocila/${ticket.orderNumber}`} className="underline underline-offset-4">{ticket.orderNumber}</Link> : copy.common.none}</td>
                 <td className="px-4 py-3">{copy.tickets.statuses[ticket.status]}</td>
                 <td className="px-4 py-3 text-mid-1">{ticket.assignee?.name ?? ticket.assignee?.email ?? copy.tickets.detail.unassigned}</td>
               </tr>

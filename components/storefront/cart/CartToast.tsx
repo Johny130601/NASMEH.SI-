@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CART_ADDED_EVENT, type CartAddedDetail } from "@/lib/cart/added-event";
 import { formatEUR } from "@/lib/pricing";
-import { cart as copy } from "@/lib/copy";
+import { cart as copy } from "@/lib/copy/cart";
 import { UiIcon } from "../ui/UiIcon";
 import { uiButtonClasses } from "../ui/UiButton";
 

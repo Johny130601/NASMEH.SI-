@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
+import { sanitizeContentHtml } from "@/lib/security/html-sanitizer";
 import { buildMetadata } from "@/lib/seo";
 import { legal } from "@/lib/copy";
 import { sellerBlockLines } from "@/lib/copy/legal";
@@ -64,7 +65,7 @@ export default async function ComplaintsPage() {
       <section aria-labelledby="complaint-cta-title" className="mt-8 rounded-card border border-light-2 bg-white p-6" data-complaint-ctas>
         <h2 id="complaint-cta-title" className="text-xl">{returns.complaints.ctaTitle}</h2>
         <p className="mt-2 text-sm leading-relaxed text-mid-1">{returns.complaints.ctaIntro}</p>
-        <ul className="mt-5 grid gap-3 sm:grid-cols-2">
+        <ul className="mt-5 grid gap-3 md:grid-cols-2">
           {CTAS.map((cta) => (
             <li key={cta.key}>
               <Link
@@ -79,7 +80,8 @@ export default async function ComplaintsPage() {
         </ul>
       </section>
 
-      <div className="content-prose mt-10" dangerouslySetInnerHTML={{ __html: page.body }} />
+      {/* Operator HTML is sanitised on save and again here (AGENTS §8.24). */}
+      <div className="content-prose mt-10" dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(page.body) }} />
     </article>
   );
 }

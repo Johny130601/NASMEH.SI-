@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import { setVariantStock } from "@/lib/inventory/restock";
 import { prisma } from "./helpers";
 
 /** /cart e2e (§7.1) + merge-on-login + tamper. Serial: shared guest/DB state. */
@@ -90,7 +92,7 @@ test("ATC from PDP + sticky bar → badge count → cart line", async ({ page })
 
   // sticky bar ATC adds one more, and hands off the same way
   await page.goto("/izdelek/belilni-trakci-za-zobe");
-  await page.locator("div.fixed").getByRole("button", { name: "Dodaj v košarico" }).click();
+  await page.locator("[data-sticky-buy-bar]").getByRole("button", { name: "Dodaj v košarico" }).click();
   await expect(page).toHaveURL(/\/sestavi-paket\?izdelek=belilni-trakci-za-zobe$/);
   await expect(page.locator("[data-cart-badge]")).toHaveText("2");
 
@@ -138,9 +140,11 @@ test("qty steppers: cap 5 + message, minus disabled at 1, remove", async ({ page
 });
 
 test("progress bar states: empty → in progress → reached", async ({ page }) => {
-  // empty: 5 % floor + unlock copy
+  // empty: 5 % floor + unlock copy (the empty state renders on the empty cart, QA C2-F3)
   await page.goto("/cart");
   await expect(page.getByText("Vaša košarica je prazna")).toBeVisible();
+  await expect(page.locator("#shipping-progress-label")).toHaveText(/^Odklenite brezplačno dostavo pri naročilih od 45,00\s€$/);
+  await expect(page.locator("[role='progressbar']")).toHaveAttribute("aria-valuenow", "5");
 
   // in progress: 1× mouthwash 19,99 → "Samo še €26"
   await page.goto("/trgovina");
@@ -166,6 +170,8 @@ test("progress bar states: empty → in progress → reached", async ({ page }) 
   const bundleLine = page.locator("[data-cart-line='NAS-PAK-RUTINA']");
   await expect(bundleLine.getByText("Vsebina paketa:")).toBeVisible();
   await expect(bundleLine.getByText(/1× Belilni trakci/)).toBeVisible();
+  // the cap notice states the line's own cap, declined (QA C2-F1)
+  await expect(bundleLine.locator("[data-cap-note]")).toHaveText("Največ 1 kos na naročilo");
 
   await clearCartUi(page);
 });
@@ -229,8 +235,64 @@ test("/koda scaffold: stores code, shows pill, remove works", async ({ page }) =
   await page.getByRole("button", { name: "Odstrani kodo" }).click();
   await expect(page.locator("[data-active-code]")).toHaveCount(0);
 
+  // A malformed code is refused without echoing it; the one-time notice leaves the address (QA C2-F2).
   await page.goto("/koda/not_valid!");
-  await expect(page).toHaveURL(/koda=neveljavna/);
+  await expect(page.locator("[data-koda-notice]")).toHaveText("Koda ni veljavna.");
+  await expect(page).toHaveURL(/\/cart$/);
+  await page.reload();
+  await expect(page.locator("[data-koda-notice]")).toHaveCount(0);
+});
+
+test("a line that sells out while in the cart is flagged, cannot grow and closes the checkout (QA 2026-09-30)", async ({ page }) => {
+  const key = randomUUID();
+  const product = await prisma.product.create({
+    data: {
+      title: `Razprodano v košarici ${key.slice(0, 8)}`, slug: `e2e-sold-in-cart-${key}`, status: "ACTIVE",
+      visibleInCatalog: false, visibleInSearch: false,
+      variants: { create: { sku: `E2E-SOLD-${key}`, priceCents: 1999, stock: 3 } },
+    },
+    include: { variants: true },
+  });
+  const [variant] = product.variants;
+  try {
+    // The buy box hands a clean add on to the bundle builder; the badge proves the line landed.
+    await page.goto(`/izdelek/${product.slug}`);
+    await dismissCmp(page);
+    await page.locator("[data-buy-box]").getByRole("button", { name: "Dodaj v košarico", exact: true }).click();
+    await expect(page.locator("[data-cart-badge]")).toHaveText("1");
+
+    await setVariantStock(variant.id, 0);
+
+    await page.goto("/cart");
+    const line = page.locator(`[data-cart-line='${variant.sku}']`);
+    await expect(line.locator("[data-line-sold-out]")).toHaveText("Ni več na zalogi — odstranite izdelek, da nadaljujete z nakupom.");
+    // The stepper cannot raise it and no cap notice pretends it is a quantity limit.
+    await expect(line.getByLabel("Povečaj količino")).toBeDisabled();
+    await expect(line.locator("[data-cap-note]")).toHaveCount(0);
+    await expect(page.locator("[data-cart-sold-out]")).toHaveText("Nekaterih izdelkov ni več na zalogi. Odstranite jih, da nadaljujete na blagajno.");
+    await expect(page.locator("[data-begin-checkout]")).toBeDisabled();
+    // Listed with its own price, but not payable: the header keeps counting it, the totals do not.
+    await expect(line.locator("[data-line-total]")).toHaveText("19,99 €");
+    await expect(page.locator("h1")).toContainText("(1)");
+    await expect(page.locator("[data-cart-total]")).toHaveText("0,00 €");
+    // nothing can be shipped, so no free-shipping claim next to the bar's empty state
+    await expect(page.locator("[data-summary-shipping]")).toHaveText("—");
+
+    // Typed straight in, the checkout stops at the start and names the line, not at "Oddaj naročilo".
+    await page.goto("/checkout");
+    const notice = page.locator("[data-checkout-sold-out]");
+    await expect(notice.locator("[data-checkout-sold-out-line]")).toHaveText([product.title]);
+    await expect(page.locator("[data-continue-contact]")).toBeDisabled();
+    await expect(page.locator("[data-quote-failure]")).toHaveAttribute("data-quote-failure", "sold_out");
+    await notice.getByRole("link", { name: "Uredi košarico" }).click();
+    await expect(page).toHaveURL(/\/cart$/);
+
+    await line.getByLabel("Odstrani izdelek").click();
+    await expect(page.getByText("Vaša košarica je prazna")).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator("[data-cart-sold-out]")).toHaveCount(0);
+  } finally {
+    await prisma.product.delete({ where: { id: product.id } });
+  }
 });
 
 test("merge-on-login: guest lines merge into DB cart, cookie cleared", async ({
@@ -254,7 +316,7 @@ test("merge-on-login: guest lines merge into DB cart, cookie cleared", async ({
 
   // login via the credentials form
   await page.goto("/prijava");
-  await page.getByLabel("E-pošta").fill(CUSTOMER.email);
+  await page.getByLabel("E-pošta", { exact: true }).fill(CUSTOMER.email);
   await page.getByLabel("Geslo").fill(CUSTOMER.password);
   await page.getByRole("button", { name: "Prijava", exact: true }).click();
   await page.waitForURL(/\/racun/, { timeout: 15_000 });

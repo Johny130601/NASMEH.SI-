@@ -1,4 +1,4 @@
-import { email as copy } from "@/lib/copy";
+import { email as copy } from "@/lib/copy/email";
 import { emailLayout, emailStyles } from "./layout";
 
 /** Back-in-stock double opt-in verification (spec §5/§6). */

@@ -25,7 +25,7 @@ export default async function AdminCouponPage({ params }: { params: Promise<{ id
       <h1 className="mt-3 text-[2rem]">{coupon.code}</h1>
       <p className="text-sm text-mid-1">{copy.coupons.types[coupon.type]} · {c.usedCount.replace("{used}", String(coupon.usedCount))}</p>
 
-      <div className="mt-6 grid gap-4 xl:grid-cols-[2fr_1fr]">
+      <div className="mt-6 grid gap-4 lg:grid-cols-[2fr_1fr]">
         <CouponEditor couponId={coupon.id} initial={couponToInput(coupon)} deletable={couponIsUnused(coupon)} products={coupon.products} collections={coupon.collections} />
         <div className="flex flex-col gap-4">
           <section className="rounded-card border border-light-2 bg-white p-5">

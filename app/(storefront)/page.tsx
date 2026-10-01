@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import { getCatalogProducts } from "@/lib/catalog";
 import { getSetting, getShippingSettings, SETTING_KEYS, type BundleBannerSetting, type HeroSlotSetting, type RoutineBannerSetting } from "@/lib/settings";
 import { bundleBannerWithDefaults, normaliseHomeSections, routineBannerWithDefaults } from "@/lib/admin/cms";
+import { heroWithAvailableLinks, linkIsAvailable, productSlugsIn, purchasableSlugs } from "@/lib/content-links";
 import { formatEUR, standardShippingMethod } from "@/lib/pricing";
 import { isTestMode } from "@/lib/turnstile";
 import { getEnv } from "@/lib/env";
 import { buildMetadata } from "@/lib/seo";
-import { common, home } from "@/lib/copy";
+import { home } from "@/lib/copy";
 import { HeroSection } from "@/components/storefront/home/HeroSection";
 import { BundleBanner } from "@/components/storefront/home/BundleBanner";
 import { RoutineBanner } from "@/components/storefront/home/RoutineBanner";
@@ -16,11 +17,9 @@ import { UiCarousel } from "@/components/storefront/ui/UiCarousel";
 // SSR by design (AGENTS §5.1): copy, prices and config render in initial HTML.
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = buildMetadata({
-  title: common.siteName,
-  description: common.siteTagline,
-  path: "",
-});
+const homeMetadata = buildMetadata({ title: home.seo.title, description: home.seo.description, path: "" });
+// Absolute: the site template would otherwise append the store name a second time (QA L1).
+export const metadata: Metadata = { ...homeMetadata, title: { absolute: home.seo.title } };
 
 export default async function HomePage() {
   const [hero, products, sectionSetting, bundleSetting, routineSetting, shipping] = await Promise.all([
@@ -34,6 +33,13 @@ export default async function HomePage() {
   const sections = normaliseHomeSections(sectionSetting).filter((section) => section.visible);
   const bundleBanner = bundleBannerWithDefaults(bundleSetting);
   const routineBanner = routineBannerWithDefaults(routineSetting);
+  // No block links to a product page that answers 404 (QA v-a): a banner for a product nobody can
+  // buy is left out; the hero's button leads to the shop instead and such a promo line is dropped.
+  const heroSetting = hero && typeof hero === "object" ? hero : null;
+  const purchasable = await purchasableSlugs(
+    productSlugsIn([heroSetting?.ctaHref, heroSetting?.promoOverlayHref, bundleBanner.href, routineBanner.href]),
+  );
+  const heroContent = heroSetting ? heroWithAvailableLinks(heroSetting, purchasable) : null;
   // the hero trust strip reads the same shipping Setting as the PDP delivery accordion
   const trust = {
     estimate: standardShippingMethod(shipping.methods, shipping.standardCostCents)?.estimate.trim() || null,
@@ -47,7 +53,7 @@ export default async function HomePage() {
 
   // §4 sections in the order and visibility set in /admin/vsebina/domov.
   const rendered = {
-    hero: <HeroSection key="hero" hero={hero} trust={trust} />,
+    hero: <HeroSection key="hero" hero={heroContent} trust={trust} />,
     rail: (
       <section
         key="rail"
@@ -71,9 +77,16 @@ export default async function HomePage() {
         )}
       </section>
     ),
-    bundleBanner: <BundleBanner key="bundleBanner" banner={bundleBanner} />,
-    routineBanner: <RoutineBanner key="routineBanner" banner={routineBanner} />,
+    bundleBanner: linkIsAvailable(bundleBanner.href, purchasable) ? <BundleBanner key="bundleBanner" banner={bundleBanner} /> : null,
+    routineBanner: linkIsAvailable(routineBanner.href, purchasable) ? <RoutineBanner key="routineBanner" banner={routineBanner} /> : null,
   };
 
-  return <>{sections.map((section) => rendered[section.id])}</>;
+  // The hero carries the page's <h1>; with the hero hidden the page keeps one for its outline (QA T7-F15).
+  const heroShown = sections.some((section) => section.id === "hero");
+  return (
+    <>
+      {heroShown ? null : <h1 className="sr-only">{home.seo.heading}</h1>}
+      {sections.map((section) => rendered[section.id])}
+    </>
+  );
 }

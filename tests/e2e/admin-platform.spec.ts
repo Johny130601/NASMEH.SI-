@@ -186,6 +186,10 @@ test("the owner manages the team and the dashboard reports paid orders and low s
     await expect(page.locator("[data-chart='revenue'] table")).toContainText("€");
     await page.goto("/admin?obdobje=7d");
     await expect(page.locator("[data-kpi='Plačana naročila']")).toContainText(/[1-9]/);
+    await expect(page.locator("[data-range-invalid]")).toHaveCount(0);
+    // A reversed custom range says why 30 days are shown instead of doing so silently (QA N1).
+    await page.goto("/admin?obdobje=custom&od=2026-09-05&do=2026-09-01");
+    await expect(page.locator("[data-range-invalid='reversed']")).toContainText("zadnjih 30 dni");
 
     // Team: create, promote through the role select, revoke, reset, demote.
     await page.goto("/admin/ekipa");
@@ -197,8 +201,12 @@ test("the owner manages the team and the dashboard reports paid orders and low s
     await expect(page.locator("[data-team-created]")).toContainText("Začasno geslo");
     const row = page.locator(`[data-team-member='${memberEmail}']`);
     await expect(row).toContainText("čaka na nastavitev");
+    // A role change asks first (QA N6): the permissions apply at once.
+    let roleQuestion = "";
+    page.once("dialog", (dialog) => { roleQuestion = dialog.message(); void dialog.accept(); });
     await row.getByLabel("Spremeni vlogo").selectOption("SUPPORT");
     await expect(page.locator("[data-team-message]")).toHaveText("Shranjeno.");
+    expect(roleQuestion).toContain("Podpora");
     await expect.poll(async () => (await prisma.user.findUniqueOrThrow({ where: { email: memberEmail } })).role).toBe("SUPPORT");
     const before = (await prisma.user.findUniqueOrThrow({ where: { email: memberEmail } })).sessionVersion;
     await row.getByRole("button", { name: "Odjavi povsod" }).click();

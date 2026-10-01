@@ -7,10 +7,20 @@ import { db } from "@/lib/db";
 import { marketingVersion, recordConsent } from "@/lib/consent-log";
 import { withdrawSubscriberInTx } from "@/lib/newsletter/subscriber-consent";
 import { deleteAddressForUser, saveAddressForUser, setDefaultAddressForUser, type AddressResult } from "@/lib/account/addresses";
+import { isValidPhone, PHONE_MAX_LENGTH } from "@/lib/phone";
 
-export async function saveAddressAction(input: unknown): Promise<AddressResult> {
+/** The address-book phone follows the one customer phone rule (lib/phone.ts), as the checkout does (QA T3-A1). */
+const addressPhoneSchema = z.object({
+  phone: z.string().trim().max(PHONE_MAX_LENGTH).refine(value => value === "" || isValidPhone(value)).nullish(),
+});
+
+export interface AddressActionResult { ok: boolean; error?: AddressResult["error"] | "invalid_phone" }
+
+export async function saveAddressAction(input: unknown): Promise<AddressActionResult> {
   const userId = (await auth())?.user?.id;
   if (!userId) return { ok: false };
+  const phone = addressPhoneSchema.safeParse(input);
+  if (!phone.success && phone.error.issues.some(issue => issue.path[0] === "phone")) return { ok: false, error: "invalid_phone" };
   try { return await saveAddressForUser(userId, input); }
   catch { return { ok: false, error: "failed" }; }
 }

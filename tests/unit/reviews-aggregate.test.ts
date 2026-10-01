@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateRatings } from "@/lib/reviews/aggregate";
+import { aggregateRatings, formatAverage } from "@/lib/reviews/aggregate";
 
 describe("aggregateRatings (§10)", () => {
   it("empty → zeros", () => {
@@ -23,5 +23,13 @@ describe("aggregateRatings (§10)", () => {
     const result = aggregateRatings([5, 0, 6, -1, 5]);
     expect(result.count).toBe(2);
     expect(result.average).toBe(5);
+  });
+});
+
+describe("formatAverage", () => {
+  it("shows the visible average with a Slovenian decimal comma (QA 2026-09-29)", () => {
+    expect(formatAverage(3)).toBe("3,0");
+    expect(formatAverage(4.4)).toBe("4,4");
+    expect(formatAverage(0)).toBe("0,0");
   });
 });

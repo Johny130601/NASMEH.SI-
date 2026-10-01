@@ -1,6 +1,6 @@
 # Nasmeh.si — GENERAL PLAN OF EVERYTHING
 
-**Version:** 2.10 · **Date:** 2026-09-25 · **Status:** Phases 0–2 and 4 complete; Phase 3 repaired locally with real-provider acceptance outstanding (gate G1); Phase 5 locally accepted; Phase 6 locally accepted; Phase 7 locally accepted; **Phase 9 local work complete and closed**: steps 1–6, the closure regression, the 2026-09-16 storefront pass and the [review pass](testing/phase-9-review-pass-2026-09-19.md) the closure record left open — no local item remains; the launch waits on D4, D5/G1, D2, G2, G4 and the host; one Phase 8A item, the [bundle builder](testing/bundle-builder-2026-09-23.md), pulled forward by the owner and committed 2026-09-23; the [full acceptance run of 2026-09-25](testing/full-acceptance-2026-09-25.md) covers that tree — 162 of 162 browser tests in both policy modes after two stale Phase 3 spec files were repaired, Docker smoke 19 of 19
+**Version:** 2.11 · **Date:** 2026-10-01 · **Status:** exploratory QA (2026-09-29) and its fix pass done — every finding fixed and browser-verified, every local gate green on the final tree (see v2.11); Phases 0–2 and 4 complete; Phase 3 repaired locally with real-provider acceptance outstanding (gate G1); Phase 5 locally accepted; Phase 6 locally accepted; Phase 7 locally accepted; **Phase 9 local work complete and closed**: steps 1–6, the closure regression, the 2026-09-16 storefront pass and the [review pass](testing/phase-9-review-pass-2026-09-19.md) the closure record left open — no local item remains; the launch waits on D4, D5/G1, D2, G2, G4 and the host; one Phase 8A item, the [bundle builder](testing/bundle-builder-2026-09-23.md), pulled forward by the owner and committed 2026-09-23; the [full acceptance run of 2026-09-25](testing/full-acceptance-2026-09-25.md) covers that tree — 162 of 162 browser tests in both policy modes after two stale Phase 3 spec files were repaired, Docker smoke 19 of 19
 **Grounding documents (do not contradict):** `AGENTS.md` (decided architecture), `docs/NASMEH_FEATURES.md` (feature spec, cited below as "§N"), `docs/HISMILE_FEATURES.md`, `docs/research/01–07`.
 
 ## 0. Status ledger
@@ -475,6 +475,28 @@ Found by reading the working tree against this plan. None blocks Phase 6 step 3;
 | B24 | `/trgovina` renders no `<h1>` — the page's title is not a heading, only the SEO block's and the newsletter's `<h2>` exist — on the page the plan treats as the catalogue landing page (§3.3 SSR SEO, AGENTS §8.11) | Pre-launch, small: render the collection title as the page's `<h1>` in `app/(storefront)/trgovina`. Found 2026-09-23 while measuring navigation ([record](testing/bundle-builder-2026-09-23.md)) |
 
 ## 7. Change log
+
+- **v2.11 (2026-10-01):**
+  - **Exploratory QA** ([record](testing/exploratory-qa-2026-09-29.md), 2026-09-29): a "click every path" pass over the whole store on four isolated servers found about 80 defects none of the 162 browser tests covered. Among them:
+    - stored XSS in CMS pages and product HTML;
+    - CSV formula injection;
+    - an anonymisation that wiped order timelines;
+    - reviews without a photo refused;
+    - a confirmation mail missing its discount;
+    - collections ignored by `/trgovina`;
+    - the bundle active and stock rules not enforced;
+    - dead `sm:`/`xl:` breakpoints.
+  - **Fix pass** ([record](testing/qa-fix-pass-2026-09-30.md), 2026-09-30/10-01): all fixed. Each fix was proven in a real browser against rebuilt servers over three verification rounds, which found and fixed 24 further defects, and every failure was reproduced by an independent confirmer.
+  - **New conventions:**
+    - AGENTS §8.24: operator HTML is sanitized on save and on render (`lib/security/html-sanitizer.ts`);
+    - AGENTS §8.5: client code imports copy per module, never the barrel — a Lighthouse A/B against `8059d02` traced a mobile-LCP regression to the barrel, and the fix leaves the four templates at 118–125 kB first-load JS against 144–147 kB before this pass.
+  - **Migrations:** 30 and 31, both guarded data-only (seed links, seeded stock claims).
+  - **Gates:**
+    - `tsc` and `eslint` clean; 163 files / 1704 unit tests;
+    - 192 of 192 browser tests in both CSP modes;
+    - Lighthouse desktop every budget; mobile `/` under the LCP budget for the first time since the closure, the other three templates back at the prior line;
+    - Docker build and container smoke 19 of 19 on the final tree (rebuilt after the import-path codemod; the first attempt had been stopped for low memory).
+  - **Owner decisions left open:** durable popup suppression (a new cookie needs legal review); the invoice supply date (accountant).
 
 - **v2.10 (2026-09-25):** full acceptance run on the bundle-builder tree ([record](testing/full-acceptance-2026-09-25.md)), made to answer whether everything before the launch phase is done and tested. On `5fe8a74` as committed: lint clean, 136 files / 1396 unit tests, fresh database at 29 migrations with no drift and the seed idempotent, Docker build and container smoke 19 of 19 — and the full browser suite **red, 157 of 162**: five Phase 3 tests still waited for the buy box's in-place "Dodano ✓", which the bundle builder's PDP handoff replaced (the page snapshots show the builder with the badge at 1, so the add itself worked). The two spec files now assert the handoff, the rendered builder and the badge; the full suite then passed **162 of 162** in the default mode and **162 of 162** with `CSP_ENFORCE=true`, each with only the hardening test's synthetic `[csp]` report, so go-live row E2's local evidence stands on the current tree. Production code unchanged; the launch gates unchanged; Lighthouse not re-run (nothing since 2026-09-19 touched the chrome, a font, an image or the checkout bundle). Lesson for rule 11: a commit that runs only its touched specs is not covered until the next full run — this was that run.
 - **v2.9 (2026-09-23):** the bundle builder committed ([record](testing/bundle-builder-2026-09-23.md)) — a Phase 8A item the owner pulled forward on 2026-09-20 (spec §14.6 tags the build-your-own wizard `[P3-later]`; the offer ladder is 8A): `/sestavi-paket` with quantity offers of the product's own variant and up to three add-ons, every combination priced by the promo engine over the whole prospective cart (`lib/bundle/quote.ts`, pure), one intent-only submit that raises lines and never lowers them (`ensureCartLines`), the PDP handing a clean add on to the builder, the `bundle.builder` Setting with its admin page under content and migration 29 (empty coupon code on an existing database, `PAKET20` in the seed), the `--radius-panel` token (AGENTS §8.6). Gates on the tree: lint clean, 136 files / 1396 unit tests, fresh database at 29 migrations with no drift and the seed idempotent, the four touched browser specs 28/28 on the standalone build; the full suite, Docker smoke and Lighthouse were not re-run. The same day's production-build measurement (click to new content 73–141 ms, first byte 103–133 ms, no server hotspot) closed the navigation-delay question the 2026-09-20 dev-server session had raised. Backlog B24 added; the ledger's Phase 8 row records the pulled-forward item; no launch row changed.

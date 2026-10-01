@@ -4,7 +4,9 @@ import {
   formatEUR,
   formatUnitPrice,
 } from "@/lib/pricing";
-import { catalog, home, pdp } from "@/lib/copy";
+import { catalog } from "@/lib/copy/catalog";
+import { home } from "@/lib/copy/home";
+import { pdp } from "@/lib/copy/pdp";
 import { UiButton } from "../ui/UiButton";
 import { UiPill } from "../ui/UiPill";
 import { BadgePill } from "./BadgePill";
@@ -41,12 +43,17 @@ export function CatalogCard({
     : product.isBundle
       ? catalog.card.buildBundle
       : catalog.card.addToCart;
-  const badge = product.badges[0] && product.badges[0].label !== catalog.card.soldOut ? product.badges[0] : null;
+  // lib/catalog already dropped an admin badge that repeats the sold-out state (displayBadges)
+  const badge = product.badges[0] ?? null;
 
   return (
-    // fills its grid cell or carousel slide (the rail sets the slide width), equal heights per row
+    // fills its grid cell or carousel slide (the rail sets the slide width), equal heights per row.
+    // Hover: the card lifts (translate) and its deeper shadow fades in on a pseudo-element
+    // (opacity) — box-shadow itself is never animated (AGENTS §8.23, QA L5). Tailwind v4's
+    // translate-*/scale-* utilities set the individual `translate`/`scale` properties, so the
+    // transition lists name those; `transform` alone would let the lift and the zoom snap.
     <article
-      className="group relative flex h-full w-full min-w-0 flex-col rounded-card border border-light-2 bg-white p-3 shadow-card transition-[transform,box-shadow,border-color] duration-300 ease-out-quart hover:-translate-y-1 hover:border-light-1 hover:shadow-card-hover md:p-4"
+      className="group relative flex h-full w-full min-w-0 flex-col rounded-card border border-light-2 bg-white p-3 shadow-card transition-[translate,border-color] duration-300 ease-out-quart after:pointer-events-none after:absolute after:inset-0 after:rounded-card after:opacity-0 after:shadow-card-hover after:transition-opacity after:duration-300 after:ease-out-quart hover:-translate-y-1 hover:border-light-1 hover:after:opacity-100 md:p-4"
       data-product-card={product.slug}
     >
       <Link href={href} className="block">
@@ -57,7 +64,7 @@ export function CatalogCard({
               src={product.imageUrl}
               alt={product.imageAlt}
               loading="lazy"
-              className={`h-full w-full object-cover transition-[transform,opacity] duration-500 ease-out-quart group-hover:scale-105 ${
+              className={`h-full w-full object-cover transition-[scale,opacity] duration-500 ease-out-quart group-hover:scale-105 ${
                 product.hoverImageUrl ? "group-hover:opacity-0" : ""
               }`}
             />
@@ -151,6 +158,7 @@ export function CatalogCard({
       {/* two cards share a phone screen: tighter padding and text until md */}
       <div className="mt-auto pt-4">
         {soldOut ? (
+          // a sold-out bundle is re-armed by its components' restock (lib/inventory/stock armBundleAlerts)
           <ObvestiteMeButton productSlug={product.slug} testToken={testToken} className={CTA_CLASSES} />
         ) : product.isBundle ? (
           <UiButton href={href} variant="primary" fullWidth className={CTA_CLASSES}>

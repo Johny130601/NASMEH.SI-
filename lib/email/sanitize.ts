@@ -15,8 +15,12 @@
  *   move or overlap content;
  * - stray closing tags are dropped and every open tag is closed at the end,
  *   so no operator element wraps what the mailer appends.
- * Text is re-escaped. No imports: the admin editor can run it in the browser.
+ * Text is re-escaped. The parser is the shared one in `lib/security/html-sanitizer.ts`
+ * (pure, so the admin editor can still run this in the browser); this file is the
+ * e-mail policy.
  */
+
+import { sanitizeHtml, type HtmlSanitizerPolicy } from "@/lib/security/html-sanitizer";
 
 const ALLOWED_TAGS: ReadonlySet<string> = new Set([
   "a", "abbr", "b", "blockquote", "br", "caption", "center", "code", "col", "colgroup", "div", "em",
@@ -46,7 +50,6 @@ const TAG_ATTRIBUTES: Readonly<Record<string, ReadonlySet<string>>> = {
   ul: new Set(["type"]),
 };
 
-const URL_ATTRIBUTES: ReadonlySet<string> = new Set(["href", "src"]);
 const SAFE_HREF = /^(https?:|mailto:|tel:|#|\{\{\s*[A-Za-z][A-Za-z0-9_]*\s*\}\})/i;
 const SAFE_SRC = /^(https?:|\{\{\s*[A-Za-z][A-Za-z0-9_]*\s*\}\})/i;
 
@@ -105,164 +108,19 @@ export function sanitizeInlineStyle(style: string): string {
   return kept.length ? `${kept.join(";")};` : "";
 }
 
-const BASIC_ENTITIES: Readonly<Record<string, string>> = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'" };
-
-function decodeAttribute(value: string): string {
-  return value.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (entity, body: string) => {
-    if (body[0] === "#") {
-      const code = body[1] === "x" || body[1] === "X" ? parseInt(body.slice(2), 16) : parseInt(body.slice(1), 10);
-      return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "";
-    }
-    return BASIC_ENTITIES[body.toLowerCase()] ?? entity;
-  });
-}
-
-/** Escapes `<`, `>`, quotes and a bare `&`; an existing entity reference is kept. */
-function escapeKeepingEntities(value: string, attribute: boolean): string {
-  const escaped = value
-    .replace(/&(?!(#x[0-9a-f]+|#\d+|[a-z][a-z0-9]*);)/gi, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  return attribute ? escaped.replace(/"/g, "&quot;") : escaped;
-}
-
-interface ParsedTag { name: string; attributes: Array<[string, string]>; end: number }
-
-/** Matches at `index` only (sticky), without copying the rest of the input. */
-function matchAt(pattern: RegExp, html: string, index: number): string {
-  pattern.lastIndex = index;
-  return pattern.exec(html)?.[0] ?? "";
-}
-
-const TAG_NAME = /<\/?([a-zA-Z][a-zA-Z0-9-]*)/y;
-const ATTRIBUTE_NAME = /[^\s/>"'=]+|["'=]/y;
-const UNQUOTED_VALUE = /[^\s>]*/y;
-
-/** Parses `<name attr=value ...>` starting at `start` (the `<`); null when the input ends inside the tag. */
-function parseTag(html: string, start: number): ParsedTag | null {
-  TAG_NAME.lastIndex = start;
-  const nameMatch = TAG_NAME.exec(html);
-  if (!nameMatch) return null;
-  const attributes: Array<[string, string]> = [];
-  let index = start + nameMatch[0].length;
-  while (index < html.length) {
-    const char = html[index];
-    if (char === ">") return { name: nameMatch[1].toLowerCase(), attributes, end: index + 1 };
-    if (/[\s/]/.test(char)) { index += 1; continue; }
-    const name = matchAt(ATTRIBUTE_NAME, html, index);
-    index += name.length;
-    while (index < html.length && /\s/.test(html[index])) index += 1;
-    let value = "";
-    if (html[index] === "=") {
-      index += 1;
-      while (index < html.length && /\s/.test(html[index])) index += 1;
-      const quote = html[index];
-      if (quote === "\"" || quote === "'") {
-        const close = html.indexOf(quote, index + 1);
-        if (close < 0) return null;
-        value = html.slice(index + 1, close);
-        index = close + 1;
-      } else {
-        value = matchAt(UNQUOTED_VALUE, html, index);
-        index += value.length;
-      }
-    }
-    attributes.push([name.toLowerCase(), value]);
-  }
-  return null;
-}
-
-function serializeAttributes(tag: string, attributes: Array<[string, string]>): string {
-  const seen = new Set<string>();
-  let output = "";
-  for (const [name, raw] of attributes) {
-    if (seen.has(name)) continue;
-    seen.add(name);
-    if (!GLOBAL_ATTRIBUTES.has(name) && !TAG_ATTRIBUTES[tag]?.has(name)) continue;
-    let value = decodeAttribute(raw).replace(/[\u0000-\u001F]/g, "").trim();
-    if (URL_ATTRIBUTES.has(name) && !(name === "href" ? SAFE_HREF : SAFE_SRC).test(value)) continue;
-    if (name === "style") {
-      value = sanitizeInlineStyle(value);
-      if (!value) continue;
-    }
-    output += ` ${name}="${escapeKeepingEntities(value, true)}"`;
-  }
-  return output;
-}
-
-/** Index just past the closing tag of a raw-content element, or the input length when it never closes. */
-function skipElementContent(html: string, from: number, name: string): number {
-  const closing = new RegExp(`</${name}(?=[\\s/>])`, "ig");
-  closing.lastIndex = from;
-  const match = closing.exec(html);
-  if (!match) return html.length;
-  const end = html.indexOf(">", match.index);
-  return end < 0 ? html.length : end + 1;
-}
+const EMAIL_POLICY: HtmlSanitizerPolicy = {
+  allowedTags: ALLOWED_TAGS,
+  voidTags: VOID_TAGS,
+  droppedWithContent: DROPPED_WITH_CONTENT,
+  globalAttributes: GLOBAL_ATTRIBUTES,
+  tagAttributes: TAG_ATTRIBUTES,
+  safeHref: SAFE_HREF,
+  safeSrc: SAFE_SRC,
+  sanitizeStyle: sanitizeInlineStyle,
+};
 
 export function sanitizeEmailHtml(input: string): string {
-  const html = input.replace(/\u0000/g, "");
-  const open: string[] = [];
-  let output = "";
-  let index = 0;
-  while (index < html.length) {
-    const lt = html.indexOf("<", index);
-    if (lt < 0) {
-      output += escapeKeepingEntities(html.slice(index), false);
-      break;
-    }
-    output += escapeKeepingEntities(html.slice(index, lt), false);
-    const next = html[lt + 1];
-    if (html.startsWith("<!--", lt)) {
-      const end = html.indexOf("-->", lt + 4);
-      if (end < 0) break;
-      index = end + 3;
-      continue;
-    }
-    if (next === "!" || next === "?") {
-      const end = html.indexOf(">", lt);
-      if (end < 0) break;
-      index = end + 1;
-      continue;
-    }
-    const closing = next === "/";
-    if (!/[a-zA-Z]/.test(html[lt + (closing ? 2 : 1)] ?? "")) {
-      if (closing) {
-        // "</ >" and friends are bogus comments in HTML; drop them.
-        const end = html.indexOf(">", lt);
-        if (end < 0) break;
-        index = end + 1;
-      } else {
-        output += "&lt;";
-        index = lt + 1;
-      }
-      continue;
-    }
-    const tag = parseTag(html, lt);
-    if (!tag) break;
-    index = tag.end;
-    if (closing) {
-      const position = open.lastIndexOf(tag.name);
-      if (position >= 0) {
-        while (open.length > position) output += `</${open.pop()}>`;
-      }
-      continue;
-    }
-    if (DROPPED_WITH_CONTENT.has(tag.name)) {
-      index = skipElementContent(html, index, tag.name);
-      continue;
-    }
-    if (!ALLOWED_TAGS.has(tag.name)) continue;
-    const attributes = serializeAttributes(tag.name, tag.attributes);
-    if (VOID_TAGS.has(tag.name)) {
-      output += `<${tag.name}${attributes} />`;
-    } else {
-      output += `<${tag.name}${attributes}>`;
-      open.push(tag.name);
-    }
-  }
-  while (open.length) output += `</${open.pop()}>`;
-  return output;
+  return sanitizeHtml(input, EMAIL_POLICY);
 }
 
 /** Text of sanitized markup (tags removed, entities kept); only meaningful for sanitizer output. */

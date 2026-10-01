@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useTransition, type FormEvent } from "react";
-import { registerAction } from "@/app/(storefront)/actions/auth";
-import { auth as copy } from "@/lib/copy";
+import { registerAction, type RegisterField } from "@/app/(storefront)/actions/auth";
+import { auth as copy } from "@/lib/copy/auth";
 import { UiButton } from "../ui/UiButton";
 import { UiInput } from "../ui/UiInput";
 import { PrivacyNotice } from "../PrivacyNotice";
@@ -23,10 +23,19 @@ export function RegisterForm({ privacyHref, ...challenge }: AuthChallengeProps &
   });
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The fields the server refused (QA T3-F4); each clears as soon as it is edited.
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<RegisterField, string>>>({});
   const [pending, startTransition] = useTransition();
 
-  const set = (key: keyof typeof values, value: string | boolean) =>
+  const set = (key: keyof typeof values, value: string | boolean) => {
     setValues((prev) => ({ ...prev, [key]: value }));
+    setFieldErrors((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key as RegisterField];
+      return next;
+    });
+  };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -38,7 +47,10 @@ export function RegisterForm({ privacyHref, ...challenge }: AuthChallengeProps &
         turnstileToken: human.token,
       });
       if (result.ok) setDone(true);
-      else setError(result.error ?? copy.register.genericError);
+      else {
+        setFieldErrors(result.fields ?? {});
+        setError(result.error ?? copy.register.genericError);
+      }
       } catch { setError(copy.register.genericError); }
       finally { human.reset(); }
     });
@@ -61,16 +73,20 @@ export function RegisterForm({ privacyHref, ...challenge }: AuthChallengeProps &
           name="firstName"
           autoComplete="given-name"
           required
+          maxLength={60}
           value={values.firstName}
           onChange={(e) => set("firstName", e.target.value)}
+          error={fieldErrors.firstName}
         />
         <UiInput
           label={copy.register.lastName}
           name="lastName"
           autoComplete="family-name"
           required
+          maxLength={60}
           value={values.lastName}
           onChange={(e) => set("lastName", e.target.value)}
+          error={fieldErrors.lastName}
         />
       </div>
       <UiInput
@@ -79,8 +95,10 @@ export function RegisterForm({ privacyHref, ...challenge }: AuthChallengeProps &
         type="email"
         autoComplete="email"
         required
+        maxLength={254}
         value={values.email}
         onChange={(e) => set("email", e.target.value)}
+        error={fieldErrors.email}
       />
       <UiInput
         label={copy.register.passwordLabel}
@@ -89,8 +107,10 @@ export function RegisterForm({ privacyHref, ...challenge }: AuthChallengeProps &
         autoComplete="new-password"
         required
         minLength={8}
+        maxLength={72}
         value={values.password}
         onChange={(e) => set("password", e.target.value)}
+        error={fieldErrors.password}
       />
       <label className="flex items-start gap-2 text-sm text-mid-1">
         <input

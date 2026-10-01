@@ -272,7 +272,7 @@ describe("gates", () => {
     else throw new Error("expected ok");
   });
 
-  it("email eligibility → not_eligible for other customers", () => {
+  it("email eligibility → email_restricted for other customers and for a cart without an e-mail (QA T6-10)", () => {
     expect(
       evaluateCoupon(
         coupon({ eligibleEmails: ["drug@test.si"] }),
@@ -280,7 +280,10 @@ describe("gates", () => {
         CTX,
         NOW,
       ),
-    ).toEqual({ ok: false, rejection: "not_eligible" });
+    ).toEqual({ ok: false, rejection: "email_restricted" });
+    expect(
+      evaluateCoupon(coupon({ eligibleEmails: ["drug@test.si"] }), [line()], { ...CTX, email: "" }, NOW),
+    ).toEqual({ ok: false, rejection: "email_restricted" });
   });
 
   it("excluded product is skipped", () => {

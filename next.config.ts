@@ -13,6 +13,18 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "*": ["./node_modules/pdfkit/js/data/**/*"],
   },
+  // The persistent media volumes are read at request time through their routes
+  // (AGENTS §2 Media). File tracing follows the path.join(process.cwd(), …)
+  // reads and would copy whatever sits there at build time — private review and
+  // ticket photos included — into .next/standalone, where start-standalone.cjs
+  // then refuses to start. The Docker context excludes them already; a build on
+  // any other Linux host must not ship them either (QA 2026-09-29 fix pass).
+  // Next 15.5 matches these globs against backslash paths on Windows, where they
+  // never apply: build there with the three directories empty, as the Docker
+  // context is.
+  outputFileTracingExcludes: {
+    "*": ["./review-uploads/**/*", "./support-uploads/**/*", "./catalog-uploads/**/*"],
+  },
   // Static security headers on every response (pages and API); the CSP with
   // its per-request nonce is added by the middleware (lib/security/headers.ts).
   async headers() {

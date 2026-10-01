@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import { searchProducts } from "@/lib/search";
-import { lowStockUnits, type CatalogProduct } from "@/lib/catalog";
-import { getPriceReductions } from "@/lib/omnibus";
-import { getLowStockThreshold } from "@/lib/settings";
+import { parseSearchQuery, searchProducts } from "@/lib/search";
+import { isTestMode } from "@/lib/turnstile";
+import { getEnv } from "@/lib/env";
 import { buildMetadata } from "@/lib/seo";
 import { search as copy } from "@/lib/copy";
 import { CatalogCard } from "@/components/storefront/catalog/CatalogCard";
@@ -16,41 +15,23 @@ export const metadata: Metadata = buildMetadata({
   noindex: true,
 });
 
-/** All-results search page (§3.1): SSR, GET form works without JS. */
+/**
+ * All-results search page (§3.1): SSR, GET form works without JS. The
+ * results are the same catalog cards /trgovina renders (badges, rating, unit
+ * price, hooks, CTA by state), ranked by lib/search.
+ */
 export default async function SearchPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string | string[] }>;
 }) {
-  const { q = "" } = await searchParams;
-  const query = q.trim();
-  const results = query.length >= 2 ? await searchProducts(query, 48) : [];
-  // same Omnibus gate and low-stock rule as every other card surface (one batched history query)
-  const [reductions, lowStockThreshold] = await Promise.all([getPriceReductions(results), getLowStockThreshold()]);
+  const { q } = await searchParams;
+  // zod at the boundary (AGENTS §8.2): a repeated or over-long ?q never reaches the search
+  const query = parseSearchQuery(Array.isArray(q) ? q[0] : q);
+  const cards = query.length >= 2 ? await searchProducts(query, 48) : [];
 
-  const cards: CatalogProduct[] = results.map((result) => ({
-    slug: result.slug,
-    title: result.title,
-    variantId: result.variantId,
-    sku: result.sku,
-    priceCents: result.priceCents,
-    reduction: reductions.get(result.variantId) ?? null,
-    stock: result.stock,
-    soldOut: result.soldOut,
-    lowStock: result.soldOut ? null : lowStockUnits(result.stock, lowStockThreshold),
-    backorderNote: null,
-    maxCartQuantity: 5,
-    imageUrl: result.imageUrl,
-    imageAlt: result.imageAlt,
-    hoverImageUrl: null,
-    badges: [],
-    variantCount: 1,
-    rating: null,
-    unitPrice: null,
-    isBundle: false,
-    bundleSavings: null,
-    createdAt: new Date(0),
-  }));
+  const env = getEnv();
+  const testToken = isTestMode() ? (env.TURNSTILE_TEST_TOKEN ?? null) : null;
 
   return (
     <section className="mx-auto max-w-(--container-wide) px-(--padding) py-12">
@@ -77,9 +58,9 @@ export default async function SearchPage({
 
       {query.length >= 2 ? (
         <>
-          <p className="mt-8 text-sm text-mid-1">
+          <p className="mt-8 text-sm text-mid-1" data-search-count={cards.length}>
             {copy.resultsFor} <strong className="text-dark-1">“{query}”</strong>:{" "}
-            {cards.length} {copy.resultsCount}
+            {copy.resultsCount(cards.length)}
           </p>
           {cards.length === 0 ? (
             <div className="mt-12 max-w-md">
@@ -90,7 +71,7 @@ export default async function SearchPage({
             <ul className="mt-8 grid grid-cols-2 gap-x-2 gap-y-8 md:grid-cols-4 md:gap-x-5">
               {cards.map((product) => (
                 <li key={product.slug}>
-                  <CatalogCard product={product} />
+                  <CatalogCard product={product} testToken={testToken} />
                 </li>
               ))}
             </ul>

@@ -185,7 +185,7 @@ test("guest purchaser receives private confirmation, can verify an account, and 
   try {
     await addFromBuyBox(page, product.slug, "1");
     await page.goto("/checkout");
-    await page.getByLabel("E-pošta").fill(email);
+    await page.getByLabel("E-pošta", { exact: true }).fill(email);
     await page.locator("[data-continue-contact]").click();
     await page.getByLabel("Ime in priimek").fill("Test Kupec");
     await page.getByLabel("Ulica", { exact: true }).fill("Testna ulica");
@@ -202,8 +202,16 @@ test("guest purchaser receives private confirmation, can verify an account, and 
 
     // Leaving checkout must not strand a legitimate purchaser's pending order.
     const unpaid = await prisma.order.findFirstOrThrow({ where: { email } });
-    await page.goto(`/potrditev/${unpaid.number}`);
+    // Right after a submitted payment the page waits for the provider's confirmation and polls for it.
+    await page.goto(`/potrditev/${unpaid.number}?placilo=oddano`);
     await expect(page.getByRole("heading", { name: "Čakamo na potrditev plačila" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Osveži stanje" })).toBeVisible();
+    // Opened to pay (the account's "Dokončaj plačilo" links land here), the payment leads and
+    // neither the heading nor the tab claims a confirmation (QA 2026-09-30).
+    await page.goto(`/potrditev/${unpaid.number}`);
+    await expect(page.getByRole("heading", { name: "Dokončajte plačilo" })).toBeVisible();
+    await expect(page).toHaveTitle(/^Dokončajte plačilo/);
+    await expect(page.getByRole("button", { name: "Osveži stanje" })).toHaveCount(0);
     await page.locator("[data-resume-payment]").click();
     await expect(page.locator("[data-pay-panel]")).toBeVisible();
     await page.locator("[data-test-pay-success]").click();

@@ -13,6 +13,8 @@ export interface TicketFilters { status: TicketStatus | null; topic: TopicCode |
 type Query = Record<string, string | string[] | undefined>;
 const single = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value ?? "").trim();
 
+export { readableDetailValue } from "@/lib/support/detail-format";
+
 export function parseTicketFilters(query: Query): TicketFilters {
   const status = single(query.status).toUpperCase();
   const topic = single(query.tema).toUpperCase();

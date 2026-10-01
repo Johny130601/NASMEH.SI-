@@ -1,5 +1,5 @@
 import { formatEUR } from "@/lib/pricing";
-import { email as copy } from "@/lib/copy";
+import { email as copy } from "@/lib/copy/email";
 import { emailLayout, emailStyles } from "./layout";
 
 export interface BackInStockAlertDetails {

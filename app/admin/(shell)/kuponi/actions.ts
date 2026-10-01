@@ -6,8 +6,9 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/admin/access";
 import { couponIsUnused, couponSchema, toCouponData, type CouponInput } from "@/lib/admin/coupons";
+import { couponInvalidReason } from "@/lib/admin/coupons-schema";
 
-export type CouponActionResult = { ok: true; id?: string } | { ok: false; error: "invalid" | "not_found" | "codeTaken" | "used" };
+export type CouponActionResult = { ok: true; id?: string } | { ok: false; error: "invalid" | "codeInvalid" | "not_found" | "codeTaken" | "used" };
 
 const idSchema = z.string().min(1).max(64);
 
@@ -24,7 +25,7 @@ function refresh(id?: string) {
 export async function createCouponAction(input: CouponInput): Promise<CouponActionResult> {
   await requirePermission("promos:manage");
   const parsed = couponSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "invalid" };
+  if (!parsed.success) return { ok: false, error: couponInvalidReason(parsed.error.issues) };
   try {
     const coupon = await db.coupon.create({ data: toCouponData(parsed.data) });
     refresh(coupon.id);
@@ -38,7 +39,7 @@ export async function createCouponAction(input: CouponInput): Promise<CouponActi
 export async function saveCouponAction(input: { couponId: string; coupon: CouponInput }): Promise<CouponActionResult> {
   await requirePermission("promos:manage");
   const parsed = z.object({ couponId: idSchema, coupon: couponSchema }).safeParse(input);
-  if (!parsed.success) return { ok: false, error: "invalid" };
+  if (!parsed.success) return { ok: false, error: couponInvalidReason(parsed.error.issues) };
   try {
     await db.coupon.update({ where: { id: parsed.data.couponId }, data: toCouponData(parsed.data.coupon) });
   } catch (error) {

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { anonymiseCustomerAction, saveCustomerNotesAction, type CustomerActionResult } from "@/app/admin/(shell)/stranke/[id]/actions";
-import { admin as copy } from "@/lib/copy";
+import { admin as copy } from "@/lib/copy/admin";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiInput } from "@/components/storefront/ui/UiInput";
 
@@ -41,7 +41,9 @@ export function CustomerActions({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [message, setMessage] = useState<string | null>(null);
+  // Each control answers next to itself: an erasure refusal never appears under the notes button (QA T5-10).
+  const [notesMessage, setNotesMessage] = useState<string | null>(null);
+  const [gdprMessage, setGdprMessage] = useState<string | null>(null);
   const exportHref = "userId" in target
     ? `/admin/stranke/${target.userId}/izvoz.json`
     : `/admin/stranke/gost/izvoz.json?email=${encodeURIComponent(target.email)}`;
@@ -55,14 +57,14 @@ export function CustomerActions({
           onSubmit={(event) => {
             event.preventDefault();
             const data = new FormData(event.currentTarget);
-            setMessage(null);
+            setNotesMessage(null);
             startTransition(async () => {
               try {
                 const result = await saveCustomerNotesAction({ userId: target.userId, tags: String(data.get("tags") ?? ""), adminNotes: String(data.get("adminNotes") ?? "") });
-                setMessage(result.ok ? copy.common.done : copy.common.error);
+                setNotesMessage(result.ok ? copy.common.done : copy.common.error);
                 router.refresh();
               } catch {
-                setMessage(copy.common.error);
+                setNotesMessage(copy.common.error);
               }
             });
           }}
@@ -77,7 +79,7 @@ export function CustomerActions({
           </div>
           <div className="mt-3 flex items-center gap-3">
             <UiButton type="submit" variant="outline" disabled={pending}>{copy.common.save}</UiButton>
-            {message ? <p role="status" className="text-sm text-mid-1">{message}</p> : null}
+            {notesMessage ? <p role="status" className="text-sm text-mid-1" data-customer-notes-message>{notesMessage}</p> : null}
           </div>
         </form>
       ) : null}
@@ -94,7 +96,7 @@ export function CustomerActions({
                 data-customer-anonymise
                 onClick={() => {
                   if (!window.confirm(copy.customers.detail.confirmAnonymise)) return;
-                  setMessage(null);
+                  setGdprMessage(null);
                   startTransition(async () => {
                     try {
                       const result = await anonymiseCustomerAction(target);
@@ -103,10 +105,10 @@ export function CustomerActions({
                         router.push(destination);
                         return;
                       }
-                      setMessage(anonymiseMessage(result));
+                      setGdprMessage(anonymiseMessage(result));
                       router.refresh();
                     } catch {
-                      setMessage(copy.common.error);
+                      setGdprMessage(copy.common.error);
                     }
                   });
                 }}
@@ -116,7 +118,7 @@ export function CustomerActions({
             ) : null}
           </div>
           <p className="mt-2 text-xs text-mid-2">{copy.customers.detail.anonymiseHint}</p>
-          {message && !("userId" in target && !anonymized) ? <p role="status" className="mt-2 text-sm text-mid-1">{message}</p> : null}
+          {gdprMessage ? <p role="status" className="mt-2 text-sm text-mid-1" data-customer-gdpr-message>{gdprMessage}</p> : null}
         </section>
       ) : null}
     </div>

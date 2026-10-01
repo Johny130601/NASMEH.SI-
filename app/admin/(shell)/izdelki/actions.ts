@@ -6,17 +6,25 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/admin/access";
 import {
-  buildCustomFields, lowStockSchema, MEDIA_KINDS, productBasicsSchema, productContentSchema, skuSchema, slugSchema, variantSchema,
-  type ProductBasics, type ProductContent, type VariantInput,
+  buildCustomFields, lowStockSchema, MEDIA_KINDS, PRODUCT_CREATE_FIELDS, productBasicsSchema, productContentSchema, productIssueField, skuSchema, slugSchema, variantSchema,
+  type ProductBasics, type ProductContent, type ProductCreateField, type ProductFieldKey, type VariantInput,
 } from "@/lib/admin/catalog";
+import { contentLinksToProducts, type ContentLinkPlace } from "@/lib/admin/cms";
 import { InvalidMediaFile, prepareMediaImage, removeMediaImage, saveMediaImage } from "@/lib/admin/media";
+import { variantIsPurchasable } from "@/lib/cart/visibility";
 import { setVariantStockInTx } from "@/lib/inventory/stock";
 import { sendPendingRestockAlerts } from "@/lib/jobs/restock-alerts";
 import { changeVariantPriceInTx, recordInitialPriceInTx } from "@/lib/price-history";
+import { sanitizeContentHtml } from "@/lib/security/html-sanitizer";
 
+/**
+ * `field`: the editor or create-form field a refused save names (QA T6-11, v-a). `linkedFrom`: after a
+ * save that takes the product off sale or renames it, the menus and content blocks that still link to
+ * its old page, which now answers 404 and which the storefront therefore leaves out (QA v-a).
+ */
 export type CatalogActionResult =
-  | { ok: true; id?: string; armed?: number; sent?: number; failed?: number }
-  | { ok: false; error: "invalid" | "not_found" | "slugTaken" | "skuTaken" | "extraJson" | "lastVariant" | "inBundle" | "bundlePrice" | "media" | "noStock" };
+  | { ok: true; id?: string; armed?: number; sent?: number; failed?: number; linkedFrom?: ContentLinkPlace[] }
+  | { ok: false; error: "invalid" | "not_found" | "slugTaken" | "skuTaken" | "extraJson" | "lastVariant" | "inBundle" | "bundlePrice" | "media" | "noStock"; field?: ProductFieldKey | ProductCreateField };
 
 const idSchema = z.string().min(1).max(64);
 
@@ -42,7 +50,11 @@ export async function createProductAction(input: { title: string; slug: string; 
   const parsed = z.object({
     title: z.string().trim().min(1).max(200), slug: slugSchema, sku: skuSchema, priceCents: z.number().int().min(0).max(10_000_000),
   }).safeParse(input);
-  if (!parsed.success) return { ok: false, error: "invalid" };
+  if (!parsed.success) {
+    // The form marks the first field that failed with its rule, as the editor does (QA T6-11, v-a).
+    const field = parsed.error.issues.map((issue) => issue.path[0]).find((key): key is ProductCreateField => (PRODUCT_CREATE_FIELDS as readonly unknown[]).includes(key));
+    return field ? { ok: false, error: "invalid", field } : { ok: false, error: "invalid" };
+  }
   try {
     const product = await db.$transaction(async (tx) => {
       const created = await tx.product.create({ data: { title: parsed.data.title, slug: parsed.data.slug, status: "DRAFT" } });
@@ -64,11 +76,23 @@ export async function createProductAction(input: { title: string; slug: string; 
 export async function saveProductAction(input: { productId: string; basics: ProductBasics; content: ProductContent }): Promise<CatalogActionResult> {
   await requirePermission("catalog:manage");
   const parsed = z.object({ productId: idSchema, basics: productBasicsSchema, content: productContentSchema }).safeParse(input);
-  if (!parsed.success) return { ok: false, error: "invalid" };
-  const { productId, basics, content } = parsed.data;
+  if (!parsed.success) {
+    const field = productIssueField(parsed.error.issues);
+    return field ? { ok: false, error: "invalid", field } : { ok: false, error: "invalid" };
+  }
+  const { productId, content } = parsed.data;
+  // The description and the accordion bodies are operator HTML rendered on the storefront, same origin as /admin:
+  // stored exactly as they will render (AGENTS §8.24, QA S1); the PDP sanitizes again on render.
+  const basics = { ...parsed.data.basics, description: sanitizeContentHtml(parsed.data.basics.description) };
+  const accordions = {
+    howItWorks: sanitizeContentHtml(content.accordions.howItWorks),
+    inci: sanitizeContentHtml(content.accordions.inci),
+    guarantee: sanitizeContentHtml(content.accordions.guarantee),
+    tested: sanitizeContentHtml(content.accordions.tested),
+  };
   const customFields = buildCustomFields(content.merchandising);
   if (!customFields.ok) return { ok: false, error: "extraJson" };
-  const existing = await db.product.findUnique({ where: { id: productId }, select: { slug: true } });
+  const existing = await db.product.findUnique({ where: { id: productId }, select: { slug: true, bundle: { select: { active: true } } } });
   if (!existing) return { ok: false, error: "not_found" };
   try {
     await db.product.update({
@@ -77,7 +101,7 @@ export async function saveProductAction(input: { productId: string; basics: Prod
         ...basics,
         badges: content.badges as unknown as Prisma.InputJsonValue,
         customFields: customFields.value,
-        accordions: content.accordions as unknown as Prisma.InputJsonValue,
+        accordions: accordions as unknown as Prisma.InputJsonValue,
         faq: content.faq as unknown as Prisma.InputJsonValue,
         education: content.education as unknown as Prisma.InputJsonValue,
       },
@@ -87,7 +111,12 @@ export async function saveProductAction(input: { productId: string; basics: Prod
     throw error;
   }
   refreshProduct(basics.slug, existing.slug);
-  return { ok: true };
+  // Off sale (draft, archived, hidden deal, withdrawn bundle) or renamed: links operators placed to the
+  // product page now lead to a 404 the storefront leaves out, so the editor names where they are (QA v-a).
+  const onSale = variantIsPurchasable({ status: basics.status, hiddenDeal: basics.hiddenDeal, bundle: existing.bundle ?? null });
+  const orphaned = [...(existing.slug !== basics.slug ? [existing.slug] : []), ...(onSale ? [] : [basics.slug])];
+  const linkedFrom = orphaned.length ? await contentLinksToProducts(orphaned) : [];
+  return linkedFrom.length ? { ok: true, linkedFrom } : { ok: true };
 }
 
 /** Prices go through the price-history helper, stock through the stock helper (AGENTS §8.9, §8.13). */

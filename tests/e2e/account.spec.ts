@@ -93,6 +93,7 @@ test("account order cards, snapshots, tracking, review entry points and invoice 
   await expect(card.getByText(fixture.fourthTitle, { exact: false })).toBeHidden();
   await card.locator("[data-order-more] summary").click();
   await expect(card.getByText(fixture.fourthTitle, { exact: false })).toBeVisible();
+  await expect(card.locator("[data-order-more] summary")).toHaveText("Pokaži manj", { useInnerText: true });
   await expect(card).toContainText("Odposlano z Pošta Slovenije");
   await card.getByRole("link", { name: "Podrobnosti naročila" }).click();
   await expect(page.locator("[data-order-subtotal]")).toHaveText("100,00 €");
@@ -118,6 +119,9 @@ test("account order cards, snapshots, tracking, review entry points and invoice 
   expect((await readFile((await download.path())!)).subarray(0, 5).toString()).toBe("%PDF-");
 
   await page.goto(`/racun/narocilo/${fixture.pendingNumber}`);
+  // An unpaid order says so and offers the way to finish paying (QA M10).
+  await expect(page.getByText("Čaka na plačilo", { exact: true })).toBeVisible();
+  await expect(page.locator("[data-order-pay]")).toHaveAttribute("href", `/potrditev/${fixture.pendingNumber}`);
   await expect(page.locator("[data-invoice-download]")).toHaveCount(0);
   await expect(page.locator("[data-review-cta]")).toHaveCount(0);
   expect((await page.request.get(`/racun/narocilo/${fixture.pendingNumber}/racun.pdf`)).status()).toBe(404);
@@ -185,7 +189,12 @@ test("address create/edit/default/delete and marketing withdrawal keep an audit 
   await work.getByRole("button", { name: "Nastavi kot privzeti", exact: true }).click();
   await expect(work).toContainText("Privzeti");
   await expect(home).not.toContainText("Privzeti");
+  // Deleting asks first (QA T3-A1): cancelling keeps the row, confirming removes it.
   await work.getByRole("button", { name: "Izbriši", exact: true }).click();
+  await work.getByRole("button", { name: "Prekliči", exact: true }).click();
+  await expect(work).toHaveCount(1);
+  await work.getByRole("button", { name: "Izbriši", exact: true }).click();
+  await work.getByRole("button", { name: "Izbriši naslov", exact: true }).click();
   await expect(work).toHaveCount(0);
   await expect(home).toContainText("Privzeti");
 
@@ -242,4 +251,32 @@ test("concurrent address mutations preserve one default and cannot target anothe
   rows = await prisma.address.findMany({ where: { userId: fixture.owner.id } });
   expect(rows).toHaveLength(1);
   expect(rows[0].isDefault).toBe(true);
+});
+
+test("signed-in checkout starts from the account's default address and offers the address book (QA M12)", async ({ page, accountFixture: fixture }) => {
+  await prisma.address.create({ data: {
+    userId: fixture.owner.id, label: "Dom", fullName: "Živa Ščuk", line1: "Čopova ulica 12", postalCode: "1000",
+    city: "Ljubljana", country: "SI", phone: "+386 40 123 456", isDefault: true,
+  } });
+  await prisma.address.create({ data: {
+    userId: fixture.owner.id, label: "Služba", fullName: "Živa Ščuk", line1: "Dunajska cesta 20", postalCode: "1000",
+    city: "Ljubljana", country: "SI", isDefault: false,
+  } });
+  await login(page, fixture.owner.email);
+  await page.goto("/trgovina");
+  await page.locator("[data-product-card='belilni-trakci-za-zobe']").getByRole("button", { name: "Dodaj v košarico" }).click();
+  await expect(page.locator("[data-cart-badge]")).toHaveText("1");
+  await page.goto("/checkout");
+  await expect(page.getByLabel("E-pošta", { exact: true })).toHaveValue(fixture.owner.email);
+  await page.locator("[data-continue-contact]").click();
+  const picker = page.locator("[data-saved-addresses]");
+  await expect(picker).toBeVisible();
+  await expect(page.getByLabel("Ime in priimek", { exact: true })).toHaveValue("Živa Ščuk");
+  await expect(page.getByLabel("Ulica", { exact: true })).toHaveValue("Čopova ulica");
+  await expect(page.getByLabel("Hišna številka", { exact: true })).toHaveValue("12");
+  await expect(page.getByLabel("Poštna številka", { exact: true })).toHaveValue("1000");
+  await expect(page.getByLabel("Telefon (za kurirja)", { exact: true })).toHaveValue("+386 40 123 456");
+  await picker.selectOption({ label: "Služba — Dunajska cesta 20, 1000 Ljubljana" });
+  await expect(page.getByLabel("Ulica", { exact: true })).toHaveValue("Dunajska cesta");
+  await expect(page.getByLabel("Hišna številka", { exact: true })).toHaveValue("20");
 });

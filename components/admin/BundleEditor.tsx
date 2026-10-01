@@ -3,10 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { createBundleAction, saveBundleAction } from "@/app/admin/(shell)/paketi/actions";
-import { admin as copy } from "@/lib/copy";
+import type { ContentLinkPlace } from "@/lib/admin/cms";
+import { admin as copy } from "@/lib/copy/admin";
 import { bundleSavings, formatEUR } from "@/lib/pricing";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiFormField, UiInput } from "@/components/storefront/ui/UiInput";
+import { ContentLinkWarning, linkPlacesText } from "./ContentLinkWarning";
 
 const c = copy.catalog.bundles;
 const selectClass = "min-h-[2.75rem] w-full rounded-input border border-light-1 bg-white px-3 text-sm outline-none focus:border-brand";
@@ -53,12 +55,16 @@ export interface BundleEditorProps {
   active: boolean;
   items: Array<{ variantId: string; quantity: number }>;
   options: Array<{ id: string; sku: string; title: string; priceCents: number; productTitle: string }>;
+  /** For an inactive bundle: the menus and home blocks that still link to its page, which answers 404 (QA v-a). */
+  linkedFrom?: ContentLinkPlace[];
 }
 
-export function BundleEditor({ productId, priceCents: initialPrice, active: initialActive, items: initialItems, options }: BundleEditorProps) {
+export function BundleEditor({ productId, priceCents: initialPrice, active: initialActive, items: initialItems, options, linkedFrom = [] }: BundleEditorProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  // Menus and home blocks that still link to an inactive bundle, whose page answers 404 (QA v-a): named on load and after a save.
+  const [linkWarning, setLinkWarning] = useState<string | null>(() => (linkedFrom.length ? linkPlacesText(linkedFrom) : null));
   const [priceCents, setPriceCents] = useState(initialPrice);
   const [active, setActive] = useState(initialActive);
   const [items, setItems] = useState(initialItems.length ? initialItems : [{ variantId: "", quantity: 1 }]);
@@ -74,10 +80,12 @@ export function BundleEditor({ productId, priceCents: initialPrice, active: init
       onSubmit={(event) => {
         event.preventDefault();
         setMessage(null);
+        setLinkWarning(null);
         startTransition(async () => {
           try {
             const result = await saveBundleAction({ productId, priceCents, active, items: items.filter((item) => item.variantId) });
             setMessage(result.ok ? { ok: true, text: c.editor.saved } : { ok: false, text: c.editor.invalid });
+            setLinkWarning(result.ok && result.linkedFrom?.length ? linkPlacesText(result.linkedFrom) : null);
             router.refresh();
           } catch {
             setMessage({ ok: false, text: copy.common.error });
@@ -113,6 +121,7 @@ export function BundleEditor({ productId, priceCents: initialPrice, active: init
         <UiButton type="submit" variant="primary" disabled={pending} data-bundle-save>{c.editor.save}</UiButton>
         {message ? <p role="status" className={`text-sm ${message.ok ? "text-success" : "text-error"}`} data-bundle-message>{message.text}</p> : null}
       </div>
+      <div className="mt-3 empty:hidden"><ContentLinkWarning text={linkWarning} /></div>
     </form>
   );
 }

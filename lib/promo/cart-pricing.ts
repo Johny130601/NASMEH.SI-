@@ -3,6 +3,7 @@ import {
   priceCartWithCoupon,
   type CouponPricedCart,
   type CouponRejection,
+  type CouponType,
 } from "./coupons";
 import { resolveCouponInput } from "./resolve";
 import { readKodaCode } from "@/lib/koda";
@@ -12,6 +13,8 @@ export interface CartPricingDisplay {
   priced: PricedCart | CouponPricedCart;
   rejection: CouponRejection | null;
   code: string | null;
+  /** The active code's type, known even while it is rejected: a free-shipping code has its own terms sentence (QA T6-10). */
+  couponType: CouponType | null;
 }
 
 /**
@@ -31,6 +34,7 @@ export async function priceCartForDisplay(
       priced: priceCart(hydrated, settings, new Date()),
       rejection: null,
       code: null,
+      couponType: null,
     };
   }
 
@@ -44,11 +48,12 @@ export async function priceCartForDisplay(
   );
 
   if ("appliedCoupon" in result) {
-    return { priced: result, rejection: null, code };
+    return { priced: result, rejection: null, code, couponType: coupon?.type ?? null };
   }
   return {
     priced: priceCart(hydrated, settings, new Date()),
     rejection: result.rejection,
     code,
+    couponType: coupon?.type ?? null,
   };
 }

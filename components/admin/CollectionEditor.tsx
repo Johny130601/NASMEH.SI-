@@ -7,7 +7,7 @@ import {
   removeCollectionBannerAction, removeCollectionProductAction, saveCollectionAction, uploadCollectionBannerAction, type CollectionActionResult,
 } from "@/app/admin/(shell)/kolekcije/actions";
 import type { CollectionInput } from "@/lib/admin/catalog";
-import { admin as copy } from "@/lib/copy";
+import { admin as copy } from "@/lib/copy/admin";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiFormField, UiInput } from "@/components/storefront/ui/UiInput";
 

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { isAuthTokenValid } from "@/lib/auth-tokens";
+import { isAuthTokenValid, isVerifiedAccountToken } from "@/lib/auth-tokens";
 import { getAuthChallengeProps } from "@/lib/auth-challenge";
 import { auth as copy } from "@/lib/copy";
 import { UiButton } from "@/components/storefront/ui/UiButton";
@@ -12,8 +12,17 @@ export const metadata: Metadata = { title: copy.verify.title, robots: { index: f
 export default async function VerifyAccountPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const valid = await isAuthTokenValid(token, "VERIFY_EMAIL");
+  // A used link of an account that is already active leads to sign-in (QA T3-F5).
+  const alreadyActive = !valid && await isVerifiedAccountToken(token);
   return <section className="mx-auto max-w-md px-(--padding) py-24 text-center">
-    {valid ? <VerifyAccountForm token={token} {...getAuthChallengeProps()} /> : <>
+    {valid ? <VerifyAccountForm token={token} {...getAuthChallengeProps()} /> : alreadyActive ? <div data-verify-already-active>
+      <h1 className="text-[2rem]">{copy.verify.titleAlreadyActive}</h1>
+      <p className="my-4 text-sm text-mid-1">{copy.verify.bodyAlreadyActive}</p>
+      <div className="flex flex-wrap justify-center gap-3">
+        <UiButton href="/prijava" variant="primary">{copy.verify.cta}</UiButton>
+        <UiButton href="/pozabljeno-geslo" variant="outline">{copy.verify.forgotCta}</UiButton>
+      </div>
+    </div> : <>
       <h1 className="text-[2rem]">{copy.verify.titleInvalid}</h1>
       <p className="my-4 text-sm text-mid-1">{copy.verify.bodyInvalid}</p>
       <UiButton href="/registracija" variant="primary">{copy.verify.requestNew}</UiButton>

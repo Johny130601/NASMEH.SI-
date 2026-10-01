@@ -1,9 +1,34 @@
-import { formatEUR } from "@/lib/pricing";
-import type { CheckoutQuote } from "@/lib/orders/quote";
-import { checkout, promo } from "@/lib/copy";
+import { formatEUR, klarnaInstallmentCents } from "@/lib/pricing";
+import type { CheckoutQuote, QuoteFailure } from "@/lib/orders/quote";
+import { checkout } from "@/lib/copy/checkout";
+import { promo } from "@/lib/copy/promo";
 import { DiscountField } from "./DiscountField";
 
-export function CheckoutSummary({ quote, pending, activeCode }: { quote: CheckoutQuote | null; pending: boolean; activeCode: string | null }) {
+/** Why the rail has no totals: each quote failure says what to do instead of one dead-end sentence (QA M11). */
+const failureMessage: Record<QuoteFailure, string> = {
+  invalid_email: checkout.fields.email,
+  empty_cart: checkout.errors.quoteEmptyCart,
+  sold_out: checkout.errors.quoteSoldOut,
+  invalid_shipping_method: checkout.errors.shippingUnavailable,
+  failed: checkout.errors.quoteFailed,
+};
+
+/** "ali 3 obroki po X s Klarno": the total split in three, the same rounding as the cart and the PDP (§8.2, QA C2-F13). */
+export function KlarnaRecap({ totalCents }: { totalCents: number }) {
+  return (
+    <p className="text-xs text-mid-1" data-klarna-recap>
+      {checkout.summary.klarnaRecap} {formatEUR(klarnaInstallmentCents(totalCents))} {checkout.summary.klarnaSuffix}
+    </p>
+  );
+}
+
+export function CheckoutSummary({ quote, failure = null, pending, activeCode, klarnaEnabled = false }: {
+  quote: CheckoutQuote | null;
+  failure?: QuoteFailure | null;
+  pending: boolean;
+  activeCode: string | null;
+  klarnaEnabled?: boolean;
+}) {
   return <aside className="h-fit rounded-card border border-light-2 bg-white p-5" data-checkout-summary aria-busy={pending}>
     <h2 className="text-lg">{checkout.summary.title}</h2>
     {quote ? <>
@@ -17,10 +42,12 @@ export function CheckoutSummary({ quote, pending, activeCode }: { quote: Checkou
         <div className="flex justify-between"><dt>{checkout.summary.vat} ({quote.vatRatePercent} %)</dt><dd data-checkout-vat>{formatEUR(quote.vatCents)}</dd></div>
         <div className="flex justify-between text-lg font-medium"><dt>{checkout.summary.total}</dt><dd data-checkout-total>{formatEUR(quote.totalCents)}</dd></div>
       </dl>
-    </> : <p role="status" className="mt-4 text-sm">{checkout.errors.shippingUnavailable}</p>}
+      {klarnaEnabled ? <div className="mt-2"><KlarnaRecap totalCents={quote.totalCents} /></div> : null}
+    </> : <p role="status" className="mt-4 text-sm" data-quote-failure={failure ?? "failed"}>{failureMessage[failure ?? "failed"]}</p>}
     <div className="mt-4"><DiscountField activeCode={activeCode}
       error={quote?.couponRejection ? promo.errors[quote.couponRejection] : null} /></div>
-    {activeCode ? <p className="mt-2 text-xs text-mid-2">{promo.terms}</p> : null}
+    {/* A free-shipping code gets its own terms sentence: the uniform one excludes delivery (QA T6-10). */}
+    {activeCode ? <p className="mt-2 text-xs text-mid-2">{promo.termsFor(quote?.couponType)}</p> : null}
     {pending ? <p role="status" className="mt-2 text-xs">{checkout.summary.updating}</p> : null}
   </aside>;
 }

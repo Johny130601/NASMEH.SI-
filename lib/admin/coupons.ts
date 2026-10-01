@@ -2,6 +2,7 @@ import { Prisma, type Coupon } from "@prisma/client";
 import { db } from "@/lib/db";
 import { siteUrl } from "@/lib/seo";
 import { dateToZonedDateTime, type CouponInput, type CouponValues } from "./coupons-schema";
+import { likeEscaped } from "./like";
 
 /** Coupon administration (§14.4): JSON mapping and queries; the form schema lives in coupons-schema.ts. */
 
@@ -75,7 +76,7 @@ export async function listCoupons(filters: CouponFilters) {
     take: COUPON_LIST_LIMIT,
     where: {
       ...(filters.active === null ? {} : { active: filters.active }),
-      ...(filters.q ? { code: { contains: filters.q } } : {}),
+      ...(filters.q ? { code: { contains: likeEscaped(filters.q) } } : {}),
     },
     orderBy: [{ active: "desc" }, { createdAt: "desc" }],
     include: { _count: { select: { couponRedemptions: true } } },

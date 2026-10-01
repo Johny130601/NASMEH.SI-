@@ -1,6 +1,6 @@
 import type { Order, OrderItem } from "@prisma/client";
-import { formatEUR } from "@/lib/pricing";
-import { email as copy } from "@/lib/copy";
+import { formatDdvLine, formatEUR } from "@/lib/pricing";
+import { email as copy } from "@/lib/copy/email";
 import { returns } from "@/lib/copy/returns";
 import type { CompanySetting } from "@/lib/settings";
 import { telHref } from "@/lib/phone";
@@ -98,38 +98,39 @@ export function orderConfirmationRequiredHtml(details: OrderConfirmationDetails)
   return (renderedBody) => renderOrderConfirmationLegalBlock(details.legal, sanitizedText(renderedBody).includes(escapeHtml(note)) ? null : note);
 }
 
+const ROW = "padding:0.4rem 0;font-size:0.9rem;";
+const RULE = "border-top:1px solid rgb(229,229,234);";
+
+/**
+ * Items, the discount (code and amount, so the lines add up), shipping, the
+ * total and the included-VAT line (lib/pricing, the invoice's figure): the one
+ * table the code template renders and an override inserts through {{items}}.
+ */
+export function renderOrderItemsTable(order: Order & { items: OrderItem[] }): string {
+  const row = (label: string, amount: string, style = ROW) =>
+    `<tr><td style="${style}">${label}</td><td style="${style}text-align:right;">${amount}</td></tr>`;
+  const lines = order.items.map((item) => row(`${item.quantity} × ${escapeHtml(item.title)}`, formatEUR(item.unitPriceCents * item.quantity))).join("");
+  const discount = order.discountCents > 0
+    ? row(escapeHtml(order.couponCode ? text.discountWithCode(order.couponCode) : text.discountLabel), `−${formatEUR(order.discountCents)}`)
+    : "";
+  const shipping = row(`${text.shippingLabel} (${escapeHtml(order.shippingMethod ?? "")})`, formatEUR(order.shippingCents), `${ROW}${RULE}`);
+  const total = row(text.totalLabel, formatEUR(order.totalCents), "padding:0.4rem 0;font-size:1rem;font-weight:500;");
+  const vat = `<tr><td colspan="2" style="padding:0 0 0.4rem;font-size:0.8rem;color:rgb(99,99,102);text-align:right;">${escapeHtml(formatDdvLine(order.totalCents, order.vatRatePercent))}</td></tr>`;
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:1rem 0;${RULE}">${lines}${discount}${shipping}${total}${vat}</table>`;
+}
+
 /** Order confirmation email (§8.4) — invoice, model withdrawal form and legal texts attached by the caller. */
 export function renderOrderConfirmationEmail(
   order: Order & { items: OrderItem[] },
   details: OrderConfirmationDetails,
 ): string {
-  const lines = order.items
-    .map(
-      (item) =>
-        `<tr>
-          <td style="padding:0.4rem 0;font-size:0.9rem;">${item.quantity} × ${escapeHtml(item.title)}</td>
-          <td style="padding:0.4rem 0;font-size:0.9rem;text-align:right;">${formatEUR(item.unitPriceCents * item.quantity)}</td>
-        </tr>`,
-    )
-    .join("");
-
   return emailLayout(`
     <h1 style="${emailStyles.h1}">${text.heading}</h1>
     <p style="${emailStyles.p}">
       ${text.body}<br />
       <strong>${escapeHtml(order.number)}</strong>
     </p>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:1rem 0;border-top:1px solid rgb(229,229,234);">
-      ${lines}
-      <tr>
-        <td style="padding:0.4rem 0;font-size:0.9rem;border-top:1px solid rgb(229,229,234);">Dostava (${escapeHtml(order.shippingMethod ?? "")})</td>
-        <td style="padding:0.4rem 0;font-size:0.9rem;text-align:right;border-top:1px solid rgb(229,229,234);">${formatEUR(order.shippingCents)}</td>
-      </tr>
-      <tr>
-        <td style="padding:0.4rem 0;font-size:1rem;font-weight:500;">${text.totalLabel}</td>
-        <td style="padding:0.4rem 0;font-size:1rem;font-weight:500;text-align:right;">${formatEUR(order.totalCents)}</td>
-      </tr>
-    </table>
+    ${renderOrderItemsTable(order)}
     <p style="${emailStyles.p}">${escapeHtml(orderConfirmationDeliveryNote(details.estimate))}</p>
     <p style="${emailStyles.small}">${text.footer}</p>
     ${renderOrderConfirmationLegalBlock(details.legal)}

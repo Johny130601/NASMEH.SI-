@@ -1,7 +1,7 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import type { Order, OrderItem } from "@prisma/client";
 import { getEnv } from "@/lib/env";
-import { email as copy } from "@/lib/copy";
+import { email as copy } from "@/lib/copy/email";
 import { siteUrl } from "@/lib/seo";
 import { renderProofEmail } from "./templates/proof";
 import { renderSubscriptionUnsubscribeBlock, renderVerifySubscriptionEmail } from "./templates/verify-subscription";
@@ -10,7 +10,8 @@ import { htmlToText } from "./text";
 import { newsletterUnsubscribePath } from "@/lib/newsletter/unsubscribe-token";
 import { renderBackInStockEmail } from "./templates/back-in-stock";
 import {
-  orderConfirmationDeliveryNote, orderConfirmationRequiredHtml, renderOrderConfirmationEmail, type OrderConfirmationDetails,
+  orderConfirmationDeliveryNote, orderConfirmationRequiredHtml, renderOrderConfirmationEmail, renderOrderItemsTable,
+  type OrderConfirmationDetails,
 } from "./templates/order-confirmation";
 import { returns } from "@/lib/copy/returns";
 import { legalTexts } from "@/lib/copy/invoice";
@@ -142,7 +143,7 @@ export async function sendOrderConfirmationEmail(
 ) {
   const details: OrderConfirmationDetails = { estimate: content.estimate, legal: content.legal };
   const mail = await resolveMail("orderConfirmation", {
-    orderNumber: order.number, total: formatEUR(order.totalCents), shippingMethod: order.shippingMethod ?? "", items: renderOrderItemsBlock(order),
+    orderNumber: order.number, total: formatEUR(order.totalCents), shippingMethod: order.shippingMethod ?? "", items: renderOrderItemsTable(order),
     estimate: content.estimate ?? "", deliveryNote: orderConfirmationDeliveryNote(content.estimate),
   }, () => ({
     subject: `${copy.orderConfirmation.subjectPrefix} ${order.number} — Nasmeh.si`,
@@ -158,15 +159,6 @@ export async function sendOrderConfirmationEmail(
       { filename: legalTexts.filename(order.number), content: content.legalTextsPdf },
     ],
   });
-}
-
-const escapeText = escapeHtml;
-
-/** Items, shipping and total as the block an override inserts through {{items}}. */
-function renderOrderItemsBlock(order: Order & { items: OrderItem[] }): string {
-  const rows = order.items.map((item) =>
-    `<tr><td style="padding:0.4rem 0;font-size:0.9rem;">${item.quantity} × ${escapeText(item.title)}</td><td style="padding:0.4rem 0;font-size:0.9rem;text-align:right;">${formatEUR(item.unitPriceCents * item.quantity)}</td></tr>`).join("");
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:1rem 0;border-top:1px solid rgb(229,229,234);">${rows}<tr><td style="padding:0.4rem 0;font-size:0.9rem;border-top:1px solid rgb(229,229,234);">Dostava (${escapeText(order.shippingMethod ?? "")})</td><td style="padding:0.4rem 0;font-size:0.9rem;text-align:right;border-top:1px solid rgb(229,229,234);">${formatEUR(order.shippingCents)}</td></tr><tr><td style="padding:0.4rem 0;font-size:1rem;font-weight:500;">${copy.orderConfirmation.totalLabel}</td><td style="padding:0.4rem 0;font-size:1rem;font-weight:500;text-align:right;">${formatEUR(order.totalCents)}</td></tr></table>`;
 }
 
 /** Shipped notification with the carrier link (§12.3); stable Message-ID per order. */
@@ -252,7 +244,7 @@ function renderReviewItemsBlock(items: ReviewRequestItem[]): string {
   const rows = items.map((item) => {
     const stars = item.ratingUrls.map(({ rating, token }) =>
       `<a href="${base}/oceni/hitro/${encodeURIComponent(token)}" title="${rating}★" style="font-size:1.4rem;text-decoration:none;color:rgb(0,168,143);">★</a>`).join(" ");
-    return `<tr><td style="padding:0.6rem 0;font-size:0.95rem;">${escapeText(item.title)}</td><td style="padding:0.6rem 0;text-align:right;white-space:nowrap;">${stars}</td></tr>`;
+    return `<tr><td style="padding:0.6rem 0;font-size:0.95rem;">${escapeHtml(item.title)}</td><td style="padding:0.6rem 0;text-align:right;white-space:nowrap;">${stars}</td></tr>`;
   }).join("");
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:1rem 0;border-top:1px solid rgb(229,229,234);">${rows}</table>`;
 }

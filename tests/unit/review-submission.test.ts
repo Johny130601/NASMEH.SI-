@@ -89,6 +89,16 @@ describe("verified review submission", () => {
     expect((await submitReviewAction(form({ photo: true }))).error).toContain("Fotografije ni mogoče");
     expect(mocks.save).not.toHaveBeenCalled(); expect(mocks.create).not.toHaveBeenCalled();
   });
+  it.each([
+    ["an unnamed 0-byte File", new File([], "")],
+    ["a 0-byte File the action encoder named \"blob\"", new File([], "blob", { type: "application/octet-stream" })],
+    ["an empty string part", ""],
+  ])("accepts a review without a photo when the untouched input arrives as %s (QA M1)", async (_label, part) => {
+    const data = form(); data.set("photos", part);
+    expect(await submitReviewAction(data)).toEqual({ ok: true, autoPublished: false });
+    expect(mocks.prepare).not.toHaveBeenCalled();
+    expect(mocks.create).toHaveBeenCalledWith({ data: expect.objectContaining({ photos: [] }) });
+  });
   it("rejects more than four photos and forged string photo fields", async () => {
     const data = form(); for (let i = 0; i < 5; i++) data.append("photos", new File(["x"], `${i}.png`, { type: "image/png" }));
     expect((await submitReviewAction(data)).ok).toBe(false);

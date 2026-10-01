@@ -16,19 +16,24 @@ export function lowStockLine(units: number): string {
 
 export const catalog = {
   title: "Trgovina",
+  /** The placeholder banner (all products). A collection's own banner is described by its title. */
   bannerAlt: "Nasmeh.si trgovina — promocijski pas",
+  collectionBannerAlt: (title: string) => `Kolekcija ${title} — promocijski pas`,
+  /**
+   * Tabs (§5): "Vsi izdelki" plus one per collection that has products, titled
+   * by the Collection record — nothing else is typed here.
+   */
   tabs: {
     all: "Vsi izdelki",
-    beljenje: "Beljenje",
-    paketi: "Paketi",
   },
   sort: {
     label: "Razvrsti",
+    /** The keys are the `?razvrsti=` slugs (lib/catalog-sort keeps the retired ones as aliases). */
     options: {
       priporoceno: "Priporočeno",
       najnovejse: "Najnovejše",
-      "cena-vzpadno": "Cena ↑",
-      "cena-padajco": "Cena ↓",
+      "cena-narascajoce": "Cena ↑",
+      "cena-padajoce": "Cena ↓",
       "naziv-az": "Naziv A–Ž",
       "naziv-za": "Naziv Ž–A",
     } as const,

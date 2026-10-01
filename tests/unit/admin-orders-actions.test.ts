@@ -3,20 +3,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(), revalidate: vi.fn(), findUnique: vi.fn(), update: vi.fn(), noteCreate: vi.fn(),
   refundOrder: vi.fn(), cancelOrder: vi.fn(), processing: vi.fn(), ship: vi.fn(), deliver: vi.fn(),
-  deliverConfirmation: vi.fn(), deliverShipped: vi.fn(),
+  deliverConfirmation: vi.fn(), deliverShipped: vi.fn(), executeRaw: vi.fn(), settle: vi.fn(),
 }));
 vi.mock("@/lib/auth", () => ({ auth: mocks.auth }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidate }));
-vi.mock("@/lib/db", () => ({ db: { order: { findUnique: mocks.findUnique, update: mocks.update }, orderNote: { create: mocks.noteCreate } } }));
-vi.mock("@/lib/orders/refunds", () => ({ refundOrder: mocks.refundOrder, cancelOrder: mocks.cancelOrder }));
+vi.mock("@/lib/db", () => ({ db: { order: { findUnique: mocks.findUnique, update: mocks.update }, orderNote: { create: mocks.noteCreate }, $executeRaw: mocks.executeRaw } }));
+vi.mock("@/lib/orders/refunds", () => ({ refundOrder: mocks.refundOrder, cancelOrder: mocks.cancelOrder, refundCapturedPayment: mocks.settle }));
 vi.mock("@/lib/orders/transitions", () => ({ markOrderProcessing: mocks.processing, markOrderShipped: mocks.ship, markOrderDelivered: mocks.deliver }));
 vi.mock("@/lib/orders/confirmation-delivery", () => ({ deliverOrderConfirmation: mocks.deliverConfirmation }));
 vi.mock("@/lib/orders/shipped-delivery", () => ({ deliverOrderShipped: mocks.deliverShipped }));
 
 import {
   addOrderNoteAction, cancelOrderAction, markDeliveredAction, markProcessingAction, refundOrderAction,
-  resendConfirmationAction, resendShippedAction, shipOrderAction,
+  resendConfirmationAction, resendShippedAction, settleCapturedPaymentAction, shipOrderAction,
 } from "@/app/admin/(shell)/narocila/[number]/actions";
+
+/** The timeline entry one `$executeRaw` call appended: the JSON parameter of the tagged template. */
+const appended = (call: unknown[]) => JSON.parse(call.find((value) => typeof value === "string" && value.startsWith("[{")) as string)[0];
 
 const session = (role: string, mfaEnrolled = true) => ({ user: { id: `cmf0${role.toLowerCase()}00000000000000001`, email: `${role.toLowerCase()}@nasmeh.si`, name: role, role, mfaEnrolled } });
 const orderId = "cmf0order000000000000001";
@@ -34,6 +37,8 @@ beforeEach(() => {
   mocks.deliver.mockResolvedValue({ ok: true, orderNumber: "NS-2026-00042", status: "DELIVERED" });
   mocks.deliverConfirmation.mockResolvedValue(true);
   mocks.deliverShipped.mockResolvedValue(false);
+  mocks.executeRaw.mockResolvedValue(1);
+  mocks.settle.mockResolvedValue({ ok: true, refundId: "r", amountCents: 3989, full: true, status: "CANCELLED" });
 });
 
 describe("order action permissions (direct calls)", () => {
@@ -44,7 +49,9 @@ describe("order action permissions (direct calls)", () => {
     expect(await shipOrderAction({ orderId, carrier: "GLS", trackingNumber: "GLS123456" })).toEqual({ ok: true, message: "shipped" });
     await expect(refundOrderAction({ orderId, lines: [], refundShipping: true, adjustmentCents: 0, reason: "x", restock: true })).rejects.toThrow("forbidden");
     await expect(cancelOrderAction({ orderId, reason: "x" })).rejects.toThrow("forbidden");
+    await expect(settleCapturedPaymentAction({ orderId, reason: "x" })).rejects.toThrow("forbidden");
     expect(mocks.refundOrder).not.toHaveBeenCalled();
+    expect(mocks.settle).not.toHaveBeenCalled();
     expect(mocks.cancelOrder).not.toHaveBeenCalled();
   });
 
@@ -56,6 +63,11 @@ describe("order action permissions (direct calls)", () => {
     expect(await cancelOrderAction({ orderId, reason: "stranka" })).toEqual({ ok: true, message: "cancelled" });
     expect(await addOrderNoteAction({ orderId, body: "Klic stranke", visibleToCustomer: false })).toEqual({ ok: true, message: "noteSaved" });
     expect(mocks.noteCreate.mock.calls[0][0].data).toMatchObject({ orderId, authorName: "SUPPORT", body: "Klic stranke", visibleToCustomer: false });
+    // QA N3: the note leaves a trace in the activity log, naming the author and never the text.
+    expect(appended(mocks.executeRaw.mock.calls[0])).toMatchObject({ event: "note_added", detail: "support@nasmeh.si" });
+    expect(JSON.stringify(mocks.executeRaw.mock.calls[0])).not.toContain("Klic stranke");
+    expect(await settleCapturedPaymentAction({ orderId, reason: "zaloga pošla" })).toEqual({ ok: true, message: "settled" });
+    expect(mocks.settle).toHaveBeenCalledWith(orderId, { actorId: session("SUPPORT").user.id, actorName: "support@nasmeh.si", reason: "zaloga pošla" });
     await expect(shipOrderAction({ orderId, carrier: "GLS", trackingNumber: "GLS123456" })).rejects.toThrow("forbidden");
     await expect(markProcessingAction({ orderId })).rejects.toThrow("forbidden");
     await expect(markDeliveredAction({ orderId })).rejects.toThrow("forbidden");
@@ -68,6 +80,8 @@ describe("order action permissions (direct calls)", () => {
     await expect(resendConfirmationAction({ orderId })).rejects.toThrow("forbidden");
     await expect(markDeliveredAction({ orderId })).rejects.toThrow("forbidden");
     await expect(refundOrderAction({ orderId, lines: [], refundShipping: true, adjustmentCents: 0, reason: "x", restock: false })).rejects.toThrow("forbidden");
+    await expect(settleCapturedPaymentAction({ orderId, reason: "x" })).rejects.toThrow("forbidden");
+    expect(mocks.settle).not.toHaveBeenCalled();
   });
 
   it("refuses unenrolled staff, customers and anonymous callers", async () => {
@@ -95,14 +109,20 @@ describe("order action validation and resend", () => {
     expect(await shipOrderAction({ orderId, carrier: "DHL", trackingNumber: "DHL123456" })).toEqual({ ok: false, message: "unknown_carrier" });
     mocks.refundOrder.mockResolvedValue({ ok: false, reason: "amount" });
     expect(await refundOrderAction({ orderId, lines: [], refundShipping: true, adjustmentCents: 0, reason: "x", restock: false })).toEqual({ ok: false, message: "amount" });
+    mocks.settle.mockResolvedValue({ ok: false, reason: "not_refundable" });
+    expect(await settleCapturedPaymentAction({ orderId, reason: "x" })).toEqual({ ok: false, message: "not_refundable" });
+    expect(await settleCapturedPaymentAction({ orderId, reason: "  " })).toEqual({ ok: false, message: "invalid" });
+    expect(mocks.settle).toHaveBeenCalledTimes(1);
   });
 
   it("re-queues the durable confirmation only for paid, fulfillable orders", async () => {
     expect(await resendConfirmationAction({ orderId })).toEqual({ ok: true, message: "resent" });
     expect(mocks.update.mock.calls[0][0].data).toMatchObject({ confirmationEmailPending: true, confirmationEmailSentAt: null });
     expect(mocks.deliverConfirmation).toHaveBeenCalledWith(orderId);
+    expect(appended(mocks.executeRaw.mock.calls[0])).toMatchObject({ event: "confirmation_resent", detail: "owner@nasmeh.si" });
     mocks.findUnique.mockResolvedValue({ id: orderId, status: "PENDING", paidAt: null, stockDeducted: false, refundRequired: false });
     expect(await resendConfirmationAction({ orderId })).toEqual({ ok: false, message: "invalid_transition" });
+    expect(mocks.executeRaw).toHaveBeenCalledTimes(1);
   });
 
   it("re-queues the shipped mail only when a tracking number exists, reporting a deferred send", async () => {
@@ -110,6 +130,8 @@ describe("order action validation and resend", () => {
     mocks.findUnique.mockResolvedValue({ id: orderId, status: "SHIPPED", trackingNumber: "GLS123456" });
     expect(await resendShippedAction({ orderId })).toEqual({ ok: true, message: "resendQueued" });
     expect(mocks.update.mock.calls[0][0].data).toMatchObject({ shippedEmailPending: true, shippedEmailSentAt: null });
+    // Not delivered yet: the log says it is queued, not that it was sent.
+    expect(appended(mocks.executeRaw.mock.calls[0])).toMatchObject({ event: "shipped_requeued", detail: "owner@nasmeh.si" });
   });
 
   it("refuses to re-queue either mail for an anonymised order", async () => {
@@ -118,6 +140,7 @@ describe("order action validation and resend", () => {
     expect(await resendConfirmationAction({ orderId })).toEqual({ ok: false, message: "invalid_transition" });
     expect(await resendShippedAction({ orderId })).toEqual({ ok: false, message: "invalid_transition" });
     expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.executeRaw).not.toHaveBeenCalled();
     expect(mocks.deliverConfirmation).not.toHaveBeenCalled();
     expect(mocks.deliverShipped).not.toHaveBeenCalled();
   });

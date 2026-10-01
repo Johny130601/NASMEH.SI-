@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import type { MenuItem } from "@/lib/settings";
-import { chrome as copy } from "@/lib/copy";
+import { MAX_FEATURED_CARDS } from "@/lib/featured-cards";
+import { chrome as copy } from "@/lib/copy/chrome";
 import { UiIcon } from "../ui/UiIcon";
 
 export interface FeaturedCardData {
@@ -15,12 +16,26 @@ export interface FeaturedCardData {
 }
 
 /** Shopping navigation with a full-width disclosure panel. Keyboard activation
- * uses Enter/Space; Escape closes the panel and restores its trigger. */
+ * uses Enter/Space; Escape closes the panel and restores its trigger. A child
+ * link marked "Akcija" takes the sale colour like a top-level one (QA T7-F4);
+ * the featured images start loading when a trigger is hovered or focused and
+ * load eagerly, so the panel never opens on blank cards (QA L6). */
 export function MegaMenu({ items, featuredCards }: { items: MenuItem[]; featuredCards: FeaturedCardData[] }) {
   const [open, setOpen] = useState<string | null>(null);
   const navRef = useRef<HTMLElement>(null);
   const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const warmed = useRef(new Set<string>());
   const menuId = useId();
+
+  const warm = (item: MenuItem) => {
+    for (const slug of (item.featured ?? []).slice(0, MAX_FEATURED_CARDS)) {
+      const url = featuredCards.find((card) => card.slug === slug)?.imageUrl;
+      if (!url || warmed.current.has(url)) continue;
+      warmed.current.add(url);
+      const image = new Image();
+      image.src = url;
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -55,6 +70,8 @@ export function MegaMenu({ items, featuredCards }: { items: MenuItem[]; featured
               aria-expanded={open === item.label}
               aria-controls={`${menuId}-panel-${index}`}
               onClick={() => setOpen(open === item.label ? null : item.label)}
+              onPointerEnter={() => warm(item)}
+              onFocus={() => warm(item)}
               className="ui-navlink flex h-full items-center gap-2 whitespace-nowrap text-sm font-medium uppercase tracking-[0.1em] text-dark-1 transition-colors hover:text-brand lg:text-base"
             >
               {item.label}
@@ -74,7 +91,12 @@ export function MegaMenu({ items, featuredCards }: { items: MenuItem[]; featured
                     <ul className="flex flex-col gap-3.5">
                       {item.children.map(child => (
                         <li key={child.href + child.label}>
-                          <Link href={child.href} onClick={() => setOpen(null)} className="text-sm leading-relaxed text-mid-1 transition-colors hover:text-dark-1 lg:text-base">
+                          <Link
+                            href={child.href}
+                            onClick={() => setOpen(null)}
+                            className={`inline-flex items-center gap-1.5 text-sm leading-relaxed transition-colors lg:text-base ${child.color === "sale" ? "text-sale hover:opacity-80" : "text-mid-1 hover:text-dark-1"}`}
+                          >
+                            {child.color === "sale" ? <UiIcon name="discount" className="h-4 w-4" /> : null}
                             {child.label}
                           </Link>
                         </li>
@@ -83,7 +105,7 @@ export function MegaMenu({ items, featuredCards }: { items: MenuItem[]; featured
                   </div>
                   {item.featured?.length ? (
                     <div className="grid grid-cols-2 items-start gap-5 lg:gap-8" aria-label={copy.nav.featuredLabel}>
-                      {item.featured.slice(0, 2).map(slug => {
+                      {item.featured.slice(0, MAX_FEATURED_CARDS).map(slug => {
                         const card = featuredCards.find(candidate => candidate.slug === slug);
                         if (!card) return null;
                         return (
@@ -92,7 +114,7 @@ export function MegaMenu({ items, featuredCards }: { items: MenuItem[]; featured
                             <div className="aspect-[3/2] overflow-hidden bg-light-3">
                               {card.imageUrl ? (
                                 // eslint-disable-next-line @next/next/no-img-element
-                                <img src={card.imageUrl} alt={card.imageAlt} loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                                <img src={card.imageUrl} alt={card.imageAlt} loading="eager" decoding="async" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
                               ) : null}
                             </div>
                           </Link>

@@ -13,8 +13,8 @@ type UnsignedQuote = Omit<CheckoutQuote, "token">;
 const secret = "unit-quote-authentication-secret";
 const quote: UnsignedQuote = {
   lines: [{ variantId: "variant-mouthwash", sku: "MOUTHWASH", title: "Ustna voda", quantity: 1, lineTotalCents: 1999 }],
-  subtotalCents: 1999, discountCents: 0, shippingCents: 390, totalCents: 2389,
-  vatCents: 431, vatRatePercent: 22, couponCode: null, couponRejection: null,
+  subtotalCents: 1999, discountCents: 0, shippingCents: 390, freeShippingReached: false, totalCents: 2389,
+  vatCents: 431, vatRatePercent: 22, couponCode: null, couponType: null, couponRejection: null,
   shippingMethodId: "ps-standard", country: "SI", email: "quote@example.test",
 };
 
@@ -35,6 +35,7 @@ describe("checkout quote authentication", () => {
     ["subtotal", value => { value.subtotalCents = 2499; }],
     ["discount", value => { value.discountCents = 200; }],
     ["shipping price", value => { value.shippingCents = 690; }],
+    ["free-shipping state", value => { value.freeShippingReached = true; }],
     ["total", value => { value.totalCents = 2689; }],
     ["VAT amount", value => { value.vatCents = 485; }],
     ["VAT rate", value => { value.vatRatePercent = 20; }],

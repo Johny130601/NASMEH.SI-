@@ -26,6 +26,7 @@ import { JsonLd } from "@/components/storefront/seo/JsonLd";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getEnv } from "@/lib/env";
+import { KODA_COOKIE } from "@/lib/koda";
 import { isTestMode } from "@/lib/turnstile";
 import type { WelcomePopupSetting } from "@/lib/settings-types";
 import { common } from "@/lib/copy";
@@ -55,14 +56,17 @@ export default async function StorefrontLayout({
   const consentCookie = jar.get(CONSENT_COOKIE)?.value;
   const consent = clientConsent(parseConsent(decodeConsentCookie(consentCookie), consentConfig.version));
 
-  // Welcome popup suppression: known CONFIRMED subscriber (by session email)
+  // Welcome popup suppression: a known CONFIRMED subscriber (by session email),
+  // or a guest whose stored discount code is already the popup's — the popup
+  // stores it on subscription, so the same browser is not asked again once the
+  // session flag is gone (no extra storage key to list in the cookie table).
   const session = await auth();
   const knownSubscriber = session?.user?.email
     ? (await db.subscriber.findFirst({
         where: { email: session.user.email.toLowerCase(), status: "CONFIRMED" },
         select: { id: true },
       })) !== null
-    : false;
+    : Boolean(welcomePopup?.couponCode) && jar.get(KODA_COOKIE)?.value === welcomePopup?.couponCode;
   const env = getEnv();
   const testToken = isTestMode() ? (env.TURNSTILE_TEST_TOKEN ?? null) : null;
 

@@ -1,128 +1,143 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getCatalogProducts, type CatalogProduct } from "@/lib/catalog";
+import { cache } from "react";
+import { getCatalogCollections, getCatalogProducts, type CatalogCollection } from "@/lib/catalog";
+import { applySort, resolveSortKey, SORT_KEYS, type SortKey } from "@/lib/catalog-sort";
 import { isTestMode } from "@/lib/turnstile";
 import { getEnv } from "@/lib/env";
 import { buildMetadata } from "@/lib/seo";
 import { catalog } from "@/lib/copy";
 import { CatalogCard } from "@/components/storefront/catalog/CatalogCard";
-import { UiIcon } from "@/components/storefront/ui/UiIcon";
+import { SortMenu } from "@/components/storefront/catalog/SortMenu";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = buildMetadata({
-  title: catalog.title,
-  description: catalog.seoBlock.teaser,
-  path: "/trgovina",
-});
+type SearchParams = Promise<{ kolekcija?: string | string[]; razvrsti?: string | string[] }>;
 
-type SortKey = keyof typeof catalog.sort.options;
-type TabKey = keyof typeof catalog.tabs;
+const ALL = "all";
 
-const SORTS = Object.keys(catalog.sort.options) as SortKey[];
-const TABS = Object.keys(catalog.tabs) as TabKey[];
+/** Committed placeholders (public/uploads) for the all-products view and any collection without a banner. */
+const PLACEHOLDER_BANNER = "/uploads/placeholder-trgovina-wide.svg";
+const PLACEHOLDER_BANNER_MOBILE = "/uploads/placeholder-trgovina-mobile.svg";
 
-function applySort(products: CatalogProduct[], sort: SortKey): CatalogProduct[] {
-  const sorted = [...products];
-  switch (sort) {
-    case "najnovejse":
-      return sorted.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    case "cena-vzpadno":
-      return sorted.sort((a, b) => a.priceCents - b.priceCents);
-    case "cena-padajco":
-      return sorted.sort((a, b) => b.priceCents - a.priceCents);
-    case "naziv-az":
-      return sorted.sort((a, b) => a.title.localeCompare(b.title, "sl"));
-    case "naziv-za":
-      return sorted.sort((a, b) => b.title.localeCompare(a.title, "sl"));
-    case "priporoceno":
-    default:
-      return sorted; // seed/collection merchandising order
-  }
+// One collections query per request, shared by generateMetadata and the page.
+const loadCollections = cache(getCatalogCollections);
+
+/**
+ * The collection a `?kolekcija=` value names, or null for the all-products
+ * view — also for an unknown handle, which shows everything without
+ * pretending to be a collection (no tab, no title, no canonical of its own).
+ */
+function selectCollection(collections: CatalogCollection[], raw: string | string[] | undefined): CatalogCollection | null {
+  const slug = Array.isArray(raw) ? raw[0] : raw;
+  if (!slug || slug === ALL) return null;
+  return collections.find((collection) => collection.slug === slug) ?? null;
 }
 
-/** /trgovina (§5): banner, deep-linkable tabs, sort in URL, grid, SEO block. */
-export default async function ShopPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ kolekcija?: string; razvrsti?: string }>;
-}) {
+const hrefFor = (collectionSlug: string, sort: SortKey) =>
+  `/trgovina?kolekcija=${encodeURIComponent(collectionSlug)}&razvrsti=${sort}`;
+
+/** Title, description, canonical and robots from the Collection record (§14.3); the shop's own for the all view. */
+export async function generateMetadata({ searchParams }: { searchParams: SearchParams }): Promise<Metadata> {
   const params = await searchParams;
-  const tab: TabKey = TABS.includes(params.kolekcija as TabKey)
-    ? (params.kolekcija as TabKey)
-    : "all";
-  const sort: SortKey = SORTS.includes(params.razvrsti as SortKey)
-    ? (params.razvrsti as SortKey)
-    : "priporoceno";
+  const collection = selectCollection(await loadCollections(), params.kolekcija);
+  return buildMetadata({
+    title: collection ? (collection.seoTitle ?? collection.title) : catalog.title,
+    description: collection?.seoDescription ?? catalog.seoBlock.teaser,
+    path: collection ? `/trgovina?kolekcija=${encodeURIComponent(collection.slug)}` : "/trgovina",
+    noindex: collection?.noindex ?? false,
+  });
+}
+
+/** /trgovina (§5): collection banner, deep-linkable tabs, sort in URL, grid, SEO block. */
+export default async function ShopPage({ searchParams }: { searchParams: SearchParams }) {
+  const [params, collections] = await Promise.all([searchParams, loadCollections()]);
+  const collection = selectCollection(collections, params.kolekcija);
+  const sort = resolveSortKey(params.razvrsti);
+  const activeKey = collection?.slug ?? ALL;
 
   // cards carry their Omnibus-backed reduction (one batched history query)
   const products = applySort(
-    await getCatalogProducts(
-      tab === "all" ? undefined : { collectionSlug: tab },
-    ),
+    await getCatalogProducts(collection ? { collectionSlug: collection.slug } : undefined),
     sort,
   );
 
   const env = getEnv();
   const testToken = isTestMode() ? (env.TURNSTILE_TEST_TOKEN ?? null) : null;
 
-  const hrefFor = (nextTab: TabKey, nextSort: SortKey) =>
-    `/trgovina?kolekcija=${nextTab}&razvrsti=${nextSort}`;
+  const tabs = [
+    { key: ALL, label: catalog.tabs.all },
+    ...collections.map((entry) => ({ key: entry.slug, label: entry.title })),
+  ];
+
+  // The heading is live text — never baked into the banner artwork (§15). The
+  // collection's "hide banner text" switch takes it off the screen only: the
+  // page keeps its <h1> for assistive technology and search engines.
+  const heading = collection?.title ?? catalog.title;
+  const headingHidden = collection?.hideBannerText ?? false;
+
+  // The collection's own crops when it has them; a desktop banner alone serves
+  // both sizes rather than a placeholder that does not belong to it.
+  const banner = collection?.bannerImage ?? PLACEHOLDER_BANNER;
+  const bannerMobile = collection?.bannerImageMobile ?? collection?.bannerImage ?? PLACEHOLDER_BANNER_MOBILE;
+  const bannerAlt = collection ? catalog.collectionBannerAlt(collection.title) : catalog.bannerAlt;
 
   return (
     <>
       {/* full-width promo banner (separate mobile crop) */}
-      {/* intrinsic sizes reserve the banner's box before the artwork arrives (no layout shift) */}
+      {/* fixed aspect boxes reserve the banner's space before the artwork arrives (no layout shift),
+          whatever size the operator uploaded; object-cover crops to the box */}
       <picture>
-        <source srcSet="/uploads/placeholder-trgovina-mobile.svg" media="(width < 768px)" width={800} height={500} />
+        <source srcSet={bannerMobile} media="(width < 768px)" width={800} height={500} />
         <img
-          src="/uploads/placeholder-trgovina-wide.svg"
-          alt={catalog.bannerAlt}
+          src={banner}
+          alt={bannerAlt}
           width={1600}
           height={500}
-          className="h-auto w-full object-cover"
+          fetchPriority="high"
+          className="aspect-[8/5] w-full bg-light-3 object-cover md:aspect-[16/5]"
+          data-collection-banner={activeKey}
         />
       </picture>
 
       <div className="mx-auto max-w-(--container-wide) px-(--padding) py-10">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          {/* collection tabs — deep-linkable */}
+        <h1
+          className={headingHidden ? "sr-only" : "text-[2rem] md:text-[2.5rem]"}
+          data-collection-heading={headingHidden ? "hidden" : "visible"}
+        >
+          {heading}
+        </h1>
+
+        <div className={`flex flex-wrap items-center justify-between gap-4 ${headingHidden ? "" : "mt-6"}`}>
+          {/* collection tabs — deep-linkable, one per collection that has products */}
           <nav aria-label={catalog.title}>
             <ul className="flex flex-wrap gap-2" data-collection-tabs>
-              {TABS.map((key) => (
-                <li key={key}>
+              {tabs.map((tab) => (
+                <li key={tab.key}>
                   <Link
-                    href={hrefFor(key, sort)}
-                    aria-current={tab === key ? "page" : undefined}
-                    data-tab={key}
+                    href={hrefFor(tab.key, sort)}
+                    aria-current={activeKey === tab.key ? "page" : undefined}
+                    data-tab={tab.key}
                     className={`inline-flex h-10 items-center rounded-btn px-5 text-sm font-medium transition-colors ${
-                      tab === key
+                      activeKey === tab.key
                         ? "bg-dark-1 text-white"
                         : "bg-light-3 text-dark-1 hover:bg-light-2"
                     }`}
                   >
-                    {catalog.tabs[key]}
+                    {tab.label}
                   </Link>
                 </li>
               ))}
             </ul>
           </nav>
 
-          {/* sort dropdown as SSR-friendly details menu (sort in URL) */}
-          <details className="group relative" data-sort-menu>
-            <summary className="flex h-10 cursor-pointer list-none items-center gap-2 rounded-btn border border-light-1 bg-white px-4 text-sm text-dark-1 [&::-webkit-details-marker]:hidden">
-              <span className="text-mid-2">{catalog.sort.label}:</span>
-              <span className="font-medium">{catalog.sort.options[sort]}</span>
-              <UiIcon
-                name="chevron-down"
-                className="h-4 w-4 transition-transform duration-200 group-open:rotate-180"
-              />
-            </summary>
+          {/* sort dropdown: SSR details of links (sort in URL), folding on choice/Escape/outside click after mount */}
+          <SortMenu label={catalog.sort.label} current={catalog.sort.options[sort]}>
             <ul className="absolute right-0 z-30 mt-2 w-56 rounded-card border border-light-2 bg-white p-2 shadow-xl">
-              {SORTS.map((key) => (
+              {SORT_KEYS.map((key) => (
                 <li key={key}>
                   <Link
-                    href={hrefFor(tab, key)}
+                    href={hrefFor(activeKey, key)}
                     aria-current={sort === key ? "true" : undefined}
                     className={`block rounded-input px-3 py-2 text-sm transition-colors ${
                       sort === key
@@ -135,7 +150,7 @@ export default async function ShopPage({
                 </li>
               ))}
             </ul>
-          </details>
+          </SortMenu>
         </div>
 
         {/* product grid */}

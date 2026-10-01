@@ -1,3 +1,5 @@
+import { izdelekForm } from "./bundle";
+
 /** Search copy. */
 export const search = {
   open: "Iskanje",
@@ -10,5 +12,6 @@ export const search = {
   zeroTitle: "Ni zadetkov",
   zeroBody: "Za to iskanje ni rezultatov. Preverite črkovanje ali poskusite splošnejši izraz.",
   submitLabel: "Išči",
-  resultsCount: "izdelkov",
+  /** "1 izdelek", "2 izdelka", "3 izdelki", "5 izdelkov" — Slovenian number agreement. */
+  resultsCount: (count: number) => `${count} ${izdelekForm(count)}`,
 } as const;

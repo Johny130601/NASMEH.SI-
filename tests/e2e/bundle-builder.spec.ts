@@ -5,6 +5,7 @@ import { getBundleBuilder } from "@/lib/settings";
 import { bundle as copy } from "@/lib/copy/bundle";
 import { cart as cartCopy } from "@/lib/copy/cart";
 import { catalog } from "@/lib/copy/catalog";
+import { promo } from "@/lib/copy/promo";
 import { dismissCookieBanner, prisma } from "./helpers";
 
 /**
@@ -285,6 +286,25 @@ test("an add-on moves the counter and the totals it is priced into", async ({ pa
   await card.click();
   await expect(card).toHaveAttribute("data-bundle-addon-selected", "true");
   expect(await summaryTotals(builder)).toEqual(ticked);
+});
+
+test("the code the builder applies is named with its terms sentence (§9.1, QA C2-F14)", async ({ page }) => {
+  const { config, base } = await builderFixture();
+  test.skip(!config.couponCode, "the Setting names no code to apply");
+  const coupon = await prisma.coupon.findUniqueOrThrow({
+    where: { code: config.couponCode.trim().toUpperCase() },
+    select: { type: true },
+  });
+
+  const builder = await openBuilder(page, base.slug);
+  const totals = await summaryTotals(builder);
+  expect(totals.discountCents, "the quote priced the configured code").toBeGreaterThan(0);
+  await expect(builder).toContainText(copy.summary.discountCode(config.couponCode));
+  // BXGY is priced as a percentage until P2 (lib/promo/resolve.ts)
+  const type = coupon.type === "BXGY" ? "PERCENT" : coupon.type;
+  await expect(builder.locator("[data-bundle-code-terms]")).toHaveText(promo.termsFor(type));
+  // the page names no product category it cannot claim for every product (QA C2-F19)
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.title);
 });
 
 test("a larger offer re-prices the whole bundle", async ({ page }) => {

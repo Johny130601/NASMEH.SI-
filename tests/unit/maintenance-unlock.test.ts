@@ -32,7 +32,7 @@ describe("unlockMaintenanceAction", () => {
     expect(mocks.set).toHaveBeenCalledTimes(1);
     const [name, value, options] = mocks.set.mock.calls[0];
     expect(name).toBe("nasmeh_maintenance");
-    expect(isValidMaintenanceCookie(value, "test-secret-at-least-32-chars-long!!")).toBe(true);
+    expect(isValidMaintenanceCookie(value, "test-secret-at-least-32-chars-long!!", hash)).toBe(true);
     expect(options).toMatchObject({ httpOnly: true, sameSite: "lax", path: "/" });
   });
 

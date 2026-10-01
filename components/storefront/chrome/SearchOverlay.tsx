@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { formatEUR } from "@/lib/pricing";
-import { search as copy } from "@/lib/copy";
+import { search as copy } from "@/lib/copy/search";
 import { UiIcon } from "../ui/UiIcon";
+import { useDialogFocus } from "../ui/useDialogFocus";
 
 interface InstantResult {
   slug: string;
@@ -21,11 +22,13 @@ const iconClasses =
 /**
  * Search overlay (§3.1): header icon is an SSR <Link> (no-JS still reaches
  * /iskanje) and upgrades to a button after mount. Instant results as you
- * type, Esc closes, zero-result state.
+ * type, Esc closes, zero-result state. Focus stays inside the dialog while it
+ * is open and returns to the header button when it closes.
  */
 export function SearchOverlay() {
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   useEffect(() => setMounted(true), []);
 
   if (!mounted) {
@@ -39,6 +42,7 @@ export function SearchOverlay() {
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         aria-label={copy.open}
         aria-expanded={open}
@@ -47,31 +51,27 @@ export function SearchOverlay() {
       >
         <UiIcon name="search" className="h-5 w-5" />
       </button>
-      {open ? <Overlay onClose={() => setOpen(false)} /> : null}
+      {open ? <Overlay onClose={() => setOpen(false)} returnTo={triggerRef} /> : null}
     </>
   );
 }
 
-function Overlay({ onClose }: { onClose: () => void }) {
+function Overlay({ onClose, returnTo }: { onClose: () => void; returnTo: RefObject<HTMLButtonElement | null> }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<InstantResult[] | null>(null);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(true, dialogRef, { onClose, initial: () => inputRef.current, returnTo });
 
   useEffect(() => {
-    inputRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKeyDown);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = previousOverflow;
     };
-  }, [onClose]);
+  }, []);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -106,7 +106,7 @@ function Overlay({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-white" role="dialog" aria-modal="true" aria-label={copy.title}>
+    <div ref={dialogRef} tabIndex={-1} className="fixed inset-0 z-50 overflow-y-auto bg-white outline-none" role="dialog" aria-modal="true" aria-label={copy.title}>
       <div className="mx-auto max-w-(--container-narrow) px-(--padding) py-6">
         <div className="flex items-center gap-3">
           <form onSubmit={submit} className="flex-1" role="search">

@@ -12,6 +12,8 @@ export interface DashboardRange {
   days: number;
   /** Daily buckets up to 31 days, weekly beyond. */
   bucket: "day" | "week";
+  /** Why a requested custom range was not used (the page says so instead of silently showing 30 days, QA N1). */
+  invalid?: "reversed" | "too_long" | "malformed";
 }
 
 export interface SeriesPoint { label: string; value: number }
@@ -24,7 +26,7 @@ export interface DashboardData {
   revenueByProduct: SeriesPoint[];
   ordersByStatus: Array<{ status: string; count: number }>;
   recentOrders: Array<{ number: string; email: string; status: string; totalCents: number; createdAt: Date }>;
-  lowStock: { threshold: number; variants: Array<{ sku: string; title: string; productTitle: string; stock: number }> };
+  lowStock: { threshold: number; variants: Array<{ sku: string; title: string; productTitle: string; stock: number; allowBackorder: boolean }> };
   pendingReviews: { count: number; items: Array<{ id: string; rating: number; productTitle: string; createdAt: Date }> };
   expiringCoupons: Array<{ code: string; endsAt: Date; usedCount: number; usageLimitTotal: number | null }>;
 }
@@ -57,20 +59,27 @@ export function parseDashboardRange(
   now = new Date(),
 ): DashboardRange {
   const preset = typeof query.obdobje === "string" ? query.obdobje : "30d";
+  let invalid: DashboardRange["invalid"];
   if (preset === "custom") {
     const from = parseIsoDate(query.od);
     const to = parseIsoDate(query.do);
-    if (from && to && from <= to) {
+    if (!from || !to) invalid = "malformed";
+    else if (from > to) invalid = "reversed";
+    else {
       const days = Math.round((startOfDay(to).getTime() - startOfDay(from).getTime()) / DAY_MS) + 1;
       if (days <= MAX_RANGE_DAYS) {
         return { preset: "custom", from: startOfDay(from), to: endOfDay(to), days, bucket: days <= 31 ? "day" : "week" };
       }
+      invalid = "too_long";
     }
   }
   const days = preset === "7d" ? 7 : preset === "90d" ? 90 : 30;
   const to = endOfDay(now);
   const from = startOfDay(new Date(now.getTime() - (days - 1) * DAY_MS));
-  return { preset: preset === "7d" || preset === "90d" ? preset : "30d", from, to, days, bucket: days <= 31 ? "day" : "week" };
+  return {
+    preset: preset === "7d" || preset === "90d" ? preset : "30d", from, to, days, bucket: days <= 31 ? "day" : "week",
+    ...(invalid ? { invalid } : {}),
+  };
 }
 
 function bucketStart(date: Date, bucket: "day" | "week"): Date {
@@ -130,7 +139,7 @@ export async function loadDashboard(range: DashboardRange, now = new Date()): Pr
   const lowStockVariants = await db.variant.findMany({
     where: { stock: { lte: threshold }, product: { status: "ACTIVE" } },
     orderBy: [{ stock: "asc" }, { sku: "asc" }], take: 10,
-    select: { sku: true, title: true, stock: true, product: { select: { title: true } } },
+    select: { sku: true, title: true, stock: true, allowBackorder: true, product: { select: { title: true } } },
   });
 
   const buckets = buildBuckets(range);
@@ -175,7 +184,7 @@ export async function loadDashboard(range: DashboardRange, now = new Date()): Pr
     lowStock: {
       threshold,
       variants: lowStockVariants.map((variant) => ({
-        sku: variant.sku, title: variant.title, productTitle: variant.product.title, stock: variant.stock,
+        sku: variant.sku, title: variant.title, productTitle: variant.product.title, stock: variant.stock, allowBackorder: variant.allowBackorder,
       })),
     },
     pendingReviews: {

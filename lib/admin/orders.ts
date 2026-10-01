@@ -1,8 +1,8 @@
 import type { OrderStatus, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { formatEUR } from "@/lib/pricing";
 import { refundedQuantities } from "@/lib/orders/refunds";
+import { likeEscaped } from "./like";
 
 /** Order list, filters, detail and CSV export for /admin/narocila (§14.7). */
 
@@ -53,8 +53,8 @@ export function parseOrderFilters(query: Query): OrderFilters {
   return { q: parsed.q, status: parsed.status, from: parsed.od, to: parsed.do, provider: parsed.provider, country: parsed.country, page: parsed.stran };
 }
 
-/** % and _ are literal characters of a typed name, never wildcards. */
-const likeEscaped = (value: string) => value.replace(/[\\%_]/g, (character) => `\\${character}`);
+/** Re-exported for the query tests: the same escaping feeds the raw ILIKE and every `contains` (a bare "%" listed every order, QA T5-06). */
+export { likeEscaped };
 const NAME_MATCH_LIMIT = 5000;
 
 /**
@@ -76,10 +76,11 @@ WHERE ("shippingAddress"->>'fullName') ILIKE ${pattern} ORDER BY "createdAt" DES
 export function orderWhere(filters: OrderFilters, nameMatchIds: string[] = []): Prisma.OrderWhereInput {
   const where: Prisma.OrderWhereInput = {};
   if (filters.q) {
+    const q = likeEscaped(filters.q);
     where.OR = [
-      { number: { contains: filters.q, mode: "insensitive" } },
-      { email: { contains: filters.q, mode: "insensitive" } },
-      { trackingNumber: { contains: filters.q.replace(/\s+/g, "").toUpperCase() } },
+      { number: { contains: q, mode: "insensitive" } },
+      { email: { contains: q, mode: "insensitive" } },
+      { trackingNumber: { contains: likeEscaped(filters.q.replace(/\s+/g, "").toUpperCase()) } },
       ...(nameMatchIds.length > 0 ? [{ id: { in: nameMatchIds } }] : []),
     ];
   }
@@ -163,9 +164,33 @@ export async function loadOrderDetail(number: string) {
 
 const CSV_HEADER = ["number", "createdAt", "status", "email", "name", "country", "items", "totalEur", "refundedEur", "provider", "trackingNumber", "carrier"];
 
-function csvCell(value: string | number): string {
-  const text = String(value);
-  return /[",\r\n;]/.test(text) ? `"${text.replace(/"/g, "\"\"")}"` : text;
+/** A leading formula trigger (=, +, -, @, tab, CR) would run in a spreadsheet; the cell is prefixed so it stays text. */
+const FORMULA_TRIGGER = /^[=+\-@\t\r]/;
+
+/**
+ * One CSV cell. Text cells that a spreadsheet would evaluate as a formula
+ * (a buyer named "=HYPERLINK(...)") are neutralised with a leading apostrophe;
+ * numbers are written as is. Cells with separators, quotes or line breaks are
+ * quoted, quotes doubled. Exported for the unit test only.
+ */
+export function csvCell(value: string | number): string {
+  const text = typeof value === "number" ? String(value) : FORMULA_TRIGGER.test(value) ? `'${value}` : value;
+  return /[",\r\n;']/.test(text) ? `"${text.replace(/"/g, "\"\"")}"` : text;
+}
+
+/** Amounts as plain numbers with a decimal comma (spreadsheets read them as numbers); no currency sign or NBSP. */
+export function csvEur(cents: number): string {
+  return (cents / 100).toFixed(2).replace(".", ",");
+}
+
+const LJUBLJANA_PARTS = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/Ljubljana", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+});
+
+/** `YYYY-MM-DD HH:mm:ss` in the store's time zone (Europe/Ljubljana), not UTC. */
+export function csvDateTime(date: Date): string {
+  const part = (type: Intl.DateTimeFormatPartTypes) => LJUBLJANA_PARTS.formatToParts(date).find((entry) => entry.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")} ${part("hour")}:${part("minute")}:${part("second")}`;
 }
 
 /** UTF-8 with BOM so spreadsheet tools read Slovenian characters; one row per order. */
@@ -178,9 +203,9 @@ export async function ordersCsv(filters: OrderFilters): Promise<string> {
     },
   });
   const rows = orders.map((order) => [
-    order.number, order.createdAt.toISOString(), order.status, order.email, addressField(order.shippingAddress, "fullName"),
+    order.number, csvDateTime(order.createdAt), order.status, order.email, addressField(order.shippingAddress, "fullName"),
     addressField(order.shippingAddress, "country"), order.items.reduce((sum, item) => sum + item.quantity, 0),
-    formatEUR(order.totalCents), formatEUR(order.refundedCents), order.paymentProvider ?? "", order.trackingNumber ?? "", order.carrier ?? "",
+    csvEur(order.totalCents), csvEur(order.refundedCents), order.paymentProvider ?? "", order.trackingNumber ?? "", order.carrier ?? "",
   ].map(csvCell).join(";"));
   return `﻿${[CSV_HEADER.join(";"), ...rows].join("\r\n")}\r\n`;
 }

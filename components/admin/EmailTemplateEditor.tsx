@@ -7,7 +7,7 @@ import { EMAIL_TEMPLATE_DEFS, substitutePlaceholders, type EmailTemplateKey } fr
 import { emailLayout } from "@/lib/email/templates/layout";
 import { sanitizeEmailHtml } from "@/lib/email/sanitize";
 import { sampleRequiredHtml } from "@/lib/email/templates/required-samples";
-import { admin as copy } from "@/lib/copy";
+import { admin as copy } from "@/lib/copy/admin";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiInput } from "@/components/storefront/ui/UiInput";
 
@@ -59,7 +59,7 @@ export function EmailTemplateEditor({ templateKey, initialSubject, initialBody, 
   };
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[3fr_2fr]" data-email-editor={templateKey}>
+    <div className="grid gap-4 lg:grid-cols-[3fr_2fr]" data-email-editor={templateKey}>
       <form className="flex flex-col gap-4 rounded-card border border-light-2 bg-white p-5" onSubmit={(event) => { event.preventDefault(); run(() => saveEmailTemplateAction({ key: templateKey, subject, bodyHtml: body }), c.saved); }}>
         <div>
           <h2 className="text-sm font-medium">{c.placeholders}</h2>

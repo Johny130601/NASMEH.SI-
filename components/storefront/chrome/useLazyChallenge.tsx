@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { common } from "@/lib/copy";
+import { common } from "@/lib/copy/common";
 import { TurnstileWidget } from "./TurnstileWidget";
 
 /** How long a submit waits for the widget before it gives up and asks for a retry. */

@@ -28,13 +28,46 @@ describe("sitemap (backlog B1)", () => {
     ]);
   });
 
-  it("asks the database only for ACTIVE, catalog-visible products and published, non-retired pages", async () => {
+  it("asks the database only for purchasable, catalog-visible products and published, non-retired pages", async () => {
     await sitemap();
-    expect(mocks.products.mock.calls[0][0].where).toEqual({ status: "ACTIVE", visibleInCatalog: true });
+    // purchasable = ACTIVE, no hidden deal SKU, no withdrawn bundle (lib/cart/visibility — QA M5, M7)
+    expect(mocks.products.mock.calls[0][0].where).toEqual({
+      status: "ACTIVE",
+      hiddenDeal: false,
+      OR: [{ bundle: null }, { bundle: { active: true } }],
+      visibleInCatalog: true,
+    });
     expect(mocks.pages.mock.calls[0][0].where).toEqual({
       published: true,
       slug: { notIn: ["pomoc", "o-nas", "razisli", "dostava", "paketi"] },
     });
+  });
+
+  it("drops a sold-out HIDE product, counting a bundle by its components' stock (QA M6)", async () => {
+    const plain = (stock: number) => ({ stock, allowBackorder: false });
+    mocks.products.mockResolvedValue([
+      { slug: "notify-sold-out", updatedAt: new Date("2026-09-01T00:00:00Z"), soldOutBehavior: "NOTIFY", variants: [plain(0)], bundle: null },
+      { slug: "hide-sold-out", updatedAt: new Date("2026-09-01T00:00:00Z"), soldOutBehavior: "HIDE", variants: [plain(0)], bundle: null },
+      {
+        slug: "hide-bundle-component-out",
+        updatedAt: new Date("2026-09-01T00:00:00Z"),
+        soldOutBehavior: "HIDE",
+        variants: [plain(100)],
+        bundle: { items: [{ quantity: 1, variant: plain(5) }, { quantity: 1, variant: plain(0) }] },
+      },
+      {
+        slug: "hide-bundle-stocked",
+        updatedAt: new Date("2026-09-01T00:00:00Z"),
+        soldOutBehavior: "HIDE",
+        variants: [plain(100)],
+        bundle: { items: [{ quantity: 2, variant: plain(2) }] },
+      },
+    ]);
+    const urls = (await sitemap()).map((entry) => entry.url);
+    expect(urls).toContain("https://nasmeh.example/izdelek/notify-sold-out");
+    expect(urls).toContain("https://nasmeh.example/izdelek/hide-bundle-stocked");
+    expect(urls).not.toContain("https://nasmeh.example/izdelek/hide-sold-out");
+    expect(urls).not.toContain("https://nasmeh.example/izdelek/hide-bundle-component-out");
   });
 
   it("never lists noindex route families and dates the catalog by its newest product", async () => {

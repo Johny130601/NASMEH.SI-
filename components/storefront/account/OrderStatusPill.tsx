@@ -1,5 +1,5 @@
 import type { OrderStatus } from "@prisma/client";
-import { account } from "@/lib/copy";
+import { account } from "@/lib/copy/account";
 import { UiPill } from "../ui/UiPill";
 
 const variants = {

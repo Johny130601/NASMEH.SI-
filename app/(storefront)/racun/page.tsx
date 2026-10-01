@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { formatEUR } from "@/lib/pricing";
 import { buildMetadata } from "@/lib/seo";
 import { account as copy, common } from "@/lib/copy";
-import { UiButton } from "@/components/storefront/ui/UiButton";
+import { UiButton, uiButtonClasses } from "@/components/storefront/ui/UiButton";
 import { OrderStatusPill } from "@/components/storefront/account/OrderStatusPill";
 import { logoutAction } from "../prijava/actions";
 
@@ -91,13 +91,26 @@ export default async function AccountPage() {
                       ))}
                       {order.items.length > 3 ? (
                         <li className="mt-2">
-                          <details data-order-more>
-                            <summary className="cursor-pointer text-xs text-mid-2">{copy.orders.showMore} ({order.items.length - 3})</summary>
+                          <details data-order-more className="group/more">
+                            {/* The summary reads "Pokaži manj" while the extra lines are open (QA T3). */}
+                            <summary className="cursor-pointer text-xs text-mid-2">
+                              <span className="group-open/more:hidden">{copy.orders.showMore} ({order.items.length - 3})</span>
+                              <span className="hidden group-open/more:inline">{copy.orders.showLess}</span>
+                            </summary>
                             <ul className="mt-2">{order.items.slice(3).map(item => <li key={item.id}>{item.quantity} × {item.title}</li>)}</ul>
                           </details>
                         </li>
                       ) : null}
                     </ul>
+                    {order.status === "PENDING" ? (
+                      /* An unpaid order can be paid from here: the confirmation page resumes the payment (QA M10). */
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-card bg-light-4 p-3" data-order-unpaid>
+                        <p className="text-xs text-mid-1">{copy.orders.unpaidNotice}</p>
+                        <Link href={`/potrditev/${order.number}`} className={uiButtonClasses("primary")} data-order-pay>
+                          {copy.orders.payNow}
+                        </Link>
+                      </div>
+                    ) : null}
                     {order.trackingNumber && order.carrier ? (
                       <p className="mt-2 text-xs text-mid-2">
                         {copy.orders.shippedWith} {order.carrier}

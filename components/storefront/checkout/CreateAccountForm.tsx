@@ -2,7 +2,7 @@
 
 import { useState, useTransition, type FormEvent } from "react";
 import { createAccountAfterPurchaseAction } from "@/app/(storefront)/actions/checkout";
-import { orders } from "@/lib/copy";
+import { orders } from "@/lib/copy/checkout";
 import { UiButton } from "../ui/UiButton";
 import { UiInput } from "../ui/UiInput";
 

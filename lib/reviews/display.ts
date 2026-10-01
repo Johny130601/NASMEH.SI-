@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { reviewPhotoPaths } from "./photos";
 import { aggregateRatings } from "./aggregate";
-import { reviews as copy } from "@/lib/copy";
+import { reviews as copy } from "@/lib/copy/reviews";
 
 const filterSchema = z.object({
   sort: z.enum(["newest", "highest", "lowest"]).catch("newest"),

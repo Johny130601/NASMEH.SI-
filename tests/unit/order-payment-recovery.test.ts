@@ -21,6 +21,7 @@ vi.mock("@/lib/promo/resolve", () => ({ resolveCouponInput: vi.fn() }));
 vi.mock("@/lib/orders/numbers", () => ({ nextOrderNumber: vi.fn() }));
 
 import { ensureOrderPayment, placeOrder } from "@/lib/orders/create";
+import { SoldOutLinesError } from "@/lib/orders/sold-out";
 
 /** Only fields used by payment recovery; unrelated order metadata is irrelevant. */
 function pendingOrder(overrides: Partial<Order> = {}): Order {
@@ -264,5 +265,13 @@ describe("order creation recovery boundaries", () => {
     expect(mocks.createOrder).not.toHaveBeenCalled();
     expect(mocks.createIntent).not.toHaveBeenCalled();
     expect(mocks.updateOrder).not.toHaveBeenCalled();
+  });
+
+  it("answers a line that sold out in the cart like the stock check, naming the lines (QA 2026-09-30)", async () => {
+    mocks.pricing.mockRejectedValue(new SoldOutLinesError(["Serum korektor barve zob", "Belilni trakci za zobe"]));
+    expect(await placeOrder(input)).toEqual({ ok: false, error: "stock:Serum korektor barve zob, Belilni trakci za zobe" });
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(mocks.createOrder).not.toHaveBeenCalled();
+    expect(mocks.createIntent).not.toHaveBeenCalled();
   });
 });

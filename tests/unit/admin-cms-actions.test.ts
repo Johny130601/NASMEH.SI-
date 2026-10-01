@@ -10,16 +10,16 @@ const mocks = vi.hoisted(() => ({
   menuUpsert: vi.fn(),
   assetFindUnique: vi.fn(), assetUpdateMany: vi.fn(), assetDelete: vi.fn(), assetDeleteMany: vi.fn(), assetCreate: vi.fn(),
   mediaImageFindMany: vi.fn(), collectionFindMany: vi.fn(),
-  templateUpsert: vi.fn(), templateDeleteMany: vi.fn(), templateFindUnique: vi.fn(),
-  prepareMedia: vi.fn(), saveMedia: vi.fn(), removeMedia: vi.fn(),
+  templateUpsert: vi.fn(), templateDeleteMany: vi.fn(), templateFindUnique: vi.fn(), templateFindMany: vi.fn(),
+  prepareMedia: vi.fn(), prepareVideo: vi.fn(), saveMedia: vi.fn(), removeMedia: vi.fn(),
 }));
 vi.mock("@/lib/auth", () => ({ auth: mocks.auth }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidate }));
 vi.mock("@/lib/email/mailer", () => ({ sendMail: mocks.sendMail }));
 vi.mock("@/lib/admin/media", () => ({
   InvalidMediaFile: class InvalidMediaFile extends Error { constructor(readonly reason: string) { super(reason); } },
-  MEDIA_LIBRARY_OWNER_ID: "knjiznica-medijev",
-  prepareMediaImage: mocks.prepareMedia, saveMediaImage: mocks.saveMedia, removeMediaImage: mocks.removeMedia,
+  MEDIA_LIBRARY_OWNER_ID: "knjiznica-medijev", MEDIA_VIDEO_MIME: { "video/mp4": "mp4", "video/webm": "webm" },
+  prepareMediaImage: mocks.prepareMedia, prepareMediaVideo: mocks.prepareVideo, saveMediaImage: mocks.saveMedia, saveMediaFile: mocks.saveMedia, removeMediaImage: mocks.removeMedia,
 }));
 vi.mock("@/lib/db", () => ({ db: {
   setting: { upsert: mocks.settingUpsert, findMany: mocks.settingFindMany, findUnique: mocks.settingFindUnique },
@@ -30,9 +30,10 @@ vi.mock("@/lib/db", () => ({ db: {
   mediaAsset: { findUnique: mocks.assetFindUnique, updateMany: mocks.assetUpdateMany, delete: mocks.assetDelete, deleteMany: mocks.assetDeleteMany, create: mocks.assetCreate },
   mediaImage: { findMany: mocks.mediaImageFindMany },
   collection: { findMany: mocks.collectionFindMany },
-  emailTemplate: { upsert: mocks.templateUpsert, deleteMany: mocks.templateDeleteMany, findUnique: mocks.templateFindUnique },
+  emailTemplate: { upsert: mocks.templateUpsert, deleteMany: mocks.templateDeleteMany, findUnique: mocks.templateFindUnique, findMany: mocks.templateFindMany },
 } }));
 
+import { PURCHASABLE_PRODUCT_WHERE } from "@/lib/cart/visibility";
 import {
   saveBundleBannerAction, saveBundleBuilderAction, saveHeroAction, saveHomeSectionsAction, saveMarqueeAction, savePopupAction, saveRoutineBannerAction,
 } from "@/app/admin/(shell)/vsebina/actions";
@@ -82,7 +83,8 @@ beforeEach(() => {
   mocks.settingFindMany.mockResolvedValue([]);
   mocks.settingFindUnique.mockResolvedValue(null);
   mocks.couponFindUnique.mockResolvedValue({ active: true, type: "PERCENT" });
-  mocks.productFindMany.mockResolvedValue([]);
+  // The featured card the menu fixture names is an active product.
+  mocks.productFindMany.mockResolvedValue([{ slug: "trakci" }]);
   mocks.pageCreate.mockImplementation(async ({ data }) => ({ id: pageId, ...data }));
   mocks.pageUpdate.mockResolvedValue({});
   mocks.pageFindUnique.mockResolvedValue({ slug: "moja-stran" });
@@ -97,6 +99,7 @@ beforeEach(() => {
   mocks.templateUpsert.mockResolvedValue({});
   mocks.templateDeleteMany.mockResolvedValue({ count: 1 });
   mocks.templateFindUnique.mockResolvedValue(null);
+  mocks.templateFindMany.mockResolvedValue([]);
   mocks.sendMail.mockResolvedValue({ messageId: "sent" });
   mocks.removeMedia.mockResolvedValue(undefined);
 });
@@ -128,6 +131,8 @@ describe("homepage, marquee and popup actions", () => {
     expect(mocks.settingUpsert.mock.calls[0][0]).toMatchObject({ where: { key: "home.hero" }, create: { key: "home.hero", value: { kicker: "NOVO", title: "Naslov", ctaHref: "/trgovina" } } });
     expect(mocks.settingUpsert.mock.calls[0][0].create.value).not.toHaveProperty("poster");
     expect(await saveHeroAction({ ...hero, ctaHref: "javascript:alert(1)" })).toEqual({ ok: false, error: "invalid" });
+    // An external video would be blocked by the same-origin media policy: refused with its own message (QA M13).
+    expect(await saveHeroAction({ ...hero, videoDesktop: "https://cdn.example.com/hero.mp4" })).toEqual({ ok: false, error: "videoExternal" });
     // A claim marker in the subtitle needs its footnote (§12.6); the footnote is stored with the hero.
     expect(await saveHeroAction({ ...hero, subtitle: "Pod*", footnote: "" })).toEqual({ ok: false, error: "invalid" });
     // The same holds for a marker in the heading, kicker or promo line, which the hero renders as live text too.
@@ -156,6 +161,32 @@ describe("homepage, marquee and popup actions", () => {
     expect(await savePopupAction(popup)).toEqual({ ok: false, error: "couponUnknown" });
     expect(await savePopupAction({ ...popup, delaySeconds: 999 })).toEqual({ ok: false, error: "invalid" });
     expect(mocks.settingUpsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("stores hero, banner and marquee links to a product page that answers 404 and names them with the reason (QA v-a)", async () => {
+    const withdrawn = [{ slug: "paket-popolna-rutina", status: "ACTIVE", hiddenDeal: false, bundle: { active: false } }];
+    mocks.productFindMany.mockResolvedValueOnce([{ slug: "trakci" }]).mockResolvedValueOnce(withdrawn);
+    expect(await saveHeroAction({ ...hero, ctaHref: "/izdelek/trakci", promoOverlayText: "Paket", promoOverlayHref: "/izdelek/paket-popolna-rutina" })).toEqual({
+      ok: true, unavailableLinks: [{ href: "/izdelek/paket-popolna-rutina", reason: "bundleInactive" }],
+    });
+    expect(mocks.productFindMany.mock.calls[0][0].where).toEqual({ slug: { in: ["trakci", "paket-popolna-rutina"] }, ...PURCHASABLE_PRODUCT_WHERE });
+    for (const save of [
+      () => saveRoutineBannerAction({ title: "R", href: "/izdelek/paket-popolna-rutina", image: "/uploads/x.svg", imageAlt: "A", footnote: "" }),
+      () => saveBundleBannerAction({ title: "P", cta: "K", href: "/izdelek/paket-popolna-rutina#top" }),
+      () => saveMarqueeAction({ text: "Paket", href: "/izdelek/paket-popolna-rutina", active: true }),
+    ]) {
+      mocks.productFindMany.mockResolvedValueOnce([]).mockResolvedValueOnce(withdrawn);
+      expect(await save()).toEqual({ ok: true, unavailableLinks: [expect.objectContaining({ reason: "bundleInactive" })] });
+    }
+    // Links that are not product pages never cost a query.
+    mocks.productFindMany.mockClear();
+    expect(await saveMarqueeAction({ text: "Dostava", href: "/trgovina", active: true })).toEqual({ ok: true });
+    expect(await saveBundleBannerAction({ title: "P", cta: "K", href: "/trgovina?kolekcija=paketi" })).toEqual({ ok: true });
+    expect(mocks.productFindMany).not.toHaveBeenCalled();
+    // Every block was stored all the same: it shows its link again once the product is back on sale.
+    expect(mocks.settingUpsert.mock.calls.map((call) => call[0].where.key)).toEqual([
+      "home.hero", "home.routineBanner", "home.bundleBanner", "marquee.text", "marquee.href", "marquee.active", "marquee.text", "marquee.href", "marquee.active", "home.bundleBanner",
+    ]);
   });
 });
 
@@ -298,11 +329,43 @@ describe("legal-review mark", () => {
 
 describe("menu, media and e-mail template actions", () => {
   it("normalises the menu tree and refuses unknown handles", async () => {
+    mocks.productFindMany.mockResolvedValueOnce([{ slug: "trakci" }]);
     expect(await saveMenuAction({ handle: "header", title: "Glavni", items: menuItems })).toEqual({ ok: true });
+    // Featured cards and product links are checked with the fragment the header and the product page render by (QA v-a).
+    expect(mocks.productFindMany.mock.calls[0][0]).toEqual({ where: { slug: { in: ["trakci"] }, ...PURCHASABLE_PRODUCT_WHERE }, select: { slug: true } });
+    expect(mocks.productFindMany).toHaveBeenCalledTimes(1);
     expect(mocks.menuUpsert.mock.calls[0][0].update).toEqual({ title: "Glavni", items: [{ label: "TRGOVINA", href: "/trgovina", children: [{ label: "Trakci", href: "/izdelek/trakci" }], featured: ["trakci"] }] });
     expect(await saveMenuAction({ handle: "sidebar", title: "", items: [] })).toEqual({ ok: false, error: "invalid" });
     expect(await saveMenuAction({ handle: "footer-pravno", title: "", items: [{ label: "X", href: "//evil" }] })).toEqual({ ok: false, error: "invalid" });
+    // A featured card must name a product a shopper can buy (QA T7-F4), and the refusal says why.
+    mocks.productFindMany.mockResolvedValueOnce([{ slug: "trakci" }]).mockResolvedValueOnce([]);
+    expect(await saveMenuAction({ handle: "header", title: "Glavni", items: [{ ...menuItems[0], featured: ["trakci", "ne-obstaja"] }] })).toEqual({ ok: false, error: "featuredUnknown", slugs: ["ne-obstaja"], reasons: ["unknown"] });
+    // More featured cards than the header shows is named as such, not as a label/link problem.
+    expect(await saveMenuAction({ handle: "header", title: "Glavni", items: [{ ...menuItems[0], featured: ["a", "b", "c"] }] })).toEqual({ ok: false, error: "featuredCount" });
     expect(mocks.menuUpsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a featured hidden deal SKU or withdrawn bundle with its reason, where the status-only check let them through (QA v-a)", async () => {
+    mocks.productFindMany.mockResolvedValueOnce([{ slug: "paket" }]).mockResolvedValueOnce([
+      { slug: "ustna-voda", status: "ACTIVE", hiddenDeal: true, bundle: null },
+      { slug: "paket-rutina", status: "ACTIVE", hiddenDeal: false, bundle: { active: false } },
+    ]);
+    const items = [{ ...menuItems[0], children: [], featured: ["ustna-voda", "paket-rutina"] }];
+    expect(await saveMenuAction({ handle: "mobile", title: "Mobilni", items })).toEqual({
+      ok: false, error: "featuredUnknown", slugs: ["ustna-voda", "paket-rutina"], reasons: ["hiddenDeal", "bundleInactive"],
+    });
+    expect(mocks.productFindMany.mock.calls[0][0].where).toEqual({ slug: { in: ["ustna-voda", "paket-rutina"] }, ...PURCHASABLE_PRODUCT_WHERE });
+    expect(mocks.menuUpsert).not.toHaveBeenCalled();
+  });
+
+  it("stores a link to a product page that answers 404 and names it with its reason, since the storefront leaves it out (QA v-a)", async () => {
+    mocks.productFindMany.mockResolvedValueOnce([{ slug: "trakci" }]).mockResolvedValueOnce([{ slug: "ustna-voda", status: "DRAFT", hiddenDeal: false, bundle: null }]);
+    const items = [{ label: "Trakci", href: "/izdelek/trakci" }, { label: "Ustna voda", href: "/izdelek/ustna-voda?x=1" }, { label: "Kontakt", href: "/kontakt" }];
+    expect(await saveMenuAction({ handle: "footer-trgovina", title: "Trgovina", items })).toEqual({
+      ok: true, unavailableLinks: [{ href: "/izdelek/ustna-voda?x=1", reason: "draft" }],
+    });
+    expect(mocks.productFindMany.mock.calls[0][0].where).toEqual({ slug: { in: ["trakci", "ustna-voda"] }, ...PURCHASABLE_PRODUCT_WHERE });
+    expect(mocks.menuUpsert.mock.calls[0][0].update.items).toHaveLength(3);
   });
 
   it("keeps referenced library files, removes unreferenced ones and reports missing rows", async () => {
@@ -320,6 +383,27 @@ describe("menu, media and e-mail template actions", () => {
     expect(await updateMediaAltAction({ assetId, alt: "x" })).toEqual({ ok: false, error: "not_found" });
     expect(await uploadMediaAssetsAction(emptyUpload())).toEqual({ ok: false, error: "media" });
     expect(mocks.saveMedia).not.toHaveBeenCalled();
+  });
+
+  it("counts a library file used inside product HTML or a mail override as referenced (QA T6-08)", async () => {
+    const url = "/uploads/media/knjiznica-medijev/0123456789abcdef01234567.webp";
+    mocks.productFindMany.mockResolvedValueOnce([{ description: "", accordions: { howItWorks: `<p><img src="${url}" alt=""></p>` }, faq: null, education: null, customFields: null, badges: null }]);
+    expect(await deleteMediaAssetAction({ assetId })).toEqual({ ok: false, error: "referenced" });
+    mocks.templateFindMany.mockResolvedValueOnce([{ bodyHtml: `<img src="https://nasmeh.si${url}">` }]);
+    expect(await deleteMediaAssetAction({ assetId })).toEqual({ ok: false, error: "referenced" });
+    expect(mocks.assetDelete).not.toHaveBeenCalled();
+  });
+
+  it("stores a library video as uploaded, next to re-encoded images (QA M13)", async () => {
+    const data = new FormData(); data.set("alt", "Hero");
+    data.append("files", new File([new Uint8Array([1, 2, 3])], "hero.mp4", { type: "video/mp4" }));
+    mocks.prepareVideo.mockResolvedValueOnce({ buffer: Buffer.from([1, 2, 3]), extension: "mp4" });
+    mocks.saveMedia.mockResolvedValueOnce("/uploads/media/knjiznica-medijev/0123456789abcdef01234567.mp4");
+    mocks.assetCreate.mockResolvedValueOnce({});
+    expect(await uploadMediaAssetsAction(data)).toEqual({ ok: true, urls: ["/uploads/media/knjiznica-medijev/0123456789abcdef01234567.mp4"] });
+    expect(mocks.prepareMedia).not.toHaveBeenCalled();
+    expect(mocks.saveMedia).toHaveBeenCalledWith("media", "knjiznica-medijev", Buffer.from([1, 2, 3]), "mp4");
+    expect(mocks.assetCreate).toHaveBeenCalledWith({ data: { url: "/uploads/media/knjiznica-medijev/0123456789abcdef01234567.mp4", alt: "Hero", width: 0, height: 0, bytes: 3 } });
   });
 
   it("stores overrides only with known placeholders, resets them and sends a sample test mail", async () => {

@@ -27,7 +27,7 @@ async function addStripsToCart(page: Page) {
 
 async function placeAndPay(page: Page, email: string): Promise<string> {
   await page.goto("/checkout");
-  await page.getByLabel("E-pošta").fill(email);
+  await page.getByLabel("E-pošta", { exact: true }).fill(email);
   await page.locator("[data-continue-contact]").click();
   await page.getByLabel("Ime in priimek").fill("Kupec Kupon");
   await page.getByLabel("Ulica").fill("Testna ulica");
@@ -110,7 +110,9 @@ test("manager creates a coupon; the /koda link applies it, the order carries it,
     try {
       const shop2 = await later.newPage();
       await shop2.goto(`/koda/${code}`);
-      await expect(shop2).toHaveURL(/\/cart\?koda=neveljavna$/);
+      // The refused code is named once, then the notice parameters leave the address (QA C2-F2).
+      await expect(shop2.locator("[data-koda-notice]")).toHaveText(`Koda ${code} ni veljavna.`);
+      await expect(shop2).toHaveURL(/\/cart$/);
     } finally {
       await later.close();
     }

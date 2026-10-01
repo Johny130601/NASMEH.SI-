@@ -84,3 +84,54 @@ describe("managed paths", () => {
     expect((await stat(media.mediaFilePath("products", ownerId, second.split("/").pop()!)!)).isFile()).toBe(true);
   });
 });
+
+/** QA M13: the library takes the hero video — recognised by its container, stored as uploaded, served with ranges. */
+describe("library videos", () => {
+  const libraryId = "knjiznica-medijev";
+  const mp4 = () => Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypisom"), Buffer.from([0, 0, 2, 0]), Buffer.from("isommp41"), Buffer.alloc(64, 1)]);
+  const webm = () => Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81, 0x01, 0x42, 0x82, 0x84]), Buffer.from("webm"), Buffer.alloc(64, 2)]);
+
+  it("accepts MP4 and WebM whose bytes match the declared type, and refuses everything else", async () => {
+    expect(media.sniffVideo(mp4())).toBe("mp4");
+    expect(media.sniffVideo(webm())).toBe("webm");
+    // HEIF images share the MP4 box layout; their brand is not a video brand.
+    expect(media.sniffVideo(Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypheic"), Buffer.alloc(16)]))).toBeNull();
+    expect(media.sniffVideo(await png(4, 4))).toBeNull();
+    expect(await media.prepareMediaVideo(fileOf(mp4(), "video/mp4"))).toMatchObject({ extension: "mp4" });
+    expect(await media.prepareMediaVideo(fileOf(webm(), "video/webm"))).toMatchObject({ extension: "webm" });
+    await expect(media.prepareMediaVideo(fileOf(mp4(), "video/webm"))).rejects.toMatchObject({ reason: "content" });
+    await expect(media.prepareMediaVideo(fileOf(mp4(), "video/quicktime"))).rejects.toMatchObject({ reason: "mime" });
+    await expect(media.prepareMediaVideo(fileOf(mp4(), "video/mp4", media.MAX_MEDIA_VIDEO_BYTES + 1))).rejects.toMatchObject({ reason: "size" });
+    await expect(media.prepareMediaVideo(fileOf(Buffer.from("not a video at all"), "video/mp4"))).rejects.toMatchObject({ reason: "content" });
+  });
+
+  it("stores a video only in the library, keeps its bytes and resolves its path", async () => {
+    const bytes = mp4();
+    const url = await media.saveMediaFile("media", libraryId, bytes, "mp4");
+    expect(url).toMatch(new RegExp(`^/uploads/media/${libraryId}/[a-f0-9]{24}\\.mp4$`));
+    const name = url.split("/").pop()!;
+    expect(await readFile(media.mediaFilePath("media", libraryId, name)!)).toEqual(bytes);
+    expect(media.isManagedMediaUrl(url)).toBe(true);
+    await expect(media.saveMediaFile("products", "cmf0product00000000000001", bytes, "mp4")).rejects.toThrow();
+    expect(media.mediaFilePath("products", "cmf0product00000000000001", name)).toBeNull();
+    await media.removeMediaImage(url);
+    await expect(stat(path.join(tmp, "catalog-uploads", "media", libraryId, name))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("answers with the file's type and serves byte ranges (Safari plays video only through them)", async () => {
+    const bytes = new Uint8Array(Array.from({ length: 100 }, (_, index) => index));
+    const whole = media.mediaFileResponse(bytes, "0123456789abcdef01234567.mp4", null);
+    expect(whole.status).toBe(200);
+    expect(whole.headers.get("content-type")).toBe("video/mp4");
+    expect(whole.headers.get("accept-ranges")).toBe("bytes");
+    expect(new Uint8Array(await whole.arrayBuffer())).toEqual(bytes);
+    const part = media.mediaFileResponse(bytes, "0123456789abcdef01234567.mp4", "bytes=10-19");
+    expect(part.status).toBe(206);
+    expect(part.headers.get("content-range")).toBe("bytes 10-19/100");
+    expect(Array.from(new Uint8Array(await part.arrayBuffer()))).toEqual(Array.from({ length: 10 }, (_, index) => index + 10));
+    expect(media.mediaFileResponse(bytes, "0123456789abcdef01234567.webm", "bytes=0-").headers.get("content-range")).toBe("bytes 0-99/100");
+    expect(media.mediaFileResponse(bytes, "0123456789abcdef01234567.mp4", "bytes=-5").headers.get("content-range")).toBe("bytes 95-99/100");
+    expect(media.mediaFileResponse(bytes, "0123456789abcdef01234567.mp4", "bytes=100-").status).toBe(416);
+    expect(media.mediaFileResponse(bytes, "0123456789abcdef01234567.webp", null).headers.get("content-type")).toBe("image/webp");
+  });
+});

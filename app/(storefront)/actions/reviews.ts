@@ -10,6 +10,7 @@ import { getSetting } from "@/lib/settings";
 import { canReviewItem } from "@/lib/reviews/access";
 import { validatePhotoBatch } from "@/lib/reviews/photos";
 import { InvalidReviewPhoto, prepareReviewPhoto, saveReviewPhotos, removeReviewPhotos } from "@/lib/reviews/photo-storage";
+import { submittedFiles } from "@/lib/form-files";
 import { reviews as copy } from "@/lib/copy";
 
 const formSchema = z.object({
@@ -59,10 +60,10 @@ export async function submitReviewAction(formData: FormData): Promise<ReviewSubm
   if (!item || !eligible(item)) return { ok: false, error: copy.form.notEligible };
   if (item.review) return { ok: false, error: copy.form.duplicate };
 
-  const rawFiles = formData.getAll("photos");
-  if (rawFiles.some((value) => typeof value === "string")) return { ok: false, error: copy.form.photoErrors.mime };
-  // Browsers submit one empty, unnamed File when no upload is selected.
-  const files = rawFiles.filter((value): value is File => value instanceof File && !(value.size === 0 && value.name === ""));
+  // An untouched photo input still submits one empty part (a 0-byte File the
+  // action encoder names "blob"): a review without photos is the common case.
+  const files = submittedFiles(formData.getAll("photos"));
+  if (!files) return { ok: false, error: copy.form.photoErrors.mime };
   const batch = validatePhotoBatch(files);
   if (!batch.ok) return { ok: false, error: copy.form.photoErrors[batch.reason] };
 

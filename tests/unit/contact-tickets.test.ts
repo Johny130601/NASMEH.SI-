@@ -85,10 +85,11 @@ describe("durable contact tickets", () => {
     expect(await createContactTicket({ ...contactWithdrawal, requestKey: "3ea827bf-3fd0-4b4d-af19-8f80d4661888", reason: "RETURN_QUESTION" }, [], "someone-else")).toEqual({ ok: false, error: "orderNotFound" });
   });
 
-  it("lists unlinked tickets that name an order number for the order's admin page (U9)", async () => {
-    const rows = [{ id: "t1", reference: "NP-1", topic: "RETURN", reason: "WITHDRAWAL", status: "OPEN", createdAt: new Date() }];
-    mocks.findMany.mockResolvedValue(rows);
-    expect(await listUnlinkedTicketsClaimingOrder("NS-2026-00001")).toBe(rows);
+  it("lists unlinked tickets that name an order number for the order's admin page, telling withdrawals from other reports (U9, QA T4-F5)", async () => {
+    const withdrawal = { id: "t1", reference: "NP-1", topic: "RETURN", reason: "WITHDRAWAL", status: "OPEN", createdAt: new Date() };
+    const adverseReport = { id: "t2", reference: "NP-2", topic: "ADVERSE", reason: "REACTION", status: "OPEN", createdAt: new Date() };
+    mocks.findMany.mockResolvedValue([withdrawal, adverseReport]);
+    expect(await listUnlinkedTicketsClaimingOrder("NS-2026-00001")).toEqual([{ ...withdrawal, kind: "withdrawal" }, { ...adverseReport, kind: "other" }]);
     expect(mocks.findMany).toHaveBeenCalledWith({
       where: { orderId: null, details: { path: ["claimedOrderNumber"], equals: "NS-2026-00001" } },
       select: { id: true, reference: true, topic: true, reason: true, status: true, createdAt: true },

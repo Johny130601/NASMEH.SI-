@@ -43,6 +43,8 @@ export const supportEmail = {
     },
     adverse: {
       reporterType: "Prijavitelj",
+      /** A stated number that does not match the reporter e-mail is kept as a claim (QA M15): staff verify it by hand. */
+      claimedOrderNumber: "Številka naročila, ki jo je navedel prijavitelj (ni samodejno povezana z naročilom)",
       phone: "Telefon prijavitelja",
       product: "Izdelek",
       batchNumber: "Številka serije (natisnjena na embalaži)",

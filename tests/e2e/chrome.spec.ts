@@ -121,6 +121,76 @@ test("dynamic-route 404 renders countdown in the browser", async ({ page }) => {
     page.getByRole("heading", { name: "Strani ni mogoče najti" }),
   ).toBeVisible();
   await expect(page.locator("[data-countdown]")).toBeVisible();
+  // The title survives hydration, the ticking number is no live region, and the redirect can be stopped (QA T1-15, WCAG 2.2.1).
+  await expect(page).toHaveTitle(/^Strani ni mogoče najti/);
+  await expect(page.locator("[data-countdown]").locator("xpath=ancestor-or-self::*[@role='status' or @aria-live]")).toHaveCount(0);
+  await page.locator("[data-countdown-stop]").click();
+  await expect(page.locator("[data-countdown-stopped]")).toBeVisible();
+  // Focus lands on the confirmation, not on the page body (WCAG 2.4.3).
+  await expect(page.locator("[data-countdown-stopped]")).toBeFocused();
+  await page.waitForTimeout(11_000);
+  await expect(page).toHaveURL(/\/ta-stran-ne-obstaja$/);
+  await expect(page).toHaveTitle(/^Strani ni mogoče najti/);
+  // Leaving the 404 by client navigation never carries its title onto the next page.
+  await page.locator("main").getByRole("link", { name: "Na domačo stran", exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.waitForTimeout(500);
+  await expect(page).not.toHaveTitle(/Strani ni mogoče najti/);
+});
+
+test("utility menu links reach the utility bar and the drawer; footer columns take the menu title (QA M16, T7-F3)", async ({ page }) => {
+  const utility = await prisma.menu.findUniqueOrThrow({ where: { handle: "utility" } });
+  const shop = await prisma.menu.findUniqueOrThrow({ where: { handle: "footer-trgovina" } });
+  try {
+    await prisma.menu.update({ where: { handle: "utility" }, data: { items: [{ label: "Sledi naročilu", href: "/sledi" }, { label: "Vpis", href: "/prijava" }] } });
+    await prisma.menu.update({ where: { handle: "footer-trgovina" }, data: { title: "Nakupovanje" } });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    const utilityNav = page.locator("header").getByRole("navigation", { name: "Uporabniški račun", exact: true });
+    await expect(utilityNav.getByRole("link")).toHaveCount(2);
+    await expect(utilityNav.getByRole("link", { name: "Sledi naročilu", exact: true })).toHaveAttribute("href", "/sledi");
+    // The operator's sign-in entry stays session-aware.
+    await expect(utilityNav.getByRole("link", { name: "Prijava", exact: true })).toHaveAttribute("href", "/prijava");
+    await expect(page.locator("footer").getByRole("heading", { level: 3, name: "Nakupovanje", exact: true })).toBeVisible();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.reload();
+    const banner = page.getByRole("dialog", { name: /piškotki/i });
+    if (await banner.isVisible()) {
+      await banner.getByRole("button", { name: "Zavrni" }).click();
+      await banner.waitFor({ state: "hidden" });
+    }
+    await page.getByRole("button", { name: "Odpri meni" }).click();
+    const drawer = page.getByRole("dialog", { name: "Meni" });
+    await expect(drawer.getByRole("link", { name: "Sledi naročilu", exact: true })).toHaveAttribute("href", "/sledi");
+    await expect(drawer.getByRole("link", { name: "Prijava", exact: true })).toBeVisible();
+  } finally {
+    await prisma.menu.update({ where: { handle: "utility" }, data: { items: utility.items as object[] } });
+    await prisma.menu.update({ where: { handle: "footer-trgovina" }, data: { title: shop.title } });
+  }
+});
+
+test("search overlay keeps focus inside and returns it to the header button (QA T1-04)", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  const banner = page.getByRole("dialog", { name: /piškotki/i });
+  if (await banner.isVisible()) {
+    await banner.getByRole("button", { name: "Zavrni" }).click();
+    await banner.waitFor({ state: "hidden" });
+  }
+  const open = page.getByRole("button", { name: "Iskanje", exact: true });
+  await open.click();
+  const dialog = page.getByRole("dialog", { name: "Iščite izdelke", exact: true });
+  await expect(dialog).toBeVisible();
+  const focusInside = () => dialog.evaluate((element) => element.contains(document.activeElement));
+  expect(await focusInside()).toBe(true);
+  for (const key of ["Tab", "Tab", "Tab", "Tab", "Shift+Tab", "Shift+Tab", "Shift+Tab", "Shift+Tab", "Shift+Tab"]) {
+    await page.keyboard.press(key);
+    expect(await focusInside(), key).toBe(true);
+  }
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(open).toBeFocused();
 });
 
 test("maintenance mode: gate → password → site → off", async ({ page }) => {
@@ -135,7 +205,8 @@ test("maintenance mode: gate → password → site → off", async ({ page }) =>
 
     await page.getByLabel("Geslo za dostop").fill(MAINTENANCE_PASSWORD);
     await page.getByRole("button", { name: "Vstopi" }).click();
-    await expect(page.getByText("Nasmeh, ki ga opazite")).toBeVisible({
+    // the heading, not Next's route announcer, which repeats it after the client navigation
+    await expect(page.getByRole("heading", { level: 1, name: "Nasmeh, ki ga opazite" })).toBeVisible({
       timeout: 15_000,
     });
   } finally {
@@ -185,5 +256,21 @@ test("maintenance gate leaks NO catalog data into the HTML source (RSC payload)"
     expect(unlocked).toContain("Belilni trakci");
   } finally {
     await setMaintenanceEnabled(false);
+  }
+});
+
+test("no storefront page renders a duplicate element id: every label names its own field (QA 2026-09-30)", async ({ request }) => {
+  // The footer's newsletter field sits on every page; a page form with its own "email" field
+  // (sign-in, registration, /sledi) once took the footer label's id, so the footer input had no name.
+  const pages = [
+    "/", "/trgovina", "/izdelek/belilni-trakci-za-zobe", "/izdelek/belilni-trakci-potovalni-7", "/iskanje?q=trak",
+    "/cart", "/checkout", "/kontakt", "/sledi", "/odstop-od-pogodbe", "/prijava-nezelenega-ucinka", "/reklamacije",
+    "/prijava", "/registracija", "/pozabljeno-geslo", "/sestavi-paket?izdelek=belilni-trakci-za-zobe", "/pogoji-poslovanja",
+  ];
+  for (const path of pages) {
+    const html = await (await request.get(path)).text();
+    const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
+    const duplicates = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
+    expect(duplicates, path).toEqual([]);
   }
 });

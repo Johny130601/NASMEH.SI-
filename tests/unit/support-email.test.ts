@@ -20,9 +20,18 @@ describe("support ticket staff mail", () => {
     expect(mail.html).not.toContain("<b>korektor</b>");
     expect(mail.text).toContain("Številka serije (natisnjena na embalaži): LOT 1");
     expect(mail.text).toContain("Učinek še traja: Da");
+    // Staff read calendar dates in the Slovenian form, as in the admin inbox (QA T4-F11).
+    expect(mail.text).toContain("9. 9. 2026");
+    expect(mail.text).not.toContain("2026-09-09");
     expect(mail.text).toContain("Poiskana zdravniška pomoč: Ne");
     expect(mail.text).not.toContain("Telefon prijavitelja");
     expect(mail.text).toContain("https://nasmeh.example/api/support/attachments/att-1");
+  });
+
+  it("shows staff the order number an adverse report states but could not be linked (QA M15)", () => {
+    const mail = renderSupportStaffEmail({ ...base, details: { kind: "adverse", reporterType: "CARER", batchNumber: "LOT 1", claimedOrderNumber: "NS-2026-99999" } });
+    expect(mail.text).toContain("Številka naročila, ki jo je navedel prijavitelj (ni samodejno povezana z naročilom): NS-2026-99999");
+    expect(mail.html).toContain("NS-2026-99999");
   });
 
   it("renders withdrawal details in copy order and ignores unknown keys", () => {
@@ -76,6 +85,8 @@ describe("support ticket staff mail", () => {
     expect(ticketKind({ topic: "RETURN", reason: "UNSUITABLE", details: null })).toBeNull();
     expect(ticketKind({ topic: "ADVERSE", reason: "REACTION", details: { kind: "adverse" } })).toBe("adverse");
     expect(ticketKind({ topic: "OTHER", reason: "OTHER", details: { kind: "other" } })).toBeNull();
+    // An ADVERSE report sent through the general contact form (no structured details) is still an adverse report (QA T4-F8).
+    expect(ticketKind({ topic: "ADVERSE", reason: "REACTION", details: null })).toBe("adverse");
   });
 
   it("omits the details section without a recognised kind", () => {

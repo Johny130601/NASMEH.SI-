@@ -73,7 +73,7 @@ export default async function AdminProductEditorPage({ params }: { params: Promi
         </div>
       </section>
 
-      <div className="mt-6 grid gap-4 xl:grid-cols-3">
+      <div className="mt-6 grid gap-4 lg:grid-cols-3">
         <section className="rounded-card border border-light-2 bg-white p-5" data-price-history>
           <h2 className="text-base font-medium">{c.sections.history}</h2>
           {product.variants.map((variant) => (

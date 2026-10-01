@@ -78,3 +78,11 @@ export const couponSchema = z.object({
 });
 export type CouponInput = z.input<typeof couponSchema>;
 export type CouponValues = z.output<typeof couponSchema>;
+
+/**
+ * Which refusal a failed coupon validation reports (QA T6-11): a bad code gets
+ * the code's own message, anything else the general one.
+ */
+export function couponInvalidReason(issues: ReadonlyArray<{ path: ReadonlyArray<PropertyKey> }>): "codeInvalid" | "invalid" {
+  return issues.some((issue) => issue.path[issue.path.length - 1] === "code") ? "codeInvalid" : "invalid";
+}

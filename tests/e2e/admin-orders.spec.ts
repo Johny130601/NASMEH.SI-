@@ -95,6 +95,9 @@ test("owner processes, ships, annotates, partially refunds with restock, exports
     await noteForm.locator("[data-note-visible]").check();
     await noteForm.locator("[data-action='note']").click();
     await expect(page.locator("[data-order-note='customer']")).toHaveCount(1);
+    // QA N3: each note leaves a readable trace in the activity log (author, never the text).
+    await expect(page.locator("[data-order-timeline]")).toContainText("Opomba dodana · izvedel: " + owner.email);
+    await expect(page.locator("[data-order-timeline]")).not.toContainText("stranka želi dostavo");
 
     // Partial refund of one unit with restock.
     const refund = page.locator("[data-refund-form]");
@@ -192,6 +195,59 @@ test("cancelling a paid order refunds it in full, restocks and mails the custome
   }
 });
 
+test("support settles a captured payment the store could not fulfil, and the awaiting-refund queue clears (QA M3)", async ({ page }) => {
+  const key = randomUUID();
+  const support = await staff("SUPPORT", key);
+  const email = `orders-stockout-${key}@test.si`;
+  const fixture = await paidOrder(key, { email, stock: 0 });
+  const { order, variant } = fixture;
+  // The payment webhook's stock-out outcome: captured, cancelled, stock never deducted, money owed.
+  await prisma.order.update({ where: { id: order.id }, data: {
+    status: "CANCELLED", stockDeducted: false, refundRequired: true, fulfillmentIssue: `stockout:${variant.id}`,
+    invoiceNumber: null, invoiceIssuedAt: null,
+    timeline: [
+      { at: new Date().toISOString(), event: "created", detail: "provider:test" },
+      { at: new Date().toISOString(), event: "payment_received_refund_required", detail: `stockout:${variant.id}` },
+    ],
+  } });
+  try {
+    await loginStaff(page, support.email, PASSWORD, support.secret);
+    await page.goto(`/admin/narocila?q=${encodeURIComponent(order.number)}`);
+    await expect(page.locator(`[data-order-row='${order.number}'] [data-refund-required-tag]`)).toHaveText("čaka na vračilo");
+    await expect(page.locator(`[data-order-row='${order.number}'] [data-order-status='CANCELLED']`)).toHaveText("Preklicano");
+
+    await page.goto(`/admin/narocila/${order.number}`);
+    // The screen explains why the money is owed and how to settle it; no cancel or partial refund is offered.
+    await expect(page.locator("[data-refund-required-reason]")).toContainText(`ORD-${key}`);
+    await expect(page.locator("[data-refund-required]")).toContainText("Vrni prejeto plačilo");
+    await expect(page.locator("[data-refund-form]")).toHaveCount(0);
+    await expect(page.locator("[data-cancel-form]")).toHaveCount(0);
+    const settle = page.locator("[data-settle-form]");
+    await expect(settle).toContainText("34,90 €");
+    await settle.getByLabel("Razlog vračila").fill("Izdelka ni bilo na zalogi");
+    let question = "";
+    page.once("dialog", (dialog) => { question = dialog.message(); void dialog.accept(); });
+    await settle.locator("[data-action='settle']").click();
+    await expect(page.locator("[data-order-action-message]")).toHaveText("Prejeto plačilo je vrnjeno; naročilo ne čaka več na vračilo denarja.");
+    expect(question).toContain("34,90"); // formatEUR separates the sign with a no-break space
+    await expect(page.locator("[data-refund-required]")).toHaveCount(0);
+    await expect(page.locator("[data-settle-form]")).toHaveCount(0);
+
+    const settled = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: { refunds: true } });
+    expect(settled).toMatchObject({ status: "CANCELLED", refundRequired: false, refundedCents: 3490 });
+    expect(settled.refunds).toHaveLength(1);
+    expect(settled.refunds[0]).toMatchObject({ status: "COMPLETED", amountCents: 3490, restock: false, providerRefundId: `test_refund_${settled.refunds[0].id}` });
+    // The stock was never deducted, so nothing goes back on the shelf.
+    expect((await prisma.variant.findUniqueOrThrow({ where: { id: variant.id } })).stock).toBe(0);
+    await expect.poll(async () => (await messagesTo(email)).some((message) => message.Subject.startsWith("Vračilo denarja"))).toBe(true);
+    await page.goto(`/admin/narocila?q=${encodeURIComponent(order.number)}`);
+    await expect(page.locator(`[data-order-row='${order.number}'] [data-refund-required-tag]`)).toHaveCount(0);
+  } finally {
+    await cleanupOrder(fixture);
+    await prisma.user.deleteMany({ where: { id: support.id } });
+  }
+});
+
 test("support exports and anonymises a customer, and handles a ticket", async ({ page }) => {
   const key = randomUUID();
   const support = await staff("SUPPORT", key);
@@ -257,7 +313,9 @@ test("support exports and anonymises a customer, and handles a ticket", async ({
     // address to ship to, and a late webhook issuing an invoice for a scrubbed name.
     page.once("dialog", (dialog) => dialog.accept());
     await page.locator("[data-customer-anonymise]").click();
-    await expect(page.getByText("Oseba ima odprto naročilo", { exact: false })).toBeVisible();
+    // The refusal answers at the erasure control, not under the notes form (QA T5-10).
+    await expect(page.locator("[data-customer-gdpr-message]")).toContainText("Oseba ima odprto naročilo");
+    await expect(page.locator("[data-customer-notes-message]")).toHaveCount(0);
     expect(await prisma.user.findUniqueOrThrow({ where: { id: customer.id } })).toMatchObject({ email: customer.email, anonymizedAt: null });
 
     // Settled, the erasure goes through: the order keeps its financials, loses its person.
@@ -266,6 +324,8 @@ test("support exports and anonymises a customer, and handles a ticket", async ({
     page.once("dialog", (dialog) => dialog.accept());
     await page.locator("[data-customer-anonymise]").click();
     await expect(page.locator("[data-customer-anonymised]")).toBeVisible();
+    // The erasure's own withdrawal row names its reason in words, not the stored code (QA round 2).
+    await expect(page.locator("[data-customer-consents] [data-consent-kind='marketing-preference']")).toContainText("razlog: anonimizacija");
     const user = await prisma.user.findUniqueOrThrow({ where: { id: customer.id }, include: { addresses: true } });
     expect(user.email).toBe(`anonymised-${customer.id}@invalid`);
     expect(user.name).toBeNull();
@@ -325,7 +385,11 @@ test("a person with no account or order is found by e-mail, exported and anonymi
     await page.locator("[data-customer-find-email] button[type='submit']").click();
     await expect(page.locator(`[data-admin-customer='${email}']`)).toBeVisible();
     await expect(page.locator("[data-customer-newsletter]")).toHaveText("potrjena");
-    await expect(page.locator("[data-customer-consents]")).toContainText("marketing-email");
+    // The history reads in words: the kind by name, the choices by label (no raw JSON).
+    await expect(page.locator("[data-customer-consents] [data-consent-kind='marketing-email']")).toContainText("E-novice (obrazec)");
+    await expect(page.locator("[data-customer-consents] [data-consent-kind='marketing-email']")).toContainText("e-novice: Da");
+    // Stored codes read in words too, never as the raw source id (QA round 2).
+    await expect(page.locator("[data-customer-consents] [data-consent-kind='marketing-email']")).toContainText("vir: noga strani");
 
     const exported = await page.request.get(`/admin/stranke/gost/izvoz.json?email=${encodeURIComponent(email)}`);
     expect(exported.status()).toBe(200);

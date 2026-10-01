@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { bumpConsentVersionAction, saveConsentConfigAction } from "@/app/admin/(shell)/nastavitve/actions";
 import { CONSENT_CATEGORIES, type ConsentBannerInput, type CookieRowInput } from "@/lib/settings-schemas";
-import { admin as copy } from "@/lib/copy";
+import { admin as copy } from "@/lib/copy/admin";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiInput } from "@/components/storefront/ui/UiInput";
 import { SettingsSection, textareaClass, useSettingsSave } from "./SettingsForms";

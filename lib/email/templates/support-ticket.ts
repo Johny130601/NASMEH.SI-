@@ -2,6 +2,7 @@ import { siteUrl } from "@/lib/seo";
 import { supportEmail as copy } from "@/lib/copy/support-email";
 import { contact } from "@/lib/copy/contact";
 import type { ReasonCode, TopicCode } from "@/lib/support/topics";
+import { readableDetailValue } from "@/lib/support/detail-format";
 import { emailLayout, emailStyles } from "./layout";
 
 interface StaffTicket {
@@ -33,9 +34,12 @@ export function ticketDetailsKind(details: unknown): DetailsKind | null {
  * The kind the mails treat a ticket as. A RETURN/WITHDRAWAL message from the general contact
  * form is a withdrawal notice too (Directive 2011/83/EU Art. 11(1): any unequivocal statement),
  * also when it was stored without details (tickets created before the contact path set them).
+ * An ADVERSE ticket from the general contact form is an adverse-event report all the same: its
+ * receipt carries the same safety note as the dedicated form (QA T4-F8).
  */
 export function ticketKind(ticket: { topic: string; reason: string | null; details?: unknown }): DetailsKind | null {
-  return ticketDetailsKind(ticket.details) ?? (ticket.topic === "RETURN" && ticket.reason === "WITHDRAWAL" ? "withdrawal" : null);
+  return ticketDetailsKind(ticket.details)
+    ?? (ticket.topic === "RETURN" && ticket.reason === "WITHDRAWAL" ? "withdrawal" : ticket.topic === "ADVERSE" ? "adverse" : null);
 }
 
 function formatDetail(key: string, value: unknown): string | null {
@@ -48,7 +52,7 @@ function formatDetail(key: string, value: unknown): string | null {
     const title = (value as { title?: unknown }).title;
     return typeof title === "string" ? title : null;
   }
-  return String(value);
+  return typeof value === "string" ? readableDetailValue(value) : String(value);
 }
 
 /** Label/value rows in the copy's order; unknown keys are never rendered. */

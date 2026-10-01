@@ -2,16 +2,27 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
-import { saveProductAction } from "@/app/admin/(shell)/izdelki/actions";
+import { saveProductAction, type CatalogActionResult } from "@/app/admin/(shell)/izdelki/actions";
 import { BADGE_STYLES, PRODUCT_STATUSES, SOLD_OUT_BEHAVIOURS, type ProductBasics, type ProductContent } from "@/lib/admin/catalog";
-import { admin as copy } from "@/lib/copy";
+import { admin as copy } from "@/lib/copy/admin";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiFormField, UiInput } from "@/components/storefront/ui/UiInput";
+import { ContentLinkWarning, linkPlacesText } from "./ContentLinkWarning";
 
 const c = copy.catalog.editor;
 const selectClass = "min-h-[3.25rem] w-full rounded-input border border-light-1 bg-white px-4 text-base outline-none focus:border-brand";
 const textareaClass = "w-full resize-y rounded-input border border-light-1 bg-white p-4 text-base outline-none focus:border-brand";
 const smallButton = "rounded-btn border border-light-1 px-3 py-1.5 text-xs";
+
+/** A refused save names the field it failed on (QA T6-11); a refusal without one keeps the generic text. */
+export function productSaveError(result: Extract<CatalogActionResult, { ok: false }>): string {
+  if (result.error === "slugTaken") return c.slugTaken;
+  if (result.error === "extraJson") return c.extraJsonInvalid;
+  if (result.error !== "invalid" || !result.field) return c.invalid;
+  const label = (c.fields as Record<string, unknown>)[result.field];
+  const name = typeof label === "string" ? label : (c.fieldNames as Record<string, string>)[result.field];
+  return name ? c.invalidField.replace("{field}", name) : c.invalid;
+}
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -46,6 +57,8 @@ export function ProductEditor({ productId, basics: initialBasics, content: initi
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  // Menus and home blocks that still link to the product after a save took it off sale or renamed it (QA v-a).
+  const [linkWarning, setLinkWarning] = useState<string | null>(null);
   const [basics, setBasics] = useState(initialBasics);
   const [content, setContent] = useState(initialContent);
   const merch = content.merchandising;
@@ -59,14 +72,16 @@ export function ProductEditor({ productId, basics: initialBasics, content: initi
       onSubmit={(event) => {
         event.preventDefault();
         setMessage(null);
+        setLinkWarning(null);
         startTransition(async () => {
           try {
             const result = await saveProductAction({ productId, basics, content: { ...content, merchandising: { ...merch, uspChips: merch.uspChips.filter(Boolean), bullets: merch.bullets.filter(Boolean), crossSell: merch.crossSell.filter(Boolean) } } });
             if (result.ok) {
               setMessage({ ok: true, text: c.saved });
+              setLinkWarning(result.linkedFrom?.length ? linkPlacesText(result.linkedFrom) : null);
               router.refresh();
             } else {
-              setMessage({ ok: false, text: result.error === "slugTaken" ? c.slugTaken : result.error === "extraJson" ? c.extraJsonInvalid : c.invalid });
+              setMessage({ ok: false, text: productSaveError(result) });
             }
           } catch {
             setMessage({ ok: false, text: copy.common.error });
@@ -99,10 +114,14 @@ export function ProductEditor({ productId, basics: initialBasics, content: initi
         </div>
         <div className="grid gap-2 md:grid-cols-2">
           {([["visibleInCatalog", c.fields.visibleInCatalog], ["visibleInSearch", c.fields.visibleInSearch], ["klarnaEligible", c.fields.klarnaEligible], ["hiddenDeal", c.fields.hiddenDeal]] as const).map(([key, label]) => (
-            <label key={key} className="flex items-center gap-3 text-sm">
-              <input type="checkbox" checked={basics[key]} onChange={(event) => field(key, event.target.checked)} className="size-4 accent-brand" data-flag={key} />
-              {label}
-            </label>
+            <div key={key} className="flex flex-col gap-1">
+              <label className="flex items-center gap-3 text-sm">
+                <input type="checkbox" checked={basics[key]} onChange={(event) => field(key, event.target.checked)} aria-describedby={key === "hiddenDeal" ? "product-hidden-deal-hint" : undefined} className="size-4 accent-brand" data-flag={key} />
+                {label}
+              </label>
+              {/* The flag hides the product everywhere and 404s its page (QA v-a): the hint says so. */}
+              {key === "hiddenDeal" ? <p id="product-hidden-deal-hint" className="ml-7 text-xs text-mid-2" data-hidden-deal-hint>{c.fields.hiddenDealHint}</p> : null}
+            </div>
           ))}
         </div>
       </Section>
@@ -188,6 +207,7 @@ export function ProductEditor({ productId, basics: initialBasics, content: initi
         <UiButton type="submit" variant="primary" disabled={pending} data-product-save>{c.save}</UiButton>
         {message ? <p role="status" className={`text-sm ${message.ok ? "text-success" : "text-error"}`} data-product-message>{message.text}</p> : null}
       </div>
+      <ContentLinkWarning text={linkWarning} />
     </form>
   );
 }

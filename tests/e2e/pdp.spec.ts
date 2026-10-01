@@ -1,7 +1,13 @@
 import { expect, test } from "@playwright/test";
+import { pdp } from "@/lib/copy/pdp";
+import { prisma } from "./helpers";
 
 /** PDP e2e (§6) — SSR audit + interactions. */
 test.describe.configure({ mode: "serial" });
+
+test.afterAll(async () => {
+  await prisma.$disconnect();
+});
 
 test("PDP SSR: H1, price, accordion bodies, FAQ, breadcrumbs, JSON-LD in initial HTML", async ({
   request,
@@ -27,7 +33,11 @@ test("PDP SSR: H1, price, accordion bodies, FAQ, breadcrumbs, JSON-LD in initial
   expect(html).toMatch(/Brezplačna dostava pri naročilih od 45,00/);
   // Phase 9 step 4 claims discipline: the guarantee accordion summarises and links the terms page,
   // the claim notes carry a qualifier and no unsubstantiated figures or absolute promises.
-  expect(html).toContain('<a href="/garancija-vracila-denarja" class="underline underline-offset-2">Jamstvo vračila denarja</a>');
+  // operator HTML is sanitised on render (AGENTS §8.24): the link survives, its class does not — .content-prose styles it
+  expect(html).toContain('<a href="/garancija-vracila-denarja">Jamstvo vračila denarja</a>');
+  // no claim on this product carries a "^" marker, so the guarantee title carries none (QA T1-14)
+  expect(html).toContain(`>${pdp.accordions.guarantee.replace(/^\^/, "")}<`);
+  expect(html).not.toContain(pdp.accordions.guarantee);
   expect(html).toContain("Jamstvo ne vpliva na vaše zakonske pravice");
   expect(html).toContain("Opombe k navedbam");
   expect(html).toContain("Rezultati se lahko razlikujejo");
@@ -101,7 +111,8 @@ test("bundle PDP: components + savings math vs summed prices", async ({
   await page.goto("/izdelek/paket-popolna-rutina");
   const bundleCard = page.getByRole("heading", { name: "Vsebina paketa", exact: true, level: 2 }).locator("xpath=..");
   const savingsLine = normalise(await bundleCard.locator(":scope > p").textContent());
-  expect(savingsLine).toContain("vrednost 74,97 €");
+  // a sentence of its own: capitalised, the value first (QA T1-14)
+  expect(savingsLine).toContain("Vrednost 74,97 €");
   expect(savingsLine).toContain("prihranite 33 %");
   // the line is computed from the listed components (price × quantity) against the price the bundle
   // sells at (the JSON-LD offer = variant price, which the admin bundle save keeps equal to Bundle.priceCents)
@@ -156,9 +167,12 @@ test("PDP accordions toggle + buy box stepper + disabled ATC", async ({
   await expect(qtyValue).toHaveText("2");
 
   // sticky buy bar present — asserted before the add, which leaves the page
-  await expect(
-    page.locator("div.fixed").getByText("Belilni trakci za zobe (14 uporab)"),
-  ).toBeVisible();
+  const stickyBar = page.locator("[data-sticky-buy-bar]");
+  await expect(stickyBar.getByText("Belilni trakci za zobe (14 uporab)")).toBeVisible();
+  // §6.15: price, unit price, quantity and the add button, like the buy box (QA T1-11)
+  await expect(stickyBar.locator("[data-sticky-unit-price]")).toContainText("2,50");
+  await expect(stickyBar.getByLabel("Povečaj količino")).toBeEnabled();
+  await expect(stickyBar.getByRole("button", { name: "Dodaj v košarico" })).toBeEnabled();
 
   // ATC is LIVE (Phase 3a): enabled, and a clean add hands the shopper on to
   // the bundle builder for this product (§7.1) instead of confirming in place
@@ -190,4 +204,77 @@ test("sold-out PDP: Obvestite me replaces ATC, page stays merchandised", async (
 test("unknown product slug → 404", async ({ request }) => {
   const response = await request.get("/izdelek/neobstaja");
   expect(response.status()).toBe(404);
+});
+
+test("PDP renders the description sanitised and describes itself in plain text without an SEO description (QA T6-07, S1)", async ({ request }) => {
+  const product = await prisma.product.findUniqueOrThrow({
+    where: { slug: "ustna-voda-globinsko-ciscenje" },
+    select: { id: true, description: true, seoDescription: true },
+  });
+  // written straight to the row, as a record stored before save-side sanitising would be
+  await prisma.product.update({
+    where: { id: product.id },
+    data: { seoDescription: null, description: '<p>QA opis z <mark>oznako</mark> &amp; več.</p><img src="/x.png" onerror="alert(1)">' },
+  });
+  try {
+    const html = await (await request.get("/izdelek/ustna-voda-globinsko-ciscenje")).text();
+    const start = html.indexOf("data-pdp-description");
+    expect(start).toBeGreaterThan(-1);
+    const block = html.slice(start, html.indexOf("</div>", start));
+    expect(block).toContain("<mark>oznako</mark>");
+    expect(block).not.toContain("onerror");
+    // meta, og and JSON-LD carry text, never escaped markup
+    expect(html).toContain('<meta name="description" content="QA opis z oznako &amp; več."');
+    expect(html).toContain('<meta property="og:description" content="QA opis z oznako &amp; več."');
+    expect(html).not.toContain("&lt;p&gt;");
+    const ld = [...html.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/gs)]
+      .map((m) => JSON.parse(m[1]) as Record<string, unknown>)
+      .find((t) => t["@type"] === "Product");
+    expect(ld?.description).toBe("QA opis z oznako & več.");
+  } finally {
+    await prisma.product.update({
+      where: { id: product.id },
+      data: { description: product.description, seoDescription: product.seoDescription },
+    });
+  }
+});
+
+test("sticky buy bar comes to rest above the footer, never over the page end (QA T1-11)", async ({ page }) => {
+  await page.goto("/izdelek/belilni-trakci-za-zobe");
+  const bar = page.locator("[data-sticky-buy-bar]");
+  // at the top of the page it rides the viewport bottom
+  const viewport = page.viewportSize()!;
+  const atTop = (await bar.boundingBox())!;
+  expect(Math.round(atTop.y + atTop.height)).toBeLessThanOrEqual(viewport.height);
+  expect(atTop.y + atTop.height).toBeGreaterThan(viewport.height - 2);
+  // at the end of the page it sits above the footer instead of covering it
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const footer = page.locator("footer").last();
+  await expect(footer).toBeInViewport();
+  const atEnd = (await bar.boundingBox())!;
+  const footerBox = (await footer.boundingBox())!;
+  expect(atEnd.y + atEnd.height).toBeLessThanOrEqual(footerBox.y + 1);
+});
+
+test("sticky buy bar keeps the price and unit price readable beside its controls on phones (QA T1-11)", async ({ page }) => {
+  for (const width of [360, 375, 390]) {
+    await page.setViewportSize({ width, height: 740 });
+    await page.goto("/izdelek/belilni-trakci-za-zobe");
+    const bar = page.locator("[data-sticky-buy-bar]");
+    const price = bar.locator("[data-sticky-price]");
+    const unitPrice = bar.locator("[data-sticky-unit-price]");
+    const stepper = bar.getByLabel("Zmanjšaj količino").locator("..");
+    const atc = bar.getByRole("button", { name: "Dodaj v košarico" });
+    await expect(unitPrice, `${width}px`).toBeVisible();
+    await expect(atc, `${width}px`).toBeVisible();
+    const [priceBox, stepperBox, atcBox, barBox] = await Promise.all(
+      [price, stepper, atc, bar].map(async (locator) => (await locator.boundingBox())!),
+    );
+    // the price facts sit on their own row, above the controls: nothing overlaps
+    expect(priceBox.y + priceBox.height, `${width}px`).toBeLessThanOrEqual(Math.min(stepperBox.y, atcBox.y) + 1);
+    // nothing spills past the viewport and the unit price is not cut to an ellipsis
+    expect(atcBox.x + atcBox.width, `${width}px`).toBeLessThanOrEqual(barBox.x + barBox.width);
+    const clipped = await unitPrice.evaluate((element) => element.scrollWidth > element.clientWidth);
+    expect(clipped, `${width}px`).toBe(false);
+  }
 });

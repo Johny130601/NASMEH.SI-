@@ -5,6 +5,7 @@ import { wordingVersion } from "@/lib/consent-log";
 import { adverse } from "@/lib/copy/adverse";
 import { contact } from "@/lib/copy/contact";
 import { returns } from "@/lib/copy/returns";
+import { readableDetailValue } from "./detail-format";
 import { ADVERSE_REPORTER_TYPES, TOPIC_CODES, topicReasons, WITHDRAWAL_DELIVERY_STATUSES } from "./topics";
 
 const NUL = String.fromCharCode(0);
@@ -18,7 +19,21 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
   const date = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 });
-const notInFuture = (value: string) => new Date(`${value}T00:00:00Z`).getTime() <= Date.now();
+/** Calendar date where the shop trades: "today" typed just after midnight in Ljubljana is not in the future. */
+const SHOP_DATE = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Ljubljana", year: "numeric", month: "2-digit", day: "2-digit" });
+export function shopToday(now = new Date()): string {
+  return SHOP_DATE.format(now);
+}
+const notInFuture = (value: string) => value <= shopToday();
+
+/**
+ * The field a failed parse names first (schema order), so a server-side refusal can say which
+ * field to correct instead of one generic sentence (QA T4-F6).
+ */
+export function firstInvalidField(error: z.ZodError): string | null {
+  const key = error.issues[0]?.path[0];
+  return typeof key === "string" ? key : null;
+}
 
 export const contactLookupSchema = z.object({
   email: authEmailSchema,
@@ -99,12 +114,14 @@ export function withdrawalToContactInput(input: WithdrawalInput): ContactInput {
   const goodsReceived = input.deliveryStatus === "received";
   // A date sent with "not received" contradicts the answer; the answer wins.
   const receivedAt = goodsReceived ? input.receivedAt : "";
+  // Staff read the date as "1. 9. 2026" in the message too, not only in the rows below it; details keep ISO.
+  const lines = returns.withdrawal.staffMessage;
   const message = [
-    `Obveščam vas, da odstopam od pogodbe za nakup naslednjega blaga: ${input.items}`,
-    `Številka naročila: ${input.orderNumber}`,
-    goodsReceived ? `Blago prejeto dne: ${receivedAt}` : "Blago še ni prejeto",
-    `Naslov potrošnika: ${input.address}`,
-    ...(input.note ? [`Opomba: ${input.note}`] : []),
+    lines.intro(input.items),
+    lines.orderNumber(input.orderNumber),
+    goodsReceived ? lines.receivedAt(readableDetailValue(receivedAt)) : lines.notReceived,
+    lines.address(input.address),
+    ...(input.note ? [lines.note(input.note)] : []),
   ].join("\n");
   return {
     requestKey: input.requestKey, name: input.name, email: input.email,
@@ -146,10 +163,11 @@ export const adverseInputSchema = z.object({
   batchNumber: z.union([z.string().trim().min(3).max(40).regex(/^[A-Za-z0-9 ./-]+$/), z.literal("")]).default(""),
   batchUnknown: z.boolean().default(false),
   purchasePlace: freeText(2, 120),
-  purchaseDate: z.union([isoDate, z.literal("")]).default(""),
+  // A purchase or an onset cannot lie in the future (QA T4-F4), like the withdrawal receipt date.
+  purchaseDate: z.union([isoDate.refine(notInFuture, { message: "future" }), z.literal("")]).default(""),
   orderNumber: z.union([contactOrderNumberSchema, z.literal("")]).default(""),
   description: freeText(20, 5000),
-  onsetDate: z.union([isoDate, z.literal("")]).default(""),
+  onsetDate: z.union([isoDate.refine(notInFuture, { message: "future" }), z.literal("")]).default(""),
   ongoing: z.enum(["yes", "no"]),
   medicalTreatment: z.enum(["yes", "no"]),
   medicalDetails: z.string().trim().max(2000).default(""),

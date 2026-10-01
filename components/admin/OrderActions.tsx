@@ -10,10 +10,12 @@ import {
   refundOrderAction,
   resendConfirmationAction,
   resendShippedAction,
+  settleCapturedPaymentAction,
   shipOrderAction,
   type OrderActionResult,
 } from "@/app/admin/(shell)/narocila/[number]/actions";
-import { admin as copy } from "@/lib/copy";
+import { parseEuroCents } from "@/lib/admin/order-display";
+import { admin as copy } from "@/lib/copy/admin";
 import { formatEUR } from "@/lib/pricing";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiFormField, UiInput } from "@/components/storefront/ui/UiInput";
@@ -49,11 +51,15 @@ export function OrderActions(props: OrderActionsProps) {
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [quantities, setQuantities] = useState<Record<string, number>>(() => Object.fromEntries(props.lines.map((line) => [line.orderItemId, 0])));
   const [refundShipping, setRefundShipping] = useState(false);
-  const [adjustment, setAdjustment] = useState(0);
+  // Typed in euros ("-5,00"), sent in cents; an ambiguous entry blocks the refund instead of being guessed (QA T5-08).
+  const [adjustmentText, setAdjustmentText] = useState("");
+  const adjustment = parseEuroCents(adjustmentText);
+  // A lone sign is an entry still being typed: it blocks the refund but is not flagged yet.
+  const adjustmentStarted = /^\s*[+\-−–]\s*$/.test(adjustmentText);
 
   const previewCents = useMemo(() =>
     props.lines.reduce((sum, line) => sum + line.unitPriceCents * (quantities[line.orderItemId] ?? 0), 0)
-      + (refundShipping ? props.shippingCents : 0) + (Number.isFinite(adjustment) ? adjustment : 0),
+      + (refundShipping ? props.shippingCents : 0) + (adjustment ?? 0),
     [props.lines, props.shippingCents, quantities, refundShipping, adjustment]);
 
   const run = (task: () => Promise<OrderActionResult>) => {
@@ -73,8 +79,10 @@ export function OrderActions(props: OrderActionsProps) {
   const canProcess = props.permissions.fulfil && props.status === "PAID" && !props.refundRequired;
   const canShip = props.permissions.fulfil && (props.status === "PAID" || props.status === "PROCESSING") && !props.refundRequired;
   const canDeliver = props.permissions.fulfil && props.status === "SHIPPED";
-  const canCancel = props.permissions.refund && ["PENDING", "PAID", "PROCESSING"].includes(props.status);
-  const canRefund = props.permissions.refund && REFUNDABLE.has(props.status) && props.remainingCents > 0;
+  // A captured payment that could not be fulfilled is settled with its own control, never cancelled or partly refunded (QA M3).
+  const canSettle = props.permissions.refund && props.refundRequired && props.remainingCents > 0;
+  const canCancel = props.permissions.refund && ["PENDING", "PAID", "PROCESSING"].includes(props.status) && !props.refundRequired;
+  const canRefund = props.permissions.refund && REFUNDABLE.has(props.status) && props.remainingCents > 0 && !props.refundRequired;
   const canResendConfirmation = props.permissions.notes && REFUNDABLE.has(props.status) && !props.refundRequired;
   const canResendShipped = props.permissions.notes && props.hasTracking && ["SHIPPED", "DELIVERED"].includes(props.status);
 
@@ -91,6 +99,24 @@ export function OrderActions(props: OrderActionsProps) {
         {canResendConfirmation ? <UiButton variant="ghost" disabled={pending} onClick={() => run(() => resendConfirmationAction({ orderId: props.orderId }))} data-action="resend-confirmation">{copy.orders.actions.resendConfirmation}</UiButton> : null}
         {canResendShipped ? <UiButton variant="ghost" disabled={pending} onClick={() => run(() => resendShippedAction({ orderId: props.orderId }))} data-action="resend-shipped">{copy.orders.actions.resendShipped}</UiButton> : null}
       </div>
+
+      {canSettle ? (
+        <form
+          className="mt-6 grid gap-4 border-t border-light-2 pt-5 md:grid-cols-[1fr_auto] md:items-end"
+          data-settle-form
+          onSubmit={(event) => {
+            event.preventDefault();
+            const reason = String(new FormData(event.currentTarget).get("settleReason") ?? "");
+            if (!window.confirm(copy.orders.actions.confirmSettle.replace("{amount}", formatEUR(props.remainingCents)))) return;
+            run(() => settleCapturedPaymentAction({ orderId: props.orderId, reason }));
+          }}
+        >
+          <h3 className="text-base font-medium md:col-span-2">{copy.orders.actions.settle}</h3>
+          <p className="text-sm text-mid-1 md:col-span-2">{copy.orders.actions.settleHint.replace("{amount}", formatEUR(props.remainingCents))}</p>
+          <UiInput label={copy.orders.actions.reason} name="settleReason" required maxLength={500} />
+          <UiButton type="submit" variant="primary" disabled={pending} data-action="settle">{copy.orders.actions.settle}</UiButton>
+        </form>
+      ) : null}
 
       {canShip ? (
         <form
@@ -126,7 +152,7 @@ export function OrderActions(props: OrderActionsProps) {
               orderId: props.orderId,
               lines: props.lines.map((line) => ({ orderItemId: line.orderItemId, quantity: quantities[line.orderItemId] ?? 0 })),
               refundShipping,
-              adjustmentCents: Number.isFinite(adjustment) ? adjustment : 0,
+              adjustmentCents: adjustment ?? 0,
               reason: String(data.get("reason") ?? ""),
               restock: data.get("restock") === "on",
             }));
@@ -136,7 +162,7 @@ export function OrderActions(props: OrderActionsProps) {
           <p className="mt-1 text-sm text-mid-1">{copy.orders.actions.refundHint}</p>
           <ul className="mt-4 flex flex-col gap-3">
             {props.lines.map((line) => (
-              <li key={line.orderItemId} className="grid gap-2 sm:grid-cols-[1fr_8rem] sm:items-center">
+              <li key={line.orderItemId} className="grid gap-2 md:grid-cols-[1fr_8rem] md:items-center">
                 <span className="text-sm">{line.title} <span className="text-mid-2">({line.sku}) · {formatEUR(line.unitPriceCents)}</span></span>
                 <label className="flex items-center gap-2 text-sm">
                   <span className="sr-only">{copy.orders.actions.refundQuantity}</span>
@@ -159,7 +185,11 @@ export function OrderActions(props: OrderActionsProps) {
             </label>
           ) : null}
           <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <UiInput label={copy.orders.actions.adjustment} name="adjustment" type="number" step={1} value={adjustment} onChange={(event) => setAdjustment(Number.parseInt(event.target.value, 10) || 0)} />
+            <UiInput
+              label={copy.orders.actions.adjustment} name="adjustment" inputMode="decimal" autoComplete="off" maxLength={12}
+              value={adjustmentText} onChange={(event) => setAdjustmentText(event.target.value)}
+              error={adjustment === null && !adjustmentStarted ? copy.orders.actions.adjustmentInvalid : undefined} data-refund-adjustment
+            />
             <UiInput label={copy.orders.actions.reason} name="reason" required maxLength={500} />
           </div>
           <label className="mt-4 flex items-center gap-3 text-sm">
@@ -168,7 +198,7 @@ export function OrderActions(props: OrderActionsProps) {
           </label>
           <p className="mt-4 text-sm font-medium" data-refund-preview>{copy.orders.actions.refundPreview.replace("{amount}", formatEUR(previewCents))}</p>
           <div className="mt-3">
-            <UiButton type="submit" variant="primary" disabled={pending || previewCents <= 0 || previewCents > props.remainingCents} data-action="refund">{copy.orders.actions.refundSubmit}</UiButton>
+            <UiButton type="submit" variant="primary" disabled={pending || adjustment === null || previewCents <= 0 || previewCents > props.remainingCents} data-action="refund">{copy.orders.actions.refundSubmit}</UiButton>
           </div>
         </form>
       ) : null}

@@ -232,7 +232,7 @@ export const PDP_CONTENT: Record<string, PdpContent> = {
   "belilni-trakci-potovalni-7": {
     seoTitle: "Belilni trakci — potovalno pakiranje (7 uporab)",
     seoDescription:
-      "Potovalno pakiranje belilnih trakov Nasmeh.si: 7 uporab za na pot. Trenutno razprodano — prijavite se na obvestilo o zalogi.",
+      "Potovalno pakiranje belilnih trakov Nasmeh.si: 7 uporab za na pot, enaka formula brez peroksida kot pri polnem pakiranju.",
     customFields: {
       uspChips: ["7 uporab", "Za na pot", "Brez peroksida"],
       intro:
@@ -254,8 +254,8 @@ export const PDP_CONTENT: Record<string, PdpContent> = {
     },
     faq: [
       {
-        q: "Kdaj bo izdelek spet na zalogi?",
-        a: "Natančnega datuma še nimamo — najhitreje izveste, če se prijavite na obvestilo o zalogi na tej strani.",
+        q: "Kaj, če izdelka ni na zalogi?",
+        a: "Prijavite se na obvestilo o zalogi na tej strani — ko je izdelek spet na voljo, vam pošljemo e-pošto.",
       },
       {
         q: "Se učinek razlikuje od polnega pakiranja?",

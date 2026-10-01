@@ -7,6 +7,13 @@ export interface ReviewAggregate {
   percentDistribution: [number, number, number, number, number];
 }
 
+const averageFormatter = new Intl.NumberFormat("sl-SI", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+/** The visible average, Slovenian decimal comma ("3,0"); JSON-LD keeps the dotted `toFixed(1)`. */
+export function formatAverage(average: number): string {
+  return averageFormatter.format(average);
+}
+
 export function aggregateRatings(ratings: number[]): ReviewAggregate {
   const distribution: ReviewAggregate["distribution"] = [0, 0, 0, 0, 0];
   for (const rating of ratings) {

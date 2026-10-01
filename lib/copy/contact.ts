@@ -1,4 +1,5 @@
 import type { ReasonCode, TopicCode } from "@/lib/support/topics";
+import { account } from "./account";
 
 export const contact = {
   title: "Kako vam lahko pomagamo?",
@@ -64,7 +65,8 @@ export const contact = {
     remove: "Odstrani povezano naročilo",
     statusUnavailable: "Status ni na voljo",
   },
-  orderStatuses: { PENDING: "V obdelavi", PAID: "Plačano", PROCESSING: "V pripravi", SHIPPED: "Odposlano", DELIVERED: "Dostavljeno", CANCELLED: "Preklicano", REFUNDED: "Povrnjeno" },
+  /** The customer-facing status words live once, in lib/copy/account (QA M10: PENDING waits for payment). */
+  orderStatuses: account.statuses,
   message: {
     title: "3. Vaše sporočilo",
     name: "Ime in priimek",

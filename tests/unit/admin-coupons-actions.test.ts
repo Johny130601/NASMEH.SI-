@@ -60,6 +60,10 @@ describe("coupon actions (direct calls)", () => {
 
   it("maps invalid input, duplicate codes and used coupons to results", async () => {
     expect(await createCouponAction({ ...input, percentOff: 0 })).toEqual({ ok: false, error: "invalid" });
+    // A bad code gets its own refusal, so the editor can name it (QA T6-11).
+    expect(await createCouponAction({ ...input, code: "Q6" })).toEqual({ ok: false, error: "codeInvalid" });
+    expect(await createCouponAction({ ...input, code: "QA6 BAD!" })).toEqual({ ok: false, error: "codeInvalid" });
+    expect(await saveCouponAction({ couponId, coupon: { ...input, code: "-X1" } })).toEqual({ ok: false, error: "codeInvalid" });
     mocks.couponCreate.mockRejectedValueOnce(p2002);
     expect(await createCouponAction(input)).toEqual({ ok: false, error: "codeTaken" });
     mocks.couponUpdate.mockRejectedValueOnce(new Prisma.PrismaClientKnownRequestError("missing", { code: "P2025", clientVersion: "6" }));

@@ -4,7 +4,7 @@ vi.mock("@/lib/db", () => ({ db: {} }));
 
 import {
   buildCustomFields, collectionSchema, bundleSchema, lowStockSchema, parseAccordions, parseBadgesForEditor, parseEducation, parseFaq,
-  parseMerchandising, parseProductFilters, productBasicsSchema, productIsListed, skuSchema, slugSchema, variantSchema,
+  parseMerchandising, parseProductFilters, productBasicsSchema, productIsListed, productIssueField, productStockLevel, skuSchema, slugSchema, variantSchema,
 } from "@/lib/admin/catalog";
 
 const variant = {
@@ -103,5 +103,26 @@ describe("listing rules and filters", () => {
     expect(parseProductFilters({ q: ["  trakci "], status: "active" })).toEqual({ q: "trakci", status: "ACTIVE" });
     expect(parseProductFilters({ status: "LIVE" })).toEqual({ q: "", status: null });
     expect(parseProductFilters({ q: "x".repeat(200) }).q).toHaveLength(120);
+  });
+});
+
+describe("product list and editor helpers (QA T6-11, T6-14)", () => {
+  it("tells sold out from low stock, and backorder variants from tracked ones", () => {
+    expect(productStockLevel([{ stock: 0, allowBackorder: false }], 5)).toBe("out");
+    expect(productStockLevel([{ stock: 3, allowBackorder: false }], 5)).toBe("low");
+    expect(productStockLevel([{ stock: 5, allowBackorder: false }], 5)).toBe("low");
+    expect(productStockLevel([{ stock: 6, allowBackorder: false }], 5)).toBeNull();
+    expect(productStockLevel([{ stock: 0, allowBackorder: false }, { stock: 20, allowBackorder: false }], 5)).toBe("low");
+    expect(productStockLevel([{ stock: 0, allowBackorder: true }], 5)).toBeNull();
+    expect(productStockLevel([{ stock: 0, allowBackorder: false }, { stock: 0, allowBackorder: true }], 5)).toBe("low");
+    expect(productStockLevel([], 5)).toBeNull();
+  });
+
+  it("finds the editor field an issue path names", () => {
+    expect(productIssueField([{ path: ["basics", "slug"] }])).toBe("slug");
+    expect(productIssueField([{ path: ["content", "merchandising", "bullets", 2] }])).toBe("bullets");
+    expect(productIssueField([{ path: ["content", "accordions", "inci"] }])).toBe("inci");
+    expect(productIssueField([{ path: ["productId"] }, { path: ["content", "faq", 0, "q"] }])).toBe("faq");
+    expect(productIssueField([{ path: ["productId"] }])).toBeNull();
   });
 });

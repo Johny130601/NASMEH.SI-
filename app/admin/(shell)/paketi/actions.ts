@@ -5,9 +5,13 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/admin/access";
 import { bundleSchema, type BundleInput } from "@/lib/admin/catalog";
+import { contentLinksToProducts, type ContentLinkPlace } from "@/lib/admin/cms";
 import { changeVariantPriceInTx } from "@/lib/price-history";
 
-export type BundleActionResult = { ok: true; id?: string } | { ok: false; error: "invalid" | "not_found" | "exists" | "self" | "nested" };
+/** `linkedFrom`: after saving a withdrawn bundle, the menus and content blocks that still link to its page, which answers 404 (QA v-a). */
+export type BundleActionResult =
+  | { ok: true; id?: string; linkedFrom?: ContentLinkPlace[] }
+  | { ok: false; error: "invalid" | "not_found" | "exists" | "self" | "nested" };
 
 const idSchema = z.string().min(1).max(64);
 
@@ -37,7 +41,9 @@ export async function createBundleAction(input: { productId: string }): Promise<
 /**
  * Components and price (§14.6): the bundle variant's price follows the bundle
  * price through the price-history helper; components may not be bundles
- * themselves and never the bundle product.
+ * themselves and never the bundle product. A bundle saved inactive answers 404
+ * on its page, so the answer names the menus and home blocks that still link
+ * to it; the storefront leaves those links out (QA v-a).
  */
 export async function saveBundleAction(input: BundleInput): Promise<BundleActionResult> {
   await requirePermission("catalog:manage");
@@ -62,5 +68,6 @@ export async function saveBundleAction(input: BundleInput): Promise<BundleAction
     }
   });
   refresh(product.slug);
-  return { ok: true };
+  const linkedFrom = active ? [] : await contentLinksToProducts([product.slug]);
+  return linkedFrom.length ? { ok: true, linkedFrom } : { ok: true };
 }

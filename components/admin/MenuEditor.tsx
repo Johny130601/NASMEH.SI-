@@ -4,8 +4,10 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { saveMenuAction } from "@/app/admin/(shell)/navigacija/actions";
 import { MENU_COLORS, type MenuItemInput } from "@/lib/admin/cms-schemas";
-import { admin as copy } from "@/lib/copy";
+import type { UnavailableFeatured, UnavailableLink } from "@/lib/content-links";
+import { admin as copy } from "@/lib/copy/admin";
 import { UiButton } from "@/components/storefront/ui/UiButton";
+import { ContentLinkWarning, unavailableFeaturedText, unavailableLinksText } from "./ContentLinkWarning";
 
 const c = copy.content.menus.editor;
 const inputClass = "min-h-[2.75rem] w-full rounded-input border border-light-1 bg-white px-3 text-sm outline-none focus:border-brand";
@@ -45,10 +47,20 @@ function ColorSelect({ value, onChange, label }: { value: string; onChange: (val
   );
 }
 
-export function MenuEditor({ handle, title: initialTitle, items: initialItems, withFeatured }: { handle: string; title: string; items: unknown[]; withFeatured: boolean }) {
+/**
+ * `unavailableLinks`: links of the stored menu that lead to a product page answering 404 (QA v-a); the
+ * storefront leaves them out and the save stores them, so the editor names them on load and after each
+ * save. `unavailableFeatured`: stored featured cards for such a product, which the header drops and the
+ * next save refuses (featuredUnknown) — named on load with that consequence, not as harmlessly hidden.
+ */
+export function MenuEditor({ handle, title: initialTitle, items: initialItems, withFeatured, unavailableLinks = [], unavailableFeatured = [] }: {
+  handle: string; title: string; items: unknown[]; withFeatured: boolean; unavailableLinks?: UnavailableLink[]; unavailableFeatured?: UnavailableFeatured[];
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [deadLinks, setDeadLinks] = useState(unavailableLinks);
+  const [deadFeatured, setDeadFeatured] = useState(unavailableFeatured);
   const [title, setTitle] = useState(initialTitle);
   const [items, setItems] = useState<ItemState[]>(() => toItemState(initialItems));
   const update = (index: number, patch: Partial<ItemState>) => setItems(items.map((item, position) => (position === index ? { ...item, ...patch } : item)));
@@ -70,8 +82,15 @@ export function MenuEditor({ handle, title: initialTitle, items: initialItems, w
         startTransition(async () => {
           try {
             const result = await saveMenuAction({ handle, title, items: toInput(items) });
-            setMessage(result.ok ? { ok: true, text: c.saved } : { ok: false, text: c.invalid });
-            if (result.ok) router.refresh();
+            setMessage(result.ok ? { ok: true, text: c.saved }
+              : { ok: false, text: result.error === "featuredUnknown" ? unavailableFeaturedText(c.featuredUnknown, result.slugs.map((slug, index): UnavailableFeatured => ({ slug, reason: result.reasons[index] ?? "unknown" })))
+                : result.error === "featuredCount" ? c.featuredCount : c.invalid });
+            // A save that passed the featured check, or a refusal that names the cards itself, supersedes the warning on load.
+            if (result.ok || result.error === "featuredUnknown") setDeadFeatured([]);
+            if (result.ok) {
+              setDeadLinks(result.unavailableLinks ?? []);
+              router.refresh();
+            }
           } catch {
             setMessage({ ok: false, text: copy.common.error });
           }
@@ -80,8 +99,9 @@ export function MenuEditor({ handle, title: initialTitle, items: initialItems, w
     >
       <label className="flex flex-col gap-1.5 text-sm font-medium">
         {c.menuTitle}
-        <input value={title} maxLength={80} onChange={(event) => setTitle(event.target.value)} className={inputClass} />
+        <input value={title} maxLength={80} onChange={(event) => setTitle(event.target.value)} aria-describedby={handle.startsWith("footer-") ? "menu-title-hint" : undefined} className={inputClass} />
       </label>
+      {handle.startsWith("footer-") ? <p id="menu-title-hint" className="-mt-2 text-xs text-mid-2">{c.menuTitleHint}</p> : null}
       <ol className="flex flex-col gap-3">
         {items.map((item, index) => (
           <li key={index} className="rounded-card border border-light-2 bg-white p-4" data-menu-item={index}>
@@ -123,6 +143,8 @@ export function MenuEditor({ handle, title: initialTitle, items: initialItems, w
         <UiButton type="submit" variant="primary" disabled={pending} data-menu-save>{c.save}</UiButton>
         {message ? <p role="status" className={`text-sm ${message.ok ? "text-success" : "text-error"}`} data-menu-message>{message.text}</p> : null}
       </div>
+      <ContentLinkWarning text={deadFeatured.length ? unavailableFeaturedText(copy.content.links.featured, deadFeatured) : null} />
+      <ContentLinkWarning text={deadLinks.length ? unavailableLinksText(copy.content.links.menu, deadLinks) : null} />
     </form>
   );
 }

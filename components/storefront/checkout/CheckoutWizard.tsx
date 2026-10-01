@@ -2,22 +2,29 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useId, useState, useTransition, type ReactNode } from "react";
 import { formatEUR } from "@/lib/pricing";
 import {
   captureCheckoutEmailAction,
   checkEmailExistsAction,
   placeOrderAction,
 } from "@/app/(storefront)/actions/checkout";
-import { EU_COUNTRIES, isValidPostalCode, type ShippingMethodSetting } from "@/lib/orders/checkout-constants";
-import { checkout, common, promo } from "@/lib/copy";
+import {
+  CHECKOUT_LIMITS, EU_COUNTRIES, fieldErrorsFromPaths, isPlausibleEmail, splitStreetLine,
+  validateCheckoutAddress, validateCheckoutContact,
+  type CheckoutField, type CheckoutFieldErrors, type ShippingMethodSetting,
+} from "@/lib/orders/checkout-constants";
+import { checkout } from "@/lib/copy/checkout";
+import { common } from "@/lib/copy/common";
+import { promo } from "@/lib/copy/promo";
 import { UiButton } from "../ui/UiButton";
 import { UiInput } from "../ui/UiInput";
 
 import { quoteCheckoutAction } from "@/app/(storefront)/actions/payment";
-import type { CheckoutQuote } from "@/lib/orders/quote";
+import type { CheckoutQuote, QuoteFailure } from "@/lib/orders/quote";
 import type { PlaceOrderResult } from "@/lib/orders/create";
-import { CheckoutSummary } from "./CheckoutSummary";
+import { paymentSubmittedPath } from "@/lib/orders/confirmation-view";
+import { CheckoutSummary, KlarnaRecap } from "./CheckoutSummary";
 import dynamic from "next/dynamic";
 import { TurnstileWidget } from "../chrome/TurnstileWidget";
 
@@ -58,19 +65,40 @@ export function NewTabHint() {
   return <span id={NEW_TAB_HINT_ID} hidden>{common.actions.opensInNewTab}</span>;
 }
 
+/** A row of the signed-in shopper's address book, offered on the Dostava step (QA M12). */
+export interface SavedAddress {
+  id: string;
+  label: string | null;
+  fullName: string;
+  line1: string;
+  line2: string | null;
+  postalCode: string;
+  city: string;
+  country: string;
+  phone: string | null;
+  isDefault: boolean;
+}
+
 interface WizardProps {
   providers: Provider[];
   shippingMethods: ShippingMethodSetting[];
   checkoutKey: string;
   testToken: string | null;
   defaultEmail: string;
+  /** The account name, prefilled as the recipient when no saved address supplies one. */
+  defaultName?: string;
+  savedAddresses?: SavedAddress[];
   stripePublishableKey: string | null;
   paypalClientId: string | null;
   turnstileSiteKey: string | null;
   initialQuote: CheckoutQuote | null;
+  /** Titles of the cart lines that sold out while they sat in the cart; the wizard stops on them (QA 2026-09-30). */
+  soldOutLines?: string[];
   activeCode: string | null;
   /** `legal.links` Setting: privacy at the e-mail field, terms and withdrawal directly above the order button. */
   legalLinks: { terms: string; withdrawal: string; privacy: string };
+  /** Klarna instalments enabled at Stripe: the summary adds the "3 × …" recap (§8.2, QA C2-F13). */
+  klarnaEnabled?: boolean;
 }
 
 interface FormState {
@@ -87,6 +115,38 @@ interface FormState {
   marketingOptIn: boolean;
 }
 
+type AddressFields = Pick<FormState, "phone" | "fullName" | "street" | "streetNumber" | "city" | "postalCode" | "country">;
+
+const methodServes = (method: ShippingMethodSetting, country: string) => (method.countries ?? ["SI"]).includes(country);
+
+/** The address-book row as Dostava fields; the country falls back to Slovenia when no method serves it. */
+function addressToFields(address: SavedAddress, shippingMethods: ShippingMethodSetting[]): AddressFields {
+  const { street, streetNumber } = splitStreetLine(address.line1);
+  const country = shippingMethods.some(method => methodServes(method, address.country)) ? address.country : "SI";
+  return {
+    phone: address.phone ?? "", fullName: address.fullName,
+    street: address.line2 ? `${street}, ${address.line2}` : street, streetNumber,
+    city: address.city, postalCode: address.postalCode, country,
+  };
+}
+
+/**
+ * Empty Dostava fields for a new address: the account name stays as the
+ * recipient (as on a first visit) and the country keeps the delivery method
+ * that is already picked, so only the address itself is cleared.
+ */
+function blankAddress(fullName: string, country: string): AddressFields {
+  return { phone: "", fullName, street: "", streetNumber: "", city: "", postalCode: "", country };
+}
+
+const fieldMessage = (field: CheckoutField, kind: NonNullable<CheckoutFieldErrors[CheckoutField]>): string => {
+  if (field === "email") return checkout.fields.email;
+  if (field === "phone") return checkout.fields.phone;
+  if (field === "postalCode" && kind !== "required") return checkout.fields.postalCode;
+  if (field === "fullName" && kind === "invalid") return checkout.fields.fullName;
+  return checkout.fields[kind];
+};
+
 /** One-page checkout accordion: Kontakt → Dostava → Plačilo → Pregled (§8). */
 export function CheckoutWizard({
   providers,
@@ -94,57 +154,101 @@ export function CheckoutWizard({
   checkoutKey,
   testToken,
   defaultEmail,
+  defaultName = "",
+  savedAddresses = [],
   stripePublishableKey,
   paypalClientId,
   turnstileSiteKey,
   initialQuote,
+  soldOutLines = [],
   activeCode,
   legalLinks,
+  klarnaEnabled = false,
 }: WizardProps) {
   const router = useRouter();
+  const savedAddressId = useId();
   const [step, setStep] = useState(0);
   const [stableCheckoutKey] = useState(checkoutKey);
   const [turnstileToken, setTurnstileToken] = useState(testToken ?? "");
   const [widgetAttempt, setWidgetAttempt] = useState(0);
   const [quote, setQuote] = useState(initialQuote);
+  const [quoteFailure, setQuoteFailure] = useState<QuoteFailure | null>(initialQuote ? null : soldOutLines.length ? "sold_out" : "failed");
+  // Lines that sold out in the cart: named above the steps, every continue closed until the cart is fixed.
+  const [soldOut, setSoldOut] = useState<string[]>(soldOutLines);
   const [quotePending, setQuotePending] = useState(false);
   const [quoteRefresh, setQuoteRefresh] = useState(0);
-  const [form, setForm] = useState<FormState>({
-    email: defaultEmail,
-    phone: "",
-    fullName: "",
-    street: "",
-    streetNumber: "",
-    city: "",
-    postalCode: "",
-    country: "SI",
-    shippingMethodId: initialQuote?.shippingMethodId ?? shippingMethods.find(method => (method.countries ?? ["SI"]).includes("SI"))?.id ?? "",
-    provider: providers[0] ?? "test",
-    marketingOptIn: false,
+  const [form, setForm] = useState<FormState>(() => {
+    // The default (or only) saved address fills the delivery step; the account name is the fallback recipient (QA M12).
+    const preset = savedAddresses.find(address => address.isDefault) ?? savedAddresses[0];
+    const fields: AddressFields = preset ? addressToFields(preset, shippingMethods) : blankAddress(defaultName, "SI");
+    return {
+      email: defaultEmail,
+      ...fields,
+      shippingMethodId: (initialQuote && initialQuote.country === fields.country ? initialQuote.shippingMethodId : null)
+        ?? shippingMethods.find(method => methodServes(method, fields.country))?.id ?? "",
+      provider: providers[0] ?? "test",
+      marketingOptIn: false,
+    };
   });
+  const [savedAddress, setSavedAddress] = useState<string>(() => (savedAddresses.find(address => address.isDefault) ?? savedAddresses[0])?.id ?? "");
+  const [fieldErrors, setFieldErrors] = useState<CheckoutFieldErrors>({});
   const [emailExists, setEmailExists] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [payInfo, setPayInfo] = useState<Extract<PlaceOrderResult, {ok: true}> | null>(null);
   const [pending, startTransition] = useTransition();
   const [, startEmailCheck] = useTransition();
 
-  const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
+  const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+    // A field's error clears as soon as it is edited; the next continue re-validates it.
+    setFieldErrors(prev => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key as CheckoutField];
+      return next;
+    });
+  };
+  const fieldError = (field: CheckoutField) => {
+    const kind = fieldErrors[field];
+    return kind ? fieldMessage(field, kind) : undefined;
+  };
+
+  // The quote is priced with the e-mail only once it is a plausible address, so
+  // typing one never blanks the summary or trips the e-mail rule (QA C2-F7):
+  // while the address is incomplete the last totals stand, priced without it.
+  const quoteEmail = isPlausibleEmail(form.email) ? form.email.trim().toLowerCase() : "";
 
   useEffect(() => {
     if (payInfo) return;
     let cancelled = false;
     setQuotePending(true);
     const timer = setTimeout(() => {
-      quoteCheckoutAction({ email: form.email, country: form.country, shippingMethodId: form.shippingMethodId })
-        .then(result => { if (!cancelled) { setQuote(result.ok ? result.quote : null); setQuotePending(false); } })
-        .catch(() => { if (!cancelled) { setQuote(null); setQuotePending(false); } });
+      quoteCheckoutAction({ email: quoteEmail, country: form.country, shippingMethodId: form.shippingMethodId })
+        .then(result => {
+          if (cancelled) return;
+          if (result.ok) { setQuote(result.quote); setQuoteFailure(null); setSoldOut([]); }
+          else if (result.reason === "sold_out") { setQuote(null); setQuoteFailure("sold_out"); setSoldOut(result.soldOut ?? []); }
+          else if (result.reason === "invalid_email") {
+            // The client mirror let through an address the server refuses: mark it and reopen Kontakt.
+            // (The e-mail is checked before the cart, so a sold-out refusal already on screen stands.)
+            setQuoteFailure(current => (current === "sold_out" ? current : null));
+            setFieldErrors(prev => ({ ...prev, email: "invalid" }));
+            setStep(current => (current > 0 ? 0 : current));
+          }
+          else {
+            setQuote(null); setQuoteFailure(result.reason);
+            // The server checks the cart's stock after the cart itself and before the method, so these two clear it.
+            if (result.reason === "empty_cart" || result.reason === "invalid_shipping_method") setSoldOut([]);
+          }
+          setQuotePending(false);
+        })
+        .catch(() => { if (!cancelled) { setQuote(null); setQuoteFailure("failed"); setQuotePending(false); } });
     }, 150);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [form.email, form.country, form.shippingMethodId, initialQuote?.token, activeCode, quoteRefresh, payInfo]);
+  }, [quoteEmail, form.country, form.shippingMethodId, initialQuote?.token, activeCode, quoteRefresh, payInfo]);
 
   const onEmailBlur = () => {
-    if (!form.email.includes("@")) return;
+    if (!isPlausibleEmail(form.email)) return;
     startEmailCheck(async () => {
       const result = await checkEmailExistsAction({ email: form.email });
       setEmailExists(result.exists);
@@ -153,18 +257,51 @@ export function CheckoutWizard({
 
   const continueFromContact = () => {
     setError(null);
+    const errors = validateCheckoutContact(form);
+    if (errors.email) { setFieldErrors(prev => ({ ...prev, ...errors })); return; }
+    // The server already refused this address (the quote marked it); it stays marked until edited.
+    if (fieldErrors.email) return;
+    const email = form.email.trim().toLowerCase();
+    if (email !== form.email) setForm(prev => ({ ...prev, email }));
 
     startTransition(async () => {
       try {
-        await captureCheckoutEmailAction({
-          email: form.email,
+        const captured = await captureCheckoutEmailAction({
+          email,
           checkoutKey: stableCheckoutKey,
         });
+        // An address the client mirror let through but the server refuses stops here, not at the order button (QA M11).
+        if (!captured.ok && captured.reason === "invalid_email") {
+          setFieldErrors(prev => ({ ...prev, email: "invalid" }));
+          return;
+        }
         setStep(1);
       } catch {
         setError(checkout.errors.orderFailed);
       }
     });
+  };
+
+  const continueFromShipping = () => {
+    setError(null);
+    const errors = validateCheckoutAddress(form);
+    if (Object.keys(errors).length) { setFieldErrors(prev => ({ ...prev, ...errors })); return; }
+    setStep(2);
+  };
+
+  // A saved row fills the fields; "Vnesite nov naslov" empties them, so no part of the previous
+  // address can ride along with a half-typed new one. The e-mail and the choices stay.
+  const applySavedAddress = (id: string) => {
+    setSavedAddress(id);
+    const address = savedAddresses.find(row => row.id === id);
+    setForm(prev => {
+      const fields = address ? addressToFields(address, shippingMethods) : blankAddress(defaultName, prev.country);
+      return {
+        ...prev, ...fields,
+        shippingMethodId: prev.country === fields.country ? prev.shippingMethodId : shippingMethods.find(method => methodServes(method, fields.country))?.id ?? "",
+      };
+    });
+    setFieldErrors({});
   };
 
   const placeOrder = () => {
@@ -174,13 +311,24 @@ export function CheckoutWizard({
       try {
       const result = await placeOrderAction({
         ...form,
+        email: form.email.trim().toLowerCase(),
         turnstileToken,
         checkoutKey: stableCheckoutKey,
         quoteToken: quote.token,
       });
       if (result.ok) {
-        if (result.paymentStatus && result.paymentStatus !== "PENDING") router.push(`/potrditev/${result.orderNumber}`);
+        // A payment already with the provider opens the waiting face; any other state speaks for itself.
+        if (result.paymentStatus && result.paymentStatus !== "PENDING") {
+          router.push(result.paymentStatus === "AWAITING_WEBHOOK" ? paymentSubmittedPath(result.orderNumber) : `/potrditev/${result.orderNumber}`);
+        }
         setPayInfo(result);
+      } else if (result.error === "invalid_form") {
+        // The server names the fields; the wizard marks them and reopens the step that holds the first one (QA M11).
+        const marked = fieldErrorsFromPaths(result.fields ?? []);
+        setFieldErrors(prev => ({ ...prev, ...marked }));
+        setError(Object.keys(marked).length ? checkout.errors.invalidForm : checkout.errors.orderFailed);
+        if (marked.email) setStep(0);
+        else if (Object.keys(marked).length) setStep(1);
       } else {
         setQuoteRefresh(value => value + 1);
         setError(
@@ -207,16 +355,31 @@ export function CheckoutWizard({
   );
   // The recap names the method the signed quote was priced with, not a selection still being re-quoted.
   const quotedMethod = quote ? shippingMethods.find((method) => method.id === quote.shippingMethodId) : undefined;
+  // Free shipping (threshold or a free-shipping code) never depends on the method, so every method reads free (QA C2-F10).
+  // The quote says why delivery is free: a 0 € method picked below the threshold leaves the others at their price.
+  const shippingFree = !!quote && quote.country === form.country && quote.freeShippingReached;
 
   if (payInfo) {
     return <ProviderPaymentPanel initial={payInfo} stripeKey={stripePublishableKey} paypalClientId={paypalClientId}
-      onComplete={number => router.push(`/potrditev/${number}`)} />;
+      onComplete={number => router.push(paymentSubmittedPath(number))} />;
   }
 
   return (
     <div className="grid gap-10 lg:grid-cols-[1fr_20rem]">
     <div className="flex flex-col gap-4" data-checkout-wizard>
       <NewTabHint />
+      {soldOut.length > 0 ? (
+        <div role="alert" className="rounded-card border border-error bg-white p-5 text-sm" data-checkout-sold-out>
+          <p className="font-medium text-error">{checkout.soldOut.title}</p>
+          <ul className="mt-2 list-disc pl-5 text-dark-1">
+            {soldOut.map((title, index) => <li key={`${index}-${title}`} data-checkout-sold-out-line>{title}</li>)}
+          </ul>
+          <p className="mt-2 text-mid-1">{checkout.soldOut.body}</p>
+          <div className="mt-4">
+            <UiButton href="/cart" variant="outline">{checkout.soldOut.cta}</UiButton>
+          </div>
+        </div>
+      ) : null}
       <StepShell
         index={0}
         title={checkout.steps.contact}
@@ -231,10 +394,12 @@ export function CheckoutWizard({
               type="email"
               autoComplete="email"
               required
+              maxLength={CHECKOUT_LIMITS.email}
               value={form.email}
               onChange={(e) => set("email", e.target.value)}
               onBlur={onEmailBlur}
-              aria-describedby="checkout-email-notice"
+              error={fieldError("email")}
+              aria-describedby={fieldError("email") ? "email-message checkout-email-notice" : "checkout-email-notice"}
             />
             <p id="checkout-email-notice" className="mt-1 text-xs text-mid-2" data-checkout-email-notice>
               {checkout.contact.emailNotice} {checkout.contact.privacyLead}{" "}
@@ -245,7 +410,8 @@ export function CheckoutWizard({
             </p>
             {emailExists ? (
               <p className="mt-1 text-xs text-link">
-                <Link href="/prijava" className="underline underline-offset-2">
+                {/* Sign-in returns here: the wizard is the page the shopper was on (QA T3-F1). */}
+                <Link href={{ pathname: "/prijava", query: { callbackUrl: "/checkout" } }} className="underline underline-offset-2">
                   {checkout.contact.accountHint}
                 </Link>
               </p>
@@ -265,7 +431,7 @@ export function CheckoutWizard({
           <UiButton
             variant="primary"
             onClick={continueFromContact}
-            disabled={pending || !form.email.includes("@")}
+            disabled={pending || soldOut.length > 0}
             data-continue-contact
           >
             {checkout.contact.continue}
@@ -280,21 +446,45 @@ export function CheckoutWizard({
         onOpen={setStep}
       >
         <div className="flex flex-col gap-4">
+          {savedAddresses.length > 0 ? (
+            <label htmlFor={savedAddressId} className="flex flex-col gap-1.5 text-sm font-medium text-dark-1">
+              {checkout.shipping.savedAddresses}
+              <select
+                id={savedAddressId}
+                name="savedAddress"
+                value={savedAddress}
+                onChange={(e) => applySavedAddress(e.target.value)}
+                className="h-[3.25rem] rounded-input border border-light-1 bg-white px-4 text-base text-dark-1 outline-none focus:border-brand"
+                data-saved-addresses
+              >
+                {savedAddresses.map((address) => (
+                  <option key={address.id} value={address.id}>
+                    {checkout.shipping.savedAddressOption(address.label ?? address.fullName, `${address.line1}, ${address.postalCode} ${address.city}`)}
+                  </option>
+                ))}
+                <option value="">{checkout.shipping.savedAddressNew}</option>
+              </select>
+            </label>
+          ) : null}
           <UiInput
             label={checkout.shipping.phoneLabel}
             name="phone"
             type="tel"
             autoComplete="tel"
+            maxLength={CHECKOUT_LIMITS.phone}
             value={form.phone}
             onChange={(e) => set("phone", e.target.value)}
+            error={fieldError("phone")}
           />
           <UiInput
             label={checkout.shipping.nameLabel}
             name="fullName"
             autoComplete="name"
             required
+            maxLength={CHECKOUT_LIMITS.fullName}
             value={form.fullName}
             onChange={(e) => set("fullName", e.target.value)}
+            error={fieldError("fullName")}
           />
           <div className="grid grid-cols-[1fr_8rem] gap-3">
             <UiInput
@@ -302,16 +492,20 @@ export function CheckoutWizard({
               name="street"
               autoComplete="address-line1"
               required
+              maxLength={CHECKOUT_LIMITS.street}
               value={form.street}
               onChange={(e) => set("street", e.target.value)}
+              error={fieldError("street")}
             />
             <UiInput
               label={checkout.shipping.streetNumberLabel}
               name="streetNumber"
               autoComplete="address-line2"
               required
+              maxLength={CHECKOUT_LIMITS.streetNumber}
               value={form.streetNumber}
               onChange={(e) => set("streetNumber", e.target.value)}
+              error={fieldError("streetNumber")}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -320,16 +514,20 @@ export function CheckoutWizard({
               name="city"
               autoComplete="address-level2"
               required
+              maxLength={CHECKOUT_LIMITS.city}
               value={form.city}
               onChange={(e) => set("city", e.target.value)}
+              error={fieldError("city")}
             />
             <UiInput
               label={checkout.shipping.postalLabel}
               name="postalCode"
               autoComplete="postal-code"
               required
+              maxLength={CHECKOUT_LIMITS.postalCode}
               value={form.postalCode}
               onChange={(e) => set("postalCode", e.target.value)}
+              error={fieldError("postalCode")}
             />
           </div>
           <label className="flex flex-col gap-1.5 text-sm font-medium text-dark-1">
@@ -339,11 +537,12 @@ export function CheckoutWizard({
               value={form.country}
               onChange={(e) => {
                 const country = e.target.value;
-                setForm(previous => ({ ...previous, country, shippingMethodId: shippingMethods.find(method => (method.countries ?? ["SI"]).includes(country))?.id ?? "" }));
+                setForm(previous => ({ ...previous, country, shippingMethodId: shippingMethods.find(method => methodServes(method, country))?.id ?? "" }));
+                setFieldErrors(previous => (previous.postalCode ? { ...previous, postalCode: undefined } : previous));
               }}
               className="h-[3.25rem] rounded-input border border-light-1 bg-white px-4 text-base text-dark-1 outline-none focus:border-brand"
             >
-              {EU_COUNTRIES.filter(country => shippingMethods.some(method => (method.countries ?? ["SI"]).includes(country.code))).map((country) => (
+              {EU_COUNTRIES.filter(country => shippingMethods.some(method => methodServes(method, country.code))).map((country) => (
                 <option key={country.code} value={country.code}>
                   {country.label}
                 </option>
@@ -355,7 +554,7 @@ export function CheckoutWizard({
             <legend className="text-sm font-medium text-dark-1">
               {checkout.shipping.methodLabel}
             </legend>
-            {shippingMethods.filter(method => (method.countries ?? ["SI"]).includes(form.country)).map((method) => (
+            {shippingMethods.filter(method => methodServes(method, form.country)).map((method) => (
               <label
                 key={method.id}
                 className={`flex cursor-pointer items-center justify-between gap-3 rounded-card border p-4 text-sm transition-colors ${
@@ -382,27 +581,24 @@ export function CheckoutWizard({
                   </span>
                 </span>
                 <span className="text-dark-1" data-method-price={method.id}>
-                  {formatEUR(quote?.shippingMethodId === method.id && quote.country === form.country ? quote.shippingCents : method.priceCents)}
+                  {shippingFree
+                    ? checkout.shipping.free
+                    : formatEUR(quote?.shippingMethodId === method.id && quote.country === form.country ? quote.shippingCents : method.priceCents)}
                 </span>
               </label>
             ))}
           </fieldset>
 
+          {error ? (<p role="alert" className="text-sm text-error">{error}</p>) : null}
           <div className="flex gap-3">
             <UiButton variant="ghost" onClick={() => setStep(0)}>
               {checkout.shipping.back}
             </UiButton>
+            {/* Empty fields do not disable the button: continuing marks them, so the shopper sees what is missing (QA M11). */}
             <UiButton
               variant="primary"
-              onClick={() => setStep(2)}
-              disabled={
-                !form.fullName ||
-                !form.street ||
-                !form.streetNumber ||
-                !form.city ||
-                !isValidPostalCode(form.country, form.postalCode) ||
-                !form.shippingMethodId || !quote || quotePending
-              }
+              onClick={continueFromShipping}
+              disabled={!form.shippingMethodId || !quote || quotePending}
               data-continue-shipping
             >
               {checkout.shipping.continue}
@@ -464,11 +660,12 @@ export function CheckoutWizard({
           <dl className="flex flex-col gap-2 text-sm">
             <div className="flex justify-between gap-4">
               <dt className="text-mid-2">{checkout.review.contactLabel}</dt>
-              <dd className="text-dark-1">{form.email}</dd>
+              {/* an address has no break points: without min-w-0 it widens the phone layout (QA 2026-09-30) */}
+              <dd className="min-w-0 text-right text-dark-1 [overflow-wrap:anywhere]">{form.email}</dd>
             </div>
             <div className="flex justify-between gap-4">
               <dt className="text-mid-2">{checkout.review.shippingLabel}</dt>
-              <dd className="text-right text-dark-1">
+              <dd className="min-w-0 text-right text-dark-1 [overflow-wrap:anywhere]">
                 {form.fullName}, {form.street} {form.streetNumber},{" "}
                 {form.postalCode} {form.city}
                 {selectedMethod ? ` — ${selectedMethod.label}` : ""}
@@ -521,6 +718,7 @@ export function CheckoutWizard({
                 </div>
               </dl>
               <p className="text-lg font-medium" data-review-total>{checkout.summary.total}: {formatEUR(quote.totalCents)}</p>
+              {klarnaEnabled ? <KlarnaRecap totalCents={quote.totalCents} /> : null}
             </section>
           ) : null}
 
@@ -547,10 +745,11 @@ export function CheckoutWizard({
         </div>
       </StepShell>
     </div>
-    <CheckoutSummary quote={quote} pending={quotePending} activeCode={activeCode} />
+    <CheckoutSummary quote={quote} failure={quoteFailure} pending={quotePending} activeCode={activeCode} klarnaEnabled={klarnaEnabled} />
     </div>
   );
 }
+
 function StepShell({
   index,
   title,

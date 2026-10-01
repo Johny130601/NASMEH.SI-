@@ -66,12 +66,17 @@ describe("the counter and the recap", () => {
   });
 
   it("names what is in the bundle, and drops the add-on clause when there is none", () => {
-    expect(bundleContents(1, 0)).toBe("1 izdelek za beljenje");
-    expect(bundleContents(2, 0)).toBe("2 izdelka za beljenje");
-    expect(bundleContents(3, 0)).toBe("3 izdelki za beljenje");
-    expect(bundleContents(1, 1)).toBe("1 izdelek za beljenje + 1 dodatek");
-    expect(bundleContents(2, 2)).toBe("2 izdelka za beljenje + 2 dodatka");
-    expect(bundleContents(2, 3)).toBe("2 izdelka za beljenje + 3 dodatki");
+    expect(bundleContents(1, 0)).toBe("1 izdelek");
+    expect(bundleContents(2, 0)).toBe("2 izdelka");
+    expect(bundleContents(3, 0)).toBe("3 izdelki");
+    expect(bundleContents(1, 1)).toBe("1 izdelek + 1 dodatek");
+    expect(bundleContents(2, 2)).toBe("2 izdelka + 2 dodatka");
+    expect(bundleContents(2, 3)).toBe("2 izdelka + 3 dodatki");
+  });
+
+  it("claims no product category: the builder opens from any product (QA C2-F19)", () => {
+    expect(bundle.title).not.toMatch(/beljenj/i);
+    for (const [units, addOns] of [[1, 0], [2, 3]]) expect(bundleContents(units, addOns)).not.toMatch(/beljenj/i);
   });
 
   it("is the same helper the copy object hands the page", () => {

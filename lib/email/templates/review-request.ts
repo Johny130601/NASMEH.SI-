@@ -1,6 +1,6 @@
 import type { Order } from "@prisma/client";
 import { siteUrl } from "@/lib/seo";
-import { email as copy } from "@/lib/copy";
+import { email as copy } from "@/lib/copy/email";
 import { emailLayout, emailStyles } from "./layout";
 
 export interface ReviewRequestItem {
