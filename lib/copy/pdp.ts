@@ -40,6 +40,8 @@ export const pdp = {
     decrease: "Zmanjšaj količino",
     increase: "Povečaj količino",
     addToCart: "Dodaj v košarico",
+    /** Straight to the checkout with the quantity shown (BuyNowButton). */
+    buyNow: "Kupi zdaj",
     addBundleToCart: "Dodaj paket v košarico",
     atcPhaseNote: "Nakup bo na voljo v fazi 3 — oglejte si izdelek.",
     guarantee: "30-dnevno jamstvo vračila denarja",

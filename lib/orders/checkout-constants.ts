@@ -29,6 +29,8 @@ export const CHECKOUT_LIMITS = {
   fullName: 120,
   street: 120,
   streetNumber: 12,
+  /** The one "Ulica in hišna številka" input: a street, a ", " and a house number at their limits. */
+  streetLine: 134,
   city: 80,
   postalCode: 10,
 } as const;
@@ -45,7 +47,8 @@ export function isPlausibleEmail(value: string): boolean {
 }
 
 export type CheckoutContactField = "email";
-export type CheckoutAddressField = "phone" | "fullName" | "street" | "streetNumber" | "city" | "postalCode";
+/** `streetLine` is the wizard's one input for street and house number; the order keeps them apart. */
+export type CheckoutAddressField = "phone" | "fullName" | "streetLine" | "city" | "postalCode";
 export type CheckoutField = CheckoutContactField | CheckoutAddressField;
 export type CheckoutFieldErrors = Partial<Record<CheckoutField, "required" | "invalid" | "tooLong">>;
 
@@ -57,19 +60,28 @@ export function validateCheckoutContact(form: { email: string }): CheckoutFieldE
   return isPlausibleEmail(email) ? {} : { email: "invalid" };
 }
 
-/** The Dostava step, mirroring `checkoutFormSchema` field by field (trimmed, min/max, phone, postal code). */
+/**
+ * The Dostava step, mirroring `checkoutFormSchema` field by field (trimmed, min/max, phone, postal code).
+ * The street line is checked as the two parts the order receives (`parseStreetLine`): a line
+ * without a house number is "invalid", so the field asks for it before the server would.
+ */
 export function validateCheckoutAddress(form: {
-  phone: string; fullName: string; street: string; streetNumber: string; city: string; postalCode: string; country: string;
+  phone: string; fullName: string; streetLine: string; city: string; postalCode: string; country: string;
 }): CheckoutFieldErrors {
   const errors: CheckoutFieldErrors = {};
-  const text = (field: Exclude<CheckoutAddressField, "phone" | "postalCode">, min: number) => {
+  const text = (field: "fullName" | "city", min: number) => {
     const value = form[field].trim();
     if (value.length < min) errors[field] = value ? "invalid" : "required";
     else if (value.length > CHECKOUT_LIMITS[field]) errors[field] = "tooLong";
   };
   text("fullName", 2);
-  text("street", 2);
-  text("streetNumber", 1);
+  const line = form.streetLine.trim();
+  const parts = parseStreetLine(line);
+  if (!line) errors.streetLine = "required";
+  else if (!parts || parts.street.length < 2) errors.streetLine = "invalid";
+  else if (parts.street.length > CHECKOUT_LIMITS.street || parts.streetNumber.length > CHECKOUT_LIMITS.streetNumber) {
+    errors.streetLine = "tooLong";
+  }
   text("city", 2);
   const phone = form.phone.trim();
   if (phone && !isValidPhone(phone)) errors.phone = phone.length > CHECKOUT_LIMITS.phone ? "tooLong" : "invalid";
@@ -81,9 +93,13 @@ export function validateCheckoutAddress(form: {
 
 /** Maps the server's `invalid_form` field paths back onto the wizard's fields. */
 export function fieldErrorsFromPaths(paths: string[]): CheckoutFieldErrors {
-  const known: CheckoutField[] = ["email", "phone", "fullName", "street", "streetNumber", "city", "postalCode"];
+  const known: CheckoutField[] = ["email", "phone", "fullName", "streetLine", "city", "postalCode"];
   const errors: CheckoutFieldErrors = {};
-  for (const path of paths) if ((known as string[]).includes(path)) errors[path as CheckoutField] = "invalid";
+  for (const path of paths) {
+    // the server checks street and house number apart; the wizard asks for both in one field
+    const field = path === "street" || path === "streetNumber" ? "streetLine" : path;
+    if ((known as string[]).includes(field)) errors[field as CheckoutField] = "invalid";
+  }
   return errors;
 }
 
@@ -111,14 +127,38 @@ export const EU_COUNTRIES: Array<{ code: string; label: string }> = [
   { code: "BE", label: "Belgija" },
 ];
 
+/** "12", "12a", "12 a", "5/3", "12-14" — or "b. š." (brez številke) for a building without one. */
+const HOUSE_NUMBER = String.raw`(?:\d+(?: ?[a-z])?(?:[/-]\d+(?: ?[a-z])?)?|b\. ?š\.?|bš)`;
+// the street may not end in the separator: "Via Roma, 10" is "Via Roma" + "10", not "Via Roma," + "10"
+const TRAILING_NUMBER = new RegExp(String.raw`^(.*[^\s,])[\s,]+(${HOUSE_NUMBER})$`, "iu");
+const LEADING_NUMBER = new RegExp(String.raw`^(${HOUSE_NUMBER})[\s,]+(.*\S)$`, "iu");
+
 /**
- * A saved address keeps "Ulica 12" in one line; the checkout stores street and
- * number apart (the invoice and the carrier label read them separately). The
- * trailing house-number token is split off when there is one; otherwise the
- * whole line is the street and the shopper adds the number.
+ * Street and house number from the one "Ulica in hišna številka" line — the
+ * way browser autofill, wallets and the address book hold an address
+ * ("Slovenska cesta 12"). The order keeps the two apart (`checkoutFormSchema`),
+ * so the line is split here; null means no house number could be found and
+ * the field asks for one.
+ *
+ * - the number closes the line: "Čopova ulica 12", "Ulica 12 a", "Via Roma, 10";
+ * - a supplement after a comma rides with the street, as the address book's
+ *   "Dopolnilo" always has: "Ulica 12, 2. nadstropje" → "Ulica, 2. nadstropje" + "12";
+ * - the number opens the line where that is the custom: "12 rue de la Paix".
+ *
+ * `${street} ${streetNumber}` reads back as the shopper typed it whenever the
+ * line ends with its number (a comma before the number is dropped).
  */
-export function splitStreetLine(line1: string): { street: string; streetNumber: string } {
-  const match = line1.trim().match(/^(.*\S)\s+(\d+[A-Za-z]?(?:[/-]\d+[A-Za-z]?)?)$/);
-  if (!match) return { street: line1.trim(), streetNumber: "" };
-  return { street: match[1], streetNumber: match[2] };
+export function parseStreetLine(line: string): { street: string; streetNumber: string } | null {
+  const text = line.replace(/\s+/g, " ").trim();
+  const trailing = TRAILING_NUMBER.exec(text);
+  if (trailing) return { street: trailing[1], streetNumber: trailing[2] };
+  const comma = text.indexOf(",");
+  if (comma > 0) {
+    const head = TRAILING_NUMBER.exec(text.slice(0, comma).trim());
+    const supplement = text.slice(comma + 1).trim();
+    if (head && supplement) return { street: `${head[1]}, ${supplement}`, streetNumber: head[2] };
+  }
+  const leading = LEADING_NUMBER.exec(text);
+  if (leading) return { street: leading[2], streetNumber: leading[1] };
+  return null;
 }

@@ -14,7 +14,9 @@ import { checkout } from "@/lib/copy";
 import { buildCheckoutPricing } from "@/lib/orders/quote";
 import { soldOutLineTitles } from "@/lib/orders/sold-out";
 import { CheckoutWizard } from "@/components/storefront/checkout/CheckoutWizard";
+import { TrackBeginCheckout } from "@/components/storefront/analytics/TrackBeginCheckout";
 import { UiButton } from "@/components/storefront/ui/UiButton";
+import { buildBeginCheckoutEvent } from "@/lib/analytics";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = buildMetadata({ title: checkout.title, path: "/checkout", noindex: true });
@@ -60,5 +62,7 @@ export default async function CheckoutPage() {
       stripePublishableKey={env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? null} paypalClientId={env.PAYPAL_CLIENT_ID ?? null}
       turnstileSiteKey={env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? null} initialQuote={initial?.quote ?? null} soldOutLines={soldOutLines} activeCode={await readKodaCode()} legalLinks={legalLinks} />
     </div>
+    {/* the shopper's lines at their unit prices before discounts, the figures the cart button used to send */}
+    <TrackBeginCheckout event={buildBeginCheckoutEvent(hydrated.map(line => ({ sku: line.sku, title: line.title, priceCents: line.priceCents, quantity: line.quantity })))} />
   </div>;
 }

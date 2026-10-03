@@ -83,8 +83,7 @@ async function contactAndAddress(page: Page, email: string) {
   await page.getByLabel("E-pošta", { exact: true }).fill(email);
   await page.locator("[data-continue-contact]").click();
   await page.getByLabel("Ime in priimek", { exact: true }).fill("Živa Ščuk");
-  await page.getByLabel("Ulica", { exact: true }).fill("Čopova ulica");
-  await page.getByLabel("Hišna številka", { exact: true }).fill("12");
+  await page.getByLabel("Ulica in hišna številka").fill("Čopova ulica 12");
   await page.getByLabel("Kraj", { exact: true }).fill("Ljubljana");
   await page.getByLabel("Poštna številka", { exact: true }).fill("1000");
 }

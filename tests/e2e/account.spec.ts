@@ -272,11 +272,9 @@ test("signed-in checkout starts from the account's default address and offers th
   const picker = page.locator("[data-saved-addresses]");
   await expect(picker).toBeVisible();
   await expect(page.getByLabel("Ime in priimek", { exact: true })).toHaveValue("Živa Ščuk");
-  await expect(page.getByLabel("Ulica", { exact: true })).toHaveValue("Čopova ulica");
-  await expect(page.getByLabel("Hišna številka", { exact: true })).toHaveValue("12");
+  await expect(page.getByLabel("Ulica in hišna številka", { exact: true })).toHaveValue("Čopova ulica 12");
   await expect(page.getByLabel("Poštna številka", { exact: true })).toHaveValue("1000");
   await expect(page.getByLabel("Telefon (za kurirja)", { exact: true })).toHaveValue("+386 40 123 456");
   await picker.selectOption({ label: "Služba — Dunajska cesta 20, 1000 Ljubljana" });
-  await expect(page.getByLabel("Ulica", { exact: true })).toHaveValue("Dunajska cesta");
-  await expect(page.getByLabel("Hišna številka", { exact: true })).toHaveValue("20");
+  await expect(page.getByLabel("Ulica in hišna številka", { exact: true })).toHaveValue("Dunajska cesta 20");
 });

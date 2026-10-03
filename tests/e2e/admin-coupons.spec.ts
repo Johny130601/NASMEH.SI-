@@ -30,8 +30,7 @@ async function placeAndPay(page: Page, email: string): Promise<string> {
   await page.getByLabel("E-pošta", { exact: true }).fill(email);
   await page.locator("[data-continue-contact]").click();
   await page.getByLabel("Ime in priimek").fill("Kupec Kupon");
-  await page.getByLabel("Ulica").fill("Testna ulica");
-  await page.getByLabel("Hišna številka").fill("12");
+  await page.getByLabel("Ulica in hišna številka").fill("Testna ulica 12");
   await page.getByLabel("Kraj").fill("Ljubljana");
   await page.getByLabel("Poštna številka").fill("1000");
   await page.locator("[data-continue-shipping]").click();

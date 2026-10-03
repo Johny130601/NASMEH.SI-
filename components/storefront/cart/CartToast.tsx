@@ -13,12 +13,13 @@ const VISIBLE_MS = 5000;
 
 /**
  * Confirmation card after an add to cart (research 04 §5 "where upsells
- * render", scandiweb add-to-cart practice): the item, its line, and the way to
- * the cart — anchored under the header near the cart icon, one card for every
- * button on the page, auto-dismissed after five seconds (paused while hovered
- * or focused, Esc closes). No drawer cart at P1 (§15): this confirms, the cart
- * page merchandises. The wrapper lets clicks through; only the card itself is
- * interactive.
+ * render", scandiweb add-to-cart practice): the item, its line, and the two
+ * ways on — "Na blagajno" straight to the checkout (the fewest-clicks path,
+ * 2026-10-03) and "Poglej košarico" to the cart page, which merchandises —
+ * anchored under the header near the cart icon, one card for every button on
+ * the page, auto-dismissed after five seconds (paused while hovered or
+ * focused, Esc closes). No drawer cart at P1 (§15). The wrapper lets clicks
+ * through; only the card itself is interactive.
  */
 export function CartToast() {
   const pathname = usePathname();
@@ -111,9 +112,13 @@ export function CartToast() {
             <UiIcon name="close" className="h-4 w-4" />
           </button>
         </div>
-        <div className="mt-3">
-          <Link href="/cart" onClick={dismiss} className={uiButtonClasses("primary", true, "!h-10 px-4 text-sm")} data-cart-toast-view>
+        {/* two equal halves; the base px-8 would push them past a 360px phone, hence !px-3 */}
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <Link href="/cart" onClick={dismiss} className={uiButtonClasses("outline", true, "!h-10 !px-3 text-sm")} data-cart-toast-view>
             {copy.toast.view}
+          </Link>
+          <Link href="/checkout" onClick={dismiss} className={uiButtonClasses("primary", true, "!h-10 !px-3 text-sm")} data-cart-toast-checkout>
+            {copy.checkout.cta}
             <UiIcon name="arrow-right" className="h-4 w-4" />
           </Link>
         </div>

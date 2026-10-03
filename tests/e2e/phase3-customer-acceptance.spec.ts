@@ -188,8 +188,7 @@ test("guest purchaser receives private confirmation, can verify an account, and 
     await page.getByLabel("E-pošta", { exact: true }).fill(email);
     await page.locator("[data-continue-contact]").click();
     await page.getByLabel("Ime in priimek").fill("Test Kupec");
-    await page.getByLabel("Ulica", { exact: true }).fill("Testna ulica");
-    await page.getByLabel("Hišna številka").fill("12");
+    await page.getByLabel("Ulica in hišna številka").fill("Testna ulica 12");
     await page.getByLabel("Kraj", { exact: true }).fill("Ljubljana");
     await page.getByLabel("Poštna številka").fill("1000");
     await page.locator("[data-continue-shipping]").click();

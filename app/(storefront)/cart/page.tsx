@@ -334,15 +334,7 @@ export default async function CartPage({
                   </p>
                 ) : null}
                 <div className="mt-4">
-                  <BeginCheckoutButton
-                    blockedBy={hasSoldOutLine ? "cart-sold-out" : null}
-                    items={priced.lines.map((line) => ({
-                      sku: line.sku,
-                      title: line.title,
-                      priceCents: line.unitPriceCents,
-                      quantity: line.quantity,
-                    }))}
-                  />
+                  <BeginCheckoutButton blockedBy={hasSoldOutLine ? "cart-sold-out" : null} />
                 </div>
                 <p className="mt-2 text-center text-xs text-mid-2">
                   {cart.checkout.note}

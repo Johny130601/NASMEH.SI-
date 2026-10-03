@@ -1,0 +1,46 @@
+# Fewer clicks to a purchase, steps 1–2 — record, 2026-10-03
+
+**Scope:** the owner's 2026-10-03 goal — "a customer must be able to make a purchase in as few clicks as possible". The proposal made in the session had four steps; the owner started **steps 1 and 2**: fix the address autofill and skip the cart page. Steps 3 (one checkout page with one button that places and pays the order, replacing the §8 accordion) and 4 (Apple Pay / Google Pay express buttons, spec §8.3 `[P2-growth]`) change the spec and wait for the owner's decision. No launch gate changes.
+
+## The path before and after
+
+Counted for a guest, product page to paid order, with the test-mode payment panel standing in for Stripe or PayPal.
+
+| Way in | Before | After steps 1–2 |
+|---|---|---|
+| A product page (every non-bundle PDP hands a clean add to the bundle builder) | **8** — Dodaj v košarico → the builder's Dodaj v košarico → Na blagajno (cart) → Naprej na dostavo → Naprej na plačilo → Na pregled → Naročilo z obveznostjo plačila → Plačaj naročilo | **6** — **Kupi zdaj** → the same five checkout clicks |
+| A catalog card, or the bundle's own PDP (both confirm in place) | **8** — Dodaj v košarico → Poglej košarico → Na blagajno → the five checkout clicks | **7** — Dodaj v košarico → **Na blagajno** (in the card) → the five checkout clicks |
+| Browser autofill on the Dostava step | the required house-number field carried `autocomplete="address-line2"`, the HTML token for an address's *second line* (floor, apartment), so autofill put "Slovenska cesta 12" into Ulica and left the number empty: an error, a hand edit and a second "Naprej na plačilo" | one tap fills "Ulica in hišna številka" (`address-line1`); nothing to fix |
+
+Step 3 would take the five checkout clicks down to one; step 4 makes a wallet purchase two taps with no typing.
+
+## What changed
+
+1. **One street field** (`components/storefront/checkout/CheckoutWizard.tsx`, `lib/orders/checkout-constants.ts`). "Ulica" + "Hišna številka" became **"Ulica in hišna številka"** with `autocomplete="address-line1"` — the label and shape the account address book already used. `parseStreetLine` splits it for the order, whose snapshot, invoice and labels keep `street` and `streetNumber` apart; the server contract (`checkoutFormSchema`) is unchanged and still validates both parts. It reads "Čopova ulica 12", "Tržaška cesta 12 a", "Slovenska cesta 5/3", "Celovška cesta 12-14", "Cesta 4. julija 12", "Via Roma, 10", "Grajska ulica b. š." and "12 rue de la Paix"; a saved address's supplement ("Dunajska cesta 20, 2. nadstropje") rides with the street as it did before. A line without a house number is refused on the client with "Vnesite ulico in hišno številko, npr. Slovenska cesta 12."; a server refusal of either half marks the one field (`fieldErrorsFromPaths`).
+2. **"Kupi zdaj"** on the PDP buy box (`components/storefront/pdp/BuyNowButton.tsx`, `buyNowAction` in `app/(storefront)/actions/cart.ts`): the stepper's quantity goes into the cart and the shopper continues straight to `/checkout`, past the bundle builder, the confirmation card and the cart page. The action reuses `ensureCartLines` (the bundle builder's write): the line is raised to **at least** the quantity, never by it, so a product already in the cart or a second click is not doubled. Only a full line continues; a line the cap or the stock stops short is confirmed in place with the units that landed, and a click that changed nothing says so under the button (AGENTS §8.23). Outlined under "Dodaj v košarico", so the existing primary action and the builder upsell keep their place; the sticky bar is unchanged.
+3. **"Na blagajno" in the add-to-cart card** (`components/storefront/cart/CartToast.tsx`): beside "Poglej košarico", two equal halves that fit a 360 px phone.
+4. **`begin_checkout` fires when the checkout opens** (`components/storefront/analytics/TrackBeginCheckout.tsx` on `app/(storefront)/checkout/page.tsx`) with the shopper's lines at their unit prices before discounts — the figures the cart button sent. The cart's `BeginCheckoutButton` no longer pushes it, so the cart button, the card and "Kupi zdaj" are counted alike (the shorter paths skip the cart).
+
+Spec: NASMEH_FEATURES §3.5, §6 item 8, §7.1 and §8.1 carry the changes.
+
+## Gates run on this tree
+
+| Gate | Result |
+|---|---|
+| `eslint . && tsc --noEmit` | clean |
+| Vitest | **164 files / 1726 tests passed** (163 / 1704 at `23ae95c`): `cart-buy-now` is new (6 — first click, second click a no-op, an earlier add absorbed, a bigger line kept, short at the cap and at the stock, refusals); `checkout-validation` 27 → 43 (the street line: 12 lines it splits, 5 it refuses, read-back, client mirror against the server schema, the input limit, the server's two paths onto one field) |
+| Fresh database `nasmeh_e2e_20261003` | `migrate deploy` applies **31** migrations; `migrate diff` against the schema: no difference; seed ×2 idempotent (Coupon 3, Setting 31, Product 5, Variant 5, Menu 7, ContentPage 6 after each run) |
+| Production build (e2e env) | exit 0 in 166 s. First-load JS: `/checkout` 125 → 126 kB (page 9.8 → 10.2 kB), `/izdelek/[slug]` 121 → 122 kB (6.55 → 6.94 kB); `/`, `/cart`, `/trgovina`, `/sestavi-paket` +0.03–0.06 kB (the card's second link); shared 106 kB unchanged |
+| Browser suite, report-only policy, fresh server on 4317 | **196 of 196** in 4.9 min (192 + the 4 of the new `quick-checkout.spec.ts`; the street fills of nine specs moved to the one field). Log `~/.nasmeh-tools/e2e-logs/quick-20261003-full.log`. This run's server log was overwritten when the server was restarted for the next run, so its `[csp]` lines were not counted; the enforced run below reports on the same pages |
+| Browser suite, `CSP_ENFORCE=true`, fresh server | **196 of 196**: 194 in the full run; the two `hardening.spec.ts` tests that failed read `CSP_ENFORCE` from the *runner's* environment, which the harness had set only for the server — re-run with the runner in enforced mode, `hardening.spec.ts` 6 of 6. Server log: 2 `[csp]` lines, both the spec's synthetic report (one per hardening run); no browser report |
+| Visual check (scratchpad Playwright, 1440 / 390 / 360 px) | buy box with "Kupi zdaj" under "Dodaj v košarico"; the card's two buttons side by side at 360 px; the street field's error under the one input; no horizontal overflow on the checkout |
+| Lighthouse (`docs/testing/lighthouse/2026-10-03/`, fresh database `nasmeh_lh_20261003`, one-line cart cookie, 7 runs per URL) | **desktop: every budget**, performance 100 on the four templates, LCP 541–606 ms (2026-10-01: 526–598 ms). **Mobile: LCP over the 2.5 s line on all four** — medians `/` 2581, PDP 2530, `/cart` 2531, `/checkout` 2520 ms (2026-10-01: 2446, 2550, 2523, 2660 ms, three of four over); TBT 54–59 ms, CLS 0. The home page's rise was checked by the 2026-10-01 A/B protocol: `23ae95c` built in a worktree on 4318 beside this tree on 4317, same database and cookie, mobile `/` interleaved A-B-A-B, 14 runs each — **2552 ms (A) against 2541 ms (B)** all-run median, 2409 against 2446 ms over the five clean runs each, TBT 57 against 38 ms: no measurable difference. The mobile line is the condition the closure record describes (the font's simulated arrival), not this change |
+| Docker build and container smoke | `docker compose build` exit 0 in 117 s (image `6b0f7a0aed0b`); smoke **19 of 19** — both containers healthy, `/api/health` with `db: up`, eight storefront routes 200, home SSR, the admin gate, the jobs endpoint refusing and accepting (six streams), uid 1000, the four named volumes writable, **31** migrations applied by the entrypoint, restart policy; torn down with `down -v` |
+
+## Notes and follow-ups
+
+- The autofill defect follows from the token's definition in the HTML standard; Playwright cannot drive a browser's saved autofill profiles, so the browser specs fill the field the way autofill now does (one line) and assert the `address-line1` token.
+- **The bundle builder still ends on `/cart`.** A non-bundle PDP's "Dodaj v košarico" goes through the builder, whose closing button ("Dodaj v košarico") lands on the cart. "Kupi zdaj" skips both; whether the builder should continue to the checkout as well is the owner's call — it is the upsell step, and its button would have to say "Na blagajno".
+- The confirmation card appears only for catalog-card adds and the bundle PDP; other PDPs hand a clean add to the builder.
+- `begin_checkout` now also fires on a checkout reload; GA4 funnels count users and sessions, so a reload does not inflate the step.
+- Steps 3 and 4 are open. Step 3 replaces the §8 accordion and puts Stripe.js on the checkout page (the Lighthouse fence must be re-run); step 4 pulls §8.3's express wallets forward from P2, needs the Apple Pay domain registered with Stripe and belongs on the D4 legal review list (the wallet sheet as the binding order click, CRD Art. 8(2)).

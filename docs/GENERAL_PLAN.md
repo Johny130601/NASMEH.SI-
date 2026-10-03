@@ -1,6 +1,6 @@
 # Nasmeh.si — GENERAL PLAN OF EVERYTHING
 
-**Version:** 2.11 · **Date:** 2026-10-01 · **Status:** exploratory QA (2026-09-29) and its fix pass done — every finding fixed and browser-verified, every local gate green on the final tree (see v2.11); Phases 0–2 and 4 complete; Phase 3 repaired locally with real-provider acceptance outstanding (gate G1); Phase 5 locally accepted; Phase 6 locally accepted; Phase 7 locally accepted; **Phase 9 local work complete and closed**: steps 1–6, the closure regression, the 2026-09-16 storefront pass and the [review pass](testing/phase-9-review-pass-2026-09-19.md) the closure record left open — no local item remains; the launch waits on D4, D5/G1, D2, G2, G4 and the host; one Phase 8A item, the [bundle builder](testing/bundle-builder-2026-09-23.md), pulled forward by the owner and committed 2026-09-23; the [full acceptance run of 2026-09-25](testing/full-acceptance-2026-09-25.md) covers that tree — 162 of 162 browser tests in both policy modes after two stale Phase 3 spec files were repaired, Docker smoke 19 of 19
+**Version:** 2.12 · **Date:** 2026-10-03 · **Status:** fewer clicks to a purchase, steps 1–2 done — one autofillable street field, "Kupi zdaj" on the PDP, "Na blagajno" in the add-to-cart card (see v2.12); steps 3–4 wait for the owner; exploratory QA (2026-09-29) and its fix pass done — every finding fixed and browser-verified, every local gate green on the final tree (see v2.11); Phases 0–2 and 4 complete; Phase 3 repaired locally with real-provider acceptance outstanding (gate G1); Phase 5 locally accepted; Phase 6 locally accepted; Phase 7 locally accepted; **Phase 9 local work complete and closed**: steps 1–6, the closure regression, the 2026-09-16 storefront pass and the [review pass](testing/phase-9-review-pass-2026-09-19.md) the closure record left open — no local item remains; the launch waits on D4, D5/G1, D2, G2, G4 and the host; one Phase 8A item, the [bundle builder](testing/bundle-builder-2026-09-23.md), pulled forward by the owner and committed 2026-09-23; the [full acceptance run of 2026-09-25](testing/full-acceptance-2026-09-25.md) covers that tree — 162 of 162 browser tests in both policy modes after two stale Phase 3 spec files were repaired, Docker smoke 19 of 19
 **Grounding documents (do not contradict):** `AGENTS.md` (decided architecture), `docs/NASMEH_FEATURES.md` (feature spec, cited below as "§N"), `docs/HISMILE_FEATURES.md`, `docs/research/01–07`.
 
 ## 0. Status ledger
@@ -475,6 +475,25 @@ Found by reading the working tree against this plan. None blocks Phase 6 step 3;
 | B24 | `/trgovina` renders no `<h1>` — the page's title is not a heading, only the SEO block's and the newsletter's `<h2>` exist — on the page the plan treats as the catalogue landing page (§3.3 SSR SEO, AGENTS §8.11) | Pre-launch, small: render the collection title as the page's `<h1>` in `app/(storefront)/trgovina`. Found 2026-09-23 while measuring navigation ([record](testing/bundle-builder-2026-09-23.md)) |
 
 ## 7. Change log
+
+- **v2.12 (2026-10-03):**
+  - **Fewer clicks to a purchase, steps 1–2** ([record](testing/quick-checkout-2026-10-03.md)). The owner's goal: a customer buys in as few clicks as possible. Of the four steps proposed, the owner started the first two:
+    - **One street field** "Ulica in hišna številka" (`autocomplete="address-line1"`) in the checkout. The separate house-number field carried `address-line2`, so browser autofill left it empty and the step stopped. `parseStreetLine` splits the line for the order, whose contract is unchanged.
+    - **"Kupi zdaj"** under "Dodaj v košarico" on the PDP: the stepper's quantity straight to the checkout, past the bundle builder and the cart. The line is raised to at least the quantity, never by it (`ensureCartLines`), and a line stopped short is reported in place (AGENTS §8.23).
+    - **"Na blagajno"** beside "Poglej košarico" in the add-to-cart card.
+    - `begin_checkout` fires when the checkout opens, so every way in counts alike.
+  - **Effect:** a guest from a product page to a paid order goes from 8 clicks to 6; from a catalog card, from 8 to 7; autofill no longer costs an error and a retry. Spec §3.5, §6, §7.1 and §8.1 updated.
+  - **Waiting for the owner:**
+    - step 3, one checkout page with one button that places and pays the order (replaces the §8 accordion);
+    - step 4, express wallets on the PDP, the cart and the checkout (§8.3 `[P2-growth]`, Apple Pay domain registration, D4 review of the wallet sheet as the order click);
+    - whether the bundle builder's closing button should continue to the checkout instead of the cart.
+  - **Gates:**
+    - `tsc` and `eslint` clean; 164 files / 1726 unit tests;
+    - fresh database at 31 migrations with no drift and the seed idempotent;
+    - 196 of 196 browser tests in both CSP modes (the enforced run's two `hardening.spec.ts` failures were the harness giving `CSP_ENFORCE` to the server but not the runner; 6 of 6 re-run);
+    - Lighthouse desktop every budget; mobile LCP over the 2.5 s line on all four templates, as three of four were on 2026-10-01 — an A/B against `23ae95c` on the mobile home page measured 2552 ms (before) against 2541 ms (after), no measurable difference;
+    - Docker build and container smoke 19 of 19.
+  - No migration, no launch row changed.
 
 - **v2.11 (2026-10-01):**
   - **Exploratory QA** ([record](testing/exploratory-qa-2026-09-29.md), 2026-09-29): a "click every path" pass over the whole store on four isolated servers found about 80 defects none of the 162 browser tests covered. Among them:

@@ -38,8 +38,7 @@ async function fillWizard(page: Page, email: string) {
   await page.locator("[data-continue-contact]").click();
 
   await page.getByLabel("Ime in priimek").fill("Test Kupec");
-  await page.getByLabel("Ulica").fill("Testna ulica");
-  await page.getByLabel("Hišna številka").fill("12");
+  await page.getByLabel("Ulica in hišna številka").fill("Testna ulica 12");
   await page.getByLabel("Kraj").fill("Ljubljana");
   await page.getByLabel("Poštna številka").fill("1000");
   await page.locator("[data-continue-shipping]").click();
@@ -365,8 +364,7 @@ test("checkout validation never dead-ends: fields say what to fix, the rail keep
 
   await page.getByLabel("Telefon (za kurirja)").fill("abc");
   await page.getByLabel("Ime in priimek").fill("   ");
-  await page.getByLabel("Ulica").fill("Testna ulica");
-  await page.getByLabel("Hišna številka").fill("12");
+  await page.getByLabel("Ulica in hišna številka").fill("Testna ulica 12");
   await page.getByLabel("Kraj").fill("Ljubljana");
   await page.getByLabel("Poštna številka").fill("0999");
   // A blank-after-trim name is marked on continue, never a silently disabled button.
@@ -412,11 +410,11 @@ test("\"Vnesite nov naslov\" empties the delivery fields a saved address filled 
     await page.goto("/checkout");
     await page.locator("[data-continue-contact]").click();
     const picker = page.locator("[data-saved-addresses]");
-    await expect(page.getByLabel("Ulica", { exact: true })).toHaveValue("Slovenska cesta");
+    await expect(page.getByLabel("Ulica in hišna številka", { exact: true })).toHaveValue("Slovenska cesta 12");
 
     await picker.selectOption({ label: "Vnesite nov naslov" });
     // Nothing of the saved address may ride along with a half-typed new one; the recipient is the account name.
-    for (const label of ["Telefon (za kurirja)", "Ulica", "Hišna številka", "Kraj", "Poštna številka"]) {
+    for (const label of ["Telefon (za kurirja)", "Ulica in hišna številka", "Kraj", "Poštna številka"]) {
       await expect(page.getByLabel(label, { exact: true })).toHaveValue("");
     }
     await expect(page.getByLabel("Ime in priimek", { exact: true })).toHaveValue("Veronika Beta");
@@ -425,7 +423,7 @@ test("\"Vnesite nov naslov\" empties the delivery fields a saved address filled 
     await expect(page.locator("[data-checkout-wizard] select[name='country']")).toHaveValue("SI");
     // Picking the saved row again fills it back in.
     await picker.selectOption({ label: "Dom — Slovenska cesta 12, 1000 Ljubljana" });
-    await expect(page.getByLabel("Hišna številka", { exact: true })).toHaveValue("12");
+    await expect(page.getByLabel("Ulica in hišna številka", { exact: true })).toHaveValue("Slovenska cesta 12");
   } finally {
     await prisma.cart.deleteMany({ where: { userId: user.id } });
     await prisma.abandonedCheckout.deleteMany({ where: { email: user.email } });

@@ -9,7 +9,7 @@ vi.mock("@/lib/promo/cart-pricing", () => ({ priceCartForDisplay: vi.fn(() => { 
 vi.mock("@/lib/settings", () => ({ getSetting: vi.fn(() => { throw new Error("Unexpected settings I/O"); }), SETTING_KEYS: {} }));
 
 import {
-  CHECKOUT_LIMITS, fieldErrorsFromPaths, isPlausibleEmail, isValidPostalCode, splitStreetLine,
+  CHECKOUT_LIMITS, fieldErrorsFromPaths, isPlausibleEmail, isValidPostalCode, parseStreetLine,
   validateCheckoutAddress, validateCheckoutContact,
 } from "@/lib/orders/checkout-constants";
 import { checkoutFormSchema, invalidFormFields } from "@/lib/orders/checkout-schema";
@@ -24,7 +24,7 @@ const form = {
   shippingMethodId: "ps-standard", provider: "test",
   checkoutKey: "a".repeat(32), quoteToken: "b".repeat(64),
 };
-const address = { phone: "", fullName: "Živa Ščuk", street: "Čopova ulica", streetNumber: "12", city: "Ljubljana", postalCode: "1000", country: "SI" };
+const address = { phone: "", fullName: "Živa Ščuk", streetLine: "Čopova ulica 12", city: "Ljubljana", postalCode: "1000", country: "SI" };
 
 describe("e-mail rule", () => {
   it.each(["qa2@x", "qa2", "@x.si", "a b@x.si", ""])("refuses %j on the client", (email) => {
@@ -94,9 +94,9 @@ describe("Dostava fields mirror the schema", () => {
   it("blank-after-trim names are required, one letter is invalid, over-long values are too long", () => {
     expect(validateCheckoutAddress({ ...address, fullName: "   " })).toEqual({ fullName: "required" });
     expect(validateCheckoutAddress({ ...address, fullName: "Ž" })).toEqual({ fullName: "invalid" });
-    expect(validateCheckoutAddress({ ...address, street: "x".repeat(CHECKOUT_LIMITS.street + 1) })).toEqual({ street: "tooLong" });
+    expect(validateCheckoutAddress({ ...address, streetLine: `${"x".repeat(CHECKOUT_LIMITS.street + 1)} 12` })).toEqual({ streetLine: "tooLong" });
     expect(validateCheckoutAddress({ ...address, city: "x".repeat(CHECKOUT_LIMITS.city + 1) })).toEqual({ city: "tooLong" });
-    expect(validateCheckoutAddress({ ...address, streetNumber: "1".repeat(CHECKOUT_LIMITS.streetNumber + 1) })).toEqual({ streetNumber: "tooLong" });
+    expect(validateCheckoutAddress({ ...address, streetLine: `Ulica ${"1".repeat(CHECKOUT_LIMITS.streetNumber + 1)}` })).toEqual({ streetLine: "tooLong" });
     for (const [field, value] of [["fullName", "   "], ["street", "x".repeat(121)], ["city", "x".repeat(81)], ["streetNumber", "1".repeat(13)]] as const) {
       const parsed = checkoutFormSchema.safeParse({ ...form, [field]: value });
       expect(parsed.success, field).toBe(false);
@@ -117,16 +117,63 @@ describe("Dostava fields mirror the schema", () => {
     expect(fieldErrorsFromPaths(["phone", "fullName", "quoteToken", "provider"])).toEqual({ phone: "invalid", fullName: "invalid" });
     expect(fieldErrorsFromPaths([])).toEqual({});
   });
+
+  it("marks the one street field for either half the server refuses", () => {
+    expect(fieldErrorsFromPaths(["street"])).toEqual({ streetLine: "invalid" });
+    expect(fieldErrorsFromPaths(["streetNumber"])).toEqual({ streetLine: "invalid" });
+    expect(fieldErrorsFromPaths(["street", "streetNumber", "city"])).toEqual({ streetLine: "invalid", city: "invalid" });
+  });
 });
 
-describe("saved address → street and house number (QA M12)", () => {
+/**
+ * 2026-10-03: street and house number are one autofillable field. A separate
+ * number input tagged address-line2 stayed empty under browser autofill
+ * ("Slovenska cesta 12" landed in Ulica) and stopped the step as required.
+ */
+describe("one street line → the order's street and house number", () => {
   it.each([
     ["Čopova ulica 12", { street: "Čopova ulica", streetNumber: "12" }],
     ["Trg 1a", { street: "Trg", streetNumber: "1a" }],
+    ["Tržaška cesta 12 a", { street: "Tržaška cesta", streetNumber: "12 a" }],
     ["Slovenska cesta 5/3", { street: "Slovenska cesta", streetNumber: "5/3" }],
-    ["Brez številke", { street: "Brez številke", streetNumber: "" }],
-    ["  Ulica 7  ", { street: "Ulica", streetNumber: "7" }],
+    ["Celovška cesta 12-14", { street: "Celovška cesta", streetNumber: "12-14" }],
+    ["Cesta 4. julija 12", { street: "Cesta 4. julija", streetNumber: "12" }],
+    ["  Ulica   7  ", { street: "Ulica", streetNumber: "7" }],
+    ["Via Roma, 10", { street: "Via Roma", streetNumber: "10" }],
+    ["Grajska ulica b. š.", { street: "Grajska ulica", streetNumber: "b. š." }],
+    ["Grajska ulica BŠ", { street: "Grajska ulica", streetNumber: "BŠ" }],
+    // the address book's supplement rides with the street, as it always has (QA M12)
+    ["Dunajska cesta 20, 2. nadstropje", { street: "Dunajska cesta, 2. nadstropje", streetNumber: "20" }],
+    ["12 rue de la Paix", { street: "rue de la Paix", streetNumber: "12" }],
   ])("splits %j", (line, expected) => {
-    expect(splitStreetLine(line)).toEqual(expected);
+    expect(parseStreetLine(line)).toEqual(expected);
+  });
+
+  it.each(["Brez številke", "Cesta 24. junija", "12", "", "   "])("finds no house number in %j", (line) => {
+    expect(parseStreetLine(line)).toBeNull();
+  });
+
+  it("reads back as typed when the line ends with its number", () => {
+    for (const line of ["Čopova ulica 12", "Tržaška cesta 12 a", "Cesta 4. julija 12", "Grajska ulica b. š."]) {
+      const parts = parseStreetLine(line)!;
+      expect(`${parts.street} ${parts.streetNumber}`).toBe(line);
+    }
+  });
+
+  it("asks for the house number on the client, and sends parts the server accepts", () => {
+    expect(validateCheckoutAddress({ ...address, streetLine: "  " })).toEqual({ streetLine: "required" });
+    expect(validateCheckoutAddress({ ...address, streetLine: "Čopova ulica" })).toEqual({ streetLine: "invalid" });
+    expect(validateCheckoutAddress({ ...address, streetLine: "X 12" })).toEqual({ streetLine: "invalid" });
+    for (const line of ["Čopova ulica 12", "Tržaška cesta 12 a", "Grajska ulica b. š.", "Dunajska cesta 20, 2. nadstropje", "Via Roma, 10"]) {
+      expect(validateCheckoutAddress({ ...address, streetLine: line }), line).toEqual({});
+      const parsed = checkoutFormSchema.safeParse({ ...form, ...parseStreetLine(line) });
+      expect(parsed.success, line).toBe(true);
+    }
+  });
+
+  it("the input's limit holds a street and a house number at their limits", () => {
+    const line = `${"x".repeat(CHECKOUT_LIMITS.street)}, ${"1".repeat(CHECKOUT_LIMITS.streetNumber)}`;
+    expect(line.length).toBe(CHECKOUT_LIMITS.streetLine);
+    expect(validateCheckoutAddress({ ...address, streetLine: line })).toEqual({});
   });
 });

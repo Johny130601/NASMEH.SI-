@@ -22,8 +22,8 @@ export const checkout = {
   shipping: {
     phoneLabel: "Telefon (za kurirja)",
     nameLabel: "Ime in priimek",
-    streetLabel: "Ulica",
-    streetNumberLabel: "Hišna številka",
+    /** One field, filled by browser autofill in one go; the order keeps street and number apart (lib/orders/checkout-constants parseStreetLine). */
+    streetLineLabel: "Ulica in hišna številka",
     cityLabel: "Kraj",
     postalLabel: "Poštna številka",
     countryLabel: "Država",
@@ -45,6 +45,8 @@ export const checkout = {
     phone: "Vnesite veljavno telefonsko številko — samo številke, presledki in znak +.",
     postalCode: "Preverite obliko poštne številke za izbrano državo.",
     fullName: "Vnesite ime in priimek.",
+    /** The street line without a house number (or a street shorter than two letters). */
+    streetLine: "Vnesite ulico in hišno številko, npr. Slovenska cesta 12.",
   },
   payment: {
     providerLabel: "Način plačila",

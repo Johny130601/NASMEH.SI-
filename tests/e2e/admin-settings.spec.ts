@@ -201,8 +201,7 @@ test("owner edits shipping, tax, marketing, consent, legal, maintenance and supp
     await front.getByLabel("E-pošta", { exact: true }).fill(`settings-kupec-${key}@test.si`);
     await front.locator("[data-continue-contact]").click();
     await front.getByLabel("Ime in priimek").fill("Kupec Nastavitve");
-    await front.getByLabel("Ulica").fill("Testna ulica");
-    await front.getByLabel("Hišna številka").fill("12");
+    await front.getByLabel("Ulica in hišna številka").fill("Testna ulica 12");
     await front.getByLabel("Kraj").fill("Ljubljana");
     await front.getByLabel("Poštna številka").fill("1000");
     await front.locator("[data-continue-shipping]").click();

@@ -25,8 +25,8 @@ export interface CartActionResult {
   capped?: boolean;
   /**
    * Units this add really stored, which is less than the quantity asked for
-   * when the cap clamped it. Only the add path sets it; it is what may be
-   * announced to the shopper and reported to analytics.
+   * when the cap clamped it. Only the add paths (add and "Kupi zdaj") set it;
+   * it is what may be announced to the shopper and reported to analytics.
    */
   addedQuantity?: number;
 }
@@ -124,6 +124,37 @@ export async function addToCartAction(input: unknown): Promise<CartActionResult>
   );
   // The cap clamps silently: an add that changed nothing must not answer ok.
   if (addedQuantity <= 0) return { ok: false, count: countOf(lines), capped: true };
+  return { ok: true, count: countOf(lines), addedQuantity };
+}
+
+/**
+ * "Kupi zdaj" on the PDP: the line is raised to AT LEAST the quantity asked
+ * for, never by it (`ensureCartLines`), so a product the shopper already holds
+ * — or a second click — reaches the checkout as asked, not doubled. `ok` means
+ * the line holds the full quantity and the button continues to the checkout,
+ * with `addedQuantity` the units this click added (0 when the cart already
+ * held them). A cap or stock that stops the line short answers `capped` with
+ * the units that did land: the PDP reports them, and nothing short of the ask
+ * is carried silently into the checkout (AGENTS §8.23).
+ */
+export async function buyNowAction(input: unknown): Promise<CartActionResult> {
+  const parsed = cartLineSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, count: 0 };
+
+  const variant = await resolveVariant(parsed.data.variantId);
+  if (!variant || isSoldOut(availabilityOf(variant))) return { ok: false, count: 0 };
+
+  const session = await auth();
+  const { lines, results } = await ensureCartLines(
+    session?.user?.id ?? null,
+    [parsed.data],
+    new Map([[parsed.data.variantId, lineCapOf(variant)]]),
+  );
+  const result = results[0];
+  const addedQuantity = result?.addedQuantity ?? 0;
+  if (!result || result.storedQuantity < parsed.data.quantity) {
+    return { ok: false, count: countOf(lines), capped: true, ...(addedQuantity > 0 ? { addedQuantity } : {}) };
+  }
   return { ok: true, count: countOf(lines), addedQuantity };
 }
 

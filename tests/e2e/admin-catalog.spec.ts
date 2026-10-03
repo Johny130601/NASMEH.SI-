@@ -178,8 +178,7 @@ test("owner creates, prices, illustrates, restocks, hides and backorders a produ
       await shop.getByLabel("E-pošta", { exact: true }).fill(shopper);
       await shop.locator("[data-continue-contact]").click();
       await shop.getByLabel("Ime in priimek").fill("Kupec Prednaročilo");
-      await shop.getByLabel("Ulica").fill("Testna ulica");
-      await shop.getByLabel("Hišna številka").fill("12");
+      await shop.getByLabel("Ulica in hišna številka").fill("Testna ulica 12");
       await shop.getByLabel("Kraj").fill("Ljubljana");
       await shop.getByLabel("Poštna številka").fill("1000");
       await shop.locator("[data-continue-shipping]").click();

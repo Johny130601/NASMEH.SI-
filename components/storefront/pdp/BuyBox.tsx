@@ -6,11 +6,13 @@ import { pdp as copy } from "@/lib/copy/pdp";
 import { UiIcon } from "../ui/UiIcon";
 import { ObvestiteMeButton } from "../catalog/ObvestiteMeButton";
 import { AddToCartButton } from "../catalog/AddToCartButton";
+import { BuyNowButton } from "./BuyNowButton";
 import { QuantityStepper } from "./QuantityStepper";
 
 /**
  * PDP buy box (§6.8): qty stepper (1–maxQuantity, minus disabled at 1),
- * LIVE add-to-cart (server re-prices), or "Obvestite me" when sold out — and
+ * LIVE add-to-cart (server re-prices) with "Kupi zdaj" under it — the same
+ * quantity straight to the checkout — or "Obvestite me" when sold out, and
  * a disabled sold-out button instead when no restock alert could be armed
  * (a bundle its components cannot fill, lib/bundle/availability).
  */
@@ -65,6 +67,15 @@ export function BuyBox({
         imageUrl={imageUrl}
         label={copy.buyBox.addToCart}
         nextHref={nextHref}
+      />
+
+      <BuyNowButton
+        variantId={variantId}
+        sku={sku}
+        title={title}
+        priceCents={priceCents}
+        quantity={quantity}
+        imageUrl={imageUrl}
       />
 
       <Link

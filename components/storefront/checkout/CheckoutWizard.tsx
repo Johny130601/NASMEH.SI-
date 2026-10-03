@@ -10,7 +10,7 @@ import {
   placeOrderAction,
 } from "@/app/(storefront)/actions/checkout";
 import {
-  CHECKOUT_LIMITS, EU_COUNTRIES, fieldErrorsFromPaths, isPlausibleEmail, splitStreetLine,
+  CHECKOUT_LIMITS, EU_COUNTRIES, fieldErrorsFromPaths, isPlausibleEmail, parseStreetLine,
   validateCheckoutAddress, validateCheckoutContact,
   type CheckoutField, type CheckoutFieldErrors, type ShippingMethodSetting,
 } from "@/lib/orders/checkout-constants";
@@ -105,8 +105,8 @@ interface FormState {
   email: string;
   phone: string;
   fullName: string;
-  street: string;
-  streetNumber: string;
+  /** "Ulica in hišna številka" as typed or autofilled; split into the order's two fields on submit. */
+  streetLine: string;
   city: string;
   postalCode: string;
   country: string;
@@ -115,17 +115,19 @@ interface FormState {
   marketingOptIn: boolean;
 }
 
-type AddressFields = Pick<FormState, "phone" | "fullName" | "street" | "streetNumber" | "city" | "postalCode" | "country">;
+type AddressFields = Pick<FormState, "phone" | "fullName" | "streetLine" | "city" | "postalCode" | "country">;
 
 const methodServes = (method: ShippingMethodSetting, country: string) => (method.countries ?? ["SI"]).includes(country);
 
-/** The address-book row as Dostava fields; the country falls back to Slovenia when no method serves it. */
+/**
+ * The address-book row as Dostava fields; the country falls back to Slovenia when no method serves it.
+ * The supplement follows the street line after a comma, where `parseStreetLine` keeps it with the street.
+ */
 function addressToFields(address: SavedAddress, shippingMethods: ShippingMethodSetting[]): AddressFields {
-  const { street, streetNumber } = splitStreetLine(address.line1);
   const country = shippingMethods.some(method => methodServes(method, address.country)) ? address.country : "SI";
   return {
     phone: address.phone ?? "", fullName: address.fullName,
-    street: address.line2 ? `${street}, ${address.line2}` : street, streetNumber,
+    streetLine: address.line2 ? `${address.line1}, ${address.line2}` : address.line1,
     city: address.city, postalCode: address.postalCode, country,
   };
 }
@@ -136,7 +138,7 @@ function addressToFields(address: SavedAddress, shippingMethods: ShippingMethodS
  * that is already picked, so only the address itself is cleared.
  */
 function blankAddress(fullName: string, country: string): AddressFields {
-  return { phone: "", fullName, street: "", streetNumber: "", city: "", postalCode: "", country };
+  return { phone: "", fullName, streetLine: "", city: "", postalCode: "", country };
 }
 
 const fieldMessage = (field: CheckoutField, kind: NonNullable<CheckoutFieldErrors[CheckoutField]>): string => {
@@ -144,6 +146,7 @@ const fieldMessage = (field: CheckoutField, kind: NonNullable<CheckoutFieldError
   if (field === "phone") return checkout.fields.phone;
   if (field === "postalCode" && kind !== "required") return checkout.fields.postalCode;
   if (field === "fullName" && kind === "invalid") return checkout.fields.fullName;
+  if (field === "streetLine" && kind === "invalid") return checkout.fields.streetLine;
   return checkout.fields[kind];
 };
 
@@ -307,10 +310,16 @@ export function CheckoutWizard({
   const placeOrder = () => {
     setError(null);
     if (!quote || quotePending) return;
+    // Dostava only continues with a line that splits; one that does not still reaches the
+    // server without a number, and its `invalid_form` answer reopens the field.
+    const { streetLine, ...fields } = form;
+    const parts = parseStreetLine(streetLine);
     startTransition(async () => {
       try {
       const result = await placeOrderAction({
-        ...form,
+        ...fields,
+        street: parts?.street ?? streetLine.trim(),
+        streetNumber: parts?.streetNumber ?? "",
         email: form.email.trim().toLowerCase(),
         turnstileToken,
         checkoutKey: stableCheckoutKey,
@@ -486,28 +495,18 @@ export function CheckoutWizard({
             onChange={(e) => set("fullName", e.target.value)}
             error={fieldError("fullName")}
           />
-          <div className="grid grid-cols-[1fr_8rem] gap-3">
-            <UiInput
-              label={checkout.shipping.streetLabel}
-              name="street"
-              autoComplete="address-line1"
-              required
-              maxLength={CHECKOUT_LIMITS.street}
-              value={form.street}
-              onChange={(e) => set("street", e.target.value)}
-              error={fieldError("street")}
-            />
-            <UiInput
-              label={checkout.shipping.streetNumberLabel}
-              name="streetNumber"
-              autoComplete="address-line2"
-              required
-              maxLength={CHECKOUT_LIMITS.streetNumber}
-              value={form.streetNumber}
-              onChange={(e) => set("streetNumber", e.target.value)}
-              error={fieldError("streetNumber")}
-            />
-          </div>
+          {/* One line, as autofill and the address book hold it: a separate number field
+              tagged address-line2 stayed empty under autofill and stopped the step. */}
+          <UiInput
+            label={checkout.shipping.streetLineLabel}
+            name="streetLine"
+            autoComplete="address-line1"
+            required
+            maxLength={CHECKOUT_LIMITS.streetLine}
+            value={form.streetLine}
+            onChange={(e) => set("streetLine", e.target.value)}
+            error={fieldError("streetLine")}
+          />
           <div className="grid grid-cols-2 gap-3">
             <UiInput
               label={checkout.shipping.cityLabel}
@@ -666,7 +665,7 @@ export function CheckoutWizard({
             <div className="flex justify-between gap-4">
               <dt className="text-mid-2">{checkout.review.shippingLabel}</dt>
               <dd className="min-w-0 text-right text-dark-1 [overflow-wrap:anywhere]">
-                {form.fullName}, {form.street} {form.streetNumber},{" "}
+                {form.fullName}, {form.streetLine.trim()},{" "}
                 {form.postalCode} {form.city}
                 {selectedMethod ? ` — ${selectedMethod.label}` : ""}
               </dd>
