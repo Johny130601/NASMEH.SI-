@@ -103,6 +103,16 @@ export const checkout = {
     quoteFailed: "Zneska trenutno ni mogoče izračunati. Preverite povezavo in poskusite znova.",
     noProvider: "Plačila trenutno niso na voljo. Poskusite pozneje.",
   },
+  /**
+   * An order this browser placed and has not paid (a reload or Back during payment, a failed
+   * attempt): offered back above the wizard, so the shopper finishes it instead of placing a
+   * duplicate (QA 2026-10-03 T2-02).
+   */
+  unpaidOrder: {
+    title: "Imate nedokončano naročilo",
+    body: (number: string, total: string) => `Naročilo ${number} (${total}) še ni plačano. Plačilo lahko dokončate, ali pa spodaj oddate novo naročilo.`,
+    cta: "Dokončaj plačilo",
+  },
   /** A line sold out while it sat in the cart: the wizard stops at the start, names it and links back (QA 2026-09-30). */
   soldOut: {
     title: "Nekaterih izdelkov ni več na zalogi",
@@ -162,7 +172,12 @@ export const orders = {
     createAccountBody: "Shranite podatke in spremljajte naročila. Izberite geslo, nato potrdite svoj e-poštni naslov.",
     passwordLabel: "Geslo (vsaj 8 znakov)",
     createAccountCta: "Ustvari račun",
-    accountCreated: "Poslali smo vam povezavo za potrditev računa. Pred prijavo potrdite svoj e-poštni naslov.",
+    /** Activation asks for the password chosen here (QA 2026-10-03 T3-02). */
+    accountCreated: "Poslali smo vam povezavo za potrditev računa. Odprite jo in vnesite geslo, ki ste ga pravkar izbrali; nato se lahko prijavite.",
+    /** The order's address already has a shopper's account: sign-in, back to this page, instead of a second account (QA 2026-10-03 T2-09). */
+    signInTitle: "Za ta e-poštni naslov že imate račun",
+    signInBody: "Prijavite se, da bodo vaša naslednja naročila shranjena v računu.",
+    signInCta: "Prijava",
     accountErrors: {
       weak_password: "Geslo mora vsebovati od 8 do 72 znakov.",
       order_state: "Račun lahko ustvarite po potrjenem plačilu.",

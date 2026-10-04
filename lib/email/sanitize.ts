@@ -116,6 +116,8 @@ const EMAIL_POLICY: HtmlSanitizerPolicy = {
   tagAttributes: TAG_ATTRIBUTES,
   safeHref: SAFE_HREF,
   safeSrc: SAFE_SRC,
+  // an image whose source was refused is removed, not kept as an empty <img> (QA 2026-10-03 T6-11)
+  requiredAttributes: { img: "src" },
   sanitizeStyle: sanitizeInlineStyle,
 };
 

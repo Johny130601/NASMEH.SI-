@@ -79,13 +79,20 @@ test("shipping emails the carrier link; tracking page, account and email agree; 
     expect(body).toContain(`/sledi?sledenje=${encodeURIComponent(number)}`);
     expect(body).toContain("2–3 delovni dnevi");
 
-    // Tracking-number mode: the email link prefills; typing it lowercase with spaces still resolves.
+    // Tracking-number mode: the email link looks the parcel up at once, without a click (QA 2026-10-03 T2-08).
     await page.goto(`/sledi?sledenje=${encodeURIComponent(number)}`);
     await dismissCmp(page);
     await expect(numberForm(page).input).toHaveValue(number);
+    const result = page.locator("[data-lookup-result]");
+    await expect(page.locator('[data-track-form="number"] + [data-lookup-result]')).toBeVisible();
+    await expect(result).toHaveAttribute("data-lookup-mode", "number");
+    await expect(page.locator("[data-lookup-status]")).toHaveText("Odposlano");
+    await expect(page.locator("[data-tracking-link]")).toHaveAttribute("href", expectedLink);
+    // Nobody pressed anything, so the answer does not take focus.
+    await expect(result.getByRole("heading", { name: "Stanje pošiljke" })).not.toBeFocused();
+    // Typing it lowercase with spaces still resolves.
     await numberForm(page).input.fill(rawNumber);
     await numberForm(page).submit.click();
-    const result = page.locator("[data-lookup-result]");
     await expect(result).toBeVisible();
     await expect(result).toHaveAttribute("data-lookup-mode", "number");
     // The answer sits right under the form that asked and takes focus (QA M14).
@@ -170,6 +177,10 @@ test("unknown inputs give one uniform answer and the rate limit is per client an
     await numberForm(page).input.fill(number);
     await numberForm(page).submit.click();
     await expect(error).toHaveText(NOT_FOUND);
+    // The shipped mail's link spends the same budget: its automatic lookup reads like a miss too (QA 2026-10-03 T2-08).
+    await page.goto(`/sledi?sledenje=${encodeURIComponent(number)}`);
+    await expect(page.locator('[data-track-form="number"] + [data-lookup-error]')).toHaveText(NOT_FOUND);
+    await expect(page.locator("[data-lookup-status]")).toHaveCount(0);
 
     // The order mode keeps its own budget for the same client.
     await orderForm(page).email.fill(email);

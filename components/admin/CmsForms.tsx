@@ -43,7 +43,7 @@ export function MarqueeForm({ initial, unavailableLinks = [] }: { initial: Marqu
   const { pending, run, status, deadLinks } = useSave(c.invalid, {}, unavailableLinks);
   return (
     <form className="flex flex-col gap-4 rounded-card border border-light-2 bg-white p-5" data-marquee-form onSubmit={(event) => { event.preventDefault(); run(() => saveMarqueeAction(values), c.saved); }}>
-      <UiInput label={c.fields.text} name="text" required maxLength={160} value={values.text} onChange={(event) => setValues({ ...values, text: event.target.value })} />
+      <UiInput label={c.fields.text} name="text" required maxLength={160} hint={c.textHint} value={values.text} onChange={(event) => setValues({ ...values, text: event.target.value })} />
       <UiInput label={c.fields.href} name="href" maxLength={500} value={values.href ?? ""} onChange={(event) => setValues({ ...values, href: event.target.value })} />
       <label className="flex items-center gap-3 text-sm">
         <input type="checkbox" checked={values.active} onChange={(event) => setValues({ ...values, active: event.target.checked })} className="size-4 accent-brand" data-marquee-active />
@@ -83,7 +83,8 @@ export function PopupForm({ initial }: { initial: WelcomePopupInput }) {
       <UiInput label={c.fields.thankYouTitle} name="thankYouTitle" required maxLength={120} {...text("thankYouTitle")} />
       <label className="flex flex-col gap-1.5 text-sm font-medium">
         {c.fields.thankYouBody}
-        <textarea value={values.thankYouBody} rows={3} maxLength={600} required onChange={(event) => setValues({ ...values, thankYouBody: event.target.value })} className={textareaClass} />
+        <textarea value={values.thankYouBody} rows={3} maxLength={600} required aria-describedby="popup-code-hint" onChange={(event) => setValues({ ...values, thankYouBody: event.target.value })} className={textareaClass} />
+        <span id="popup-code-hint" className="text-xs font-normal text-mid-2">{c.codeHint}</span>
       </label>
       <div className="flex items-center gap-3">
         <UiButton type="submit" variant="primary" disabled={pending} data-popup-save>{c.save}</UiButton>

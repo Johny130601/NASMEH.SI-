@@ -53,6 +53,16 @@ export const admin = {
     truncated: "Prikazanih je največ {n} vnosov; zožite iskanje ali filtre.",
     prev: "Prejšnja",
     next: "Naslednja",
+    /** Shown instead of an erasure placeholder address (`anonymised-…@invalid`) on every staff screen (QA 2026-10-03 T4-07). */
+    anonymised: "[anonimizirano]",
+  },
+  /** The admin's own 404, inside the shell and without the storefront's redirect countdown (QA 2026-10-03 T4-09). */
+  notFound: {
+    title: "Strani ni mogoče najti",
+    body: "Ta stran v skrbništvu ne obstaja ali vnos ni več na voljo. Izberite razdelek v meniju ali se vrnite na nadzorno ploščo.",
+    orders: "Naročila s to številko ni mogoče najti. Preverite številko ali naročilo poiščite na seznamu naročil.",
+    customers: "Te osebe ni mogoče najti: za vpisani e-poštni naslov ni shranjenih naročil, zahtevkov, prijav na e-novice ali obvestila o zalogi niti nedokončanih nakupov, ali pa je bila oseba anonimizirana in njen e-poštni naslov ni več shranjen.",
+    dashboard: "Na nadzorno ploščo",
   },
   dashboard: {
     title: "Nadzorna plošča",
@@ -67,12 +77,17 @@ export const admin = {
       too_long: "Obdobje je daljše od {max} dni; prikazanih je zadnjih 30 dni.",
       malformed: "Vnesena datuma nista veljavna; prikazanih je zadnjih 30 dni.",
     },
+    /** Definitions: lib/admin/dashboard.ts `DashboardKpis` — one cohort, the orders paid in the range (QA 2026-10-03 T4-02). */
     kpis: {
       revenue: "Prihodki (z DDV)",
       orders: "Plačana naročila",
+      ordersHint: "tudi pozneje preklicana ali vrnjena",
       aov: "Povprečno naročilo",
+      aovHint: "plačani znesek, pred vračili",
       itemsPerOrder: "Kosov na naročilo",
+      gross: "Plačano",
       refunded: "Vrnjeno",
+      scope: "Zneski in števila zajemajo naročila, plačana v izbranem obdobju. Prihodki so plačani znesek, zmanjšan za vračila; vračilo se šteje k obdobju, v katerem je bilo naročilo plačano, ne k dnevu vračila.",
       sessions: "Seje",
       conversion: "Konverzija",
       unavailable: "n/a do analitike (faza 8)",
@@ -82,7 +97,8 @@ export const admin = {
       revenueWeekly: "Prihodki po tednih",
       orders: "Naročila po dnevih",
       ordersWeekly: "Naročila po tednih",
-      byProduct: "Prihodki po izdelkih",
+      /** Line value of the units kept: refunded units are taken out; shipping and order discounts are not split by product. */
+      byProduct: "Prihodki po izdelkih (brez vrnjenih kosov)",
       byStatus: "Naročila po statusu (skupaj)",
       other: "Ostalo",
       empty: "Ni podatkov za izbrano obdobje.",
@@ -185,6 +201,17 @@ export const admin = {
       anonymised: "Osebni podatki stranke so bili anonimizirani.",
       shippingMethod: "Način dostave",
       coupon: "Kupon",
+      /** Delivery state of the two queued mails, read from the order (lib/admin/order-mail-state.ts, QA 2026-10-03 T4-03). */
+      mails: {
+        title: "Samodejna sporočila",
+        confirmation: "Potrditev naročila",
+        shipped: "Obvestilo o odpremi",
+        sent: "poslano {date}",
+        queued: "v vrsti za pošiljanje; dnevno opravilo ga poskusi znova",
+        lastError: "zadnji poskus ni uspel ({error})",
+        notDue: { confirmation: "pošlje se ob plačilu", shipped: "pošlje se ob odpremi" },
+        notQueued: "ni poslano in ni v vrsti (npr. naročilo je bilo pred pošiljanjem preklicano, vrnjeno ali anonimizirano)",
+      },
     },
     timeline: {
       created: "Naročilo ustvarjeno",
@@ -232,8 +259,12 @@ export const admin = {
       deliver: "Označi kot dostavljeno",
       cancel: "Prekliči naročilo",
       cancelHint: "Plačano naročilo se vrne v celoti in izdelki se vrnejo na zalogo.",
+      cancelHintUnpaid: "Naročilo še ni plačano: preklic ne vrača denarja, zaloga ostane nespremenjena.",
       cancelReason: "Razlog preklica",
-      confirmCancel: "Prekličem naročilo? Plačani znesek bo vrnjen v celoti.",
+      /** A paid order: the amount not yet refunded goes back with the cancellation. */
+      confirmCancel: "Prekličem naročilo? Stranki bo vrnjen znesek {amount}, izdelki se vrnejo na zalogo.",
+      /** An unpaid (PENDING) order: nothing was received, so nothing is refunded (QA 2026-10-03 T4-06). */
+      confirmCancelUnpaid: "Prekličem neplačano naročilo? Plačilo še ni prejeto, zato vračila ne bo.",
       refundTitle: "Vračilo denarja",
       refundQuantity: "Količina",
       refundShipping: "Vrni tudi poštnino ({amount})",
@@ -271,12 +302,17 @@ export const admin = {
         provider_unavailable: "Ponudnik plačil za to naročilo ni na voljo.",
         not_found: "Naročila ni mogoče najti.",
         invalid: "Preverite vnesene podatke.",
+        /** A customer-visible note on an order whose buyer has no account to read it (QA 2026-10-03 T4-04). */
+        note_not_visible: "Kupec tega naročila nima računa, v katerem bi opombo videl (gost ali anonimizirani podatki). Shranite jo kot interno opombo.",
       },
     },
     notes: {
       add: "Dodaj opombo",
       body: "Besedilo opombe",
       visible: "Vidno stranki (prikaže se v razdelku Moj račun)",
+      /** Instead of the "visible" box: only an account holder ever sees a note, on the account's order page (T4-04). */
+      guestHint: "Naročilo je oddal gost brez računa: opomb ne vidi in jih ne prejme po e-pošti, zato je opomba interna.",
+      anonymisedHint: "Osebni podatki kupca so anonimizirani: opomb ne vidi nihče zunaj ekipe, zato je opomba interna.",
       internal: "Interno",
       customerVisible: "Vidno stranki",
       empty: "Brez opomb.",
@@ -425,6 +461,8 @@ export const admin = {
       status: "Status",
       assignee: "Dodeljen",
       unassigned: "Nikomur",
+      /** After the member's role lost ticket access (QA 2026-10-03 V4-02). */
+      assigneeNoAccess: "nima več dostopa do podpore",
       internalNote: "Interna opomba",
       privacy: "Zasebnost sprejeta",
       deliveries: "Dostava e-pošte",
@@ -549,7 +587,14 @@ export const admin = {
         skuTaken: "SKU je že v uporabi.",
         lastVariant: "Zadnje variante izdelka ni mogoče izbrisati.",
         inBundle: "Varianta je sestavina paketa in je ni mogoče izbrisati.",
+        /** Its price history is the Omnibus record (QA 2026-10-03 T5-09). */
+        hasHistory: "Varianta je bila prodana ali je imela spremembe cene; zgodovina cen je zapis za Omnibus, zato je ni mogoče izbrisati. Namesto tega ji nastavite zalogo 0.",
+        historyNote: "Prodana ali s spremembo cene: ostane zaradi zgodovine cen (Omnibus).",
         bundlePrice: "Ceno paketa uredite v Paketi; tam se posodobita tako cena paketa kot cena variante, da prikazani prihranek ostane resničen.",
+        /** The form's stock was stale: an order (or another tab) changed it meanwhile (QA 2026-10-03 T5-01). */
+        stockChanged: "Zaloga se je medtem spremenila (zdaj {stock}), npr. zaradi novega naročila. Preverite vneseno število in shranite znova, če naj vseeno velja.",
+        /** Only a figure the operator types must be ≥ 0; a backorder may leave stock below zero (QA 2026-10-03 T5-02). */
+        stockNegative: "Nova zaloga ne more biti negativna.",
         priceHint: "Spremembe cen gredo skozi zgodovino cen (Omnibus), spremembe zaloge skozi pomočnik za zalogo (obvestila »Obvestite me«). Primerjalna cena le vklopi prikaz znižanja: v trgovini je prečrtana najnižja cena iz zgodovine cen v 30 dneh pred znižanjem; če take cene ni ali ni višja od trenutne, je prikazana samo trenutna cena. Znižanje se začne z vklopom primerjalne cene: vnesite jo skupaj z novo ceno ali najpozneje v 24 urah po spremembi cene. Če jo vklopite pozneje ali jo izklopite in znova vklopite, se 30 dni šteje od vklopa, trenutna cena je v tem obdobju že veljala in znižanje ni prikazano.",
         saved: "Varianta je shranjena.",
         deleted: "Varianta je izbrisana.",
@@ -569,6 +614,11 @@ export const admin = {
         deleted: "Slika je izbrisana.",
         invalid: "Datoteka ni veljavna slika ali je prevelika.",
         uploaded: "Slika je naložena.",
+        uploadedMany: "Naloženih slik: {count}.",
+        /** Some files of one selection were refused; the stored ones are named by count (QA 2026-10-03 V5-02). */
+        uploadedPartly: "Naloženih slik: {ok} od {total}. Ni veljavna slika ali je prevelika: {files}.",
+        tooMany: "Naenkrat lahko naložite največ {max} slike; ostale izberite znova.",
+        refusedAll: "Ni veljavna slika ali je prevelika: {files}.",
         empty: "Brez slik.",
       },
       history: { date: "Datum", price: "Cena", compareAt: "Primerjalna", empty: "Brez zapisov." },
@@ -624,6 +674,9 @@ export const admin = {
       empty: "Ni paketov.",
       editor: {
         back: "← Vsi paketi",
+        /** The bundle product's own stock row caps it; at 0 the bundle reads sold out whatever its components hold (QA 2026-10-03 T5-03). */
+        ownStockZero: "Zaloga paketa (varianta izdelka) je {stock}, zato paket ostane razprodan (»Obvestite me«), čeprav so sestavine na zalogi. Zalogo paketa nastavite pri izdelku; sestavine se ob nakupu odštejejo same.",
+        ownStockLink: "Uredi zalogo paketa",
         price: "Cena paketa (centi, z DDV)",
         active: "Aktiven",
         components: "Sestavine",
@@ -687,6 +740,7 @@ export const admin = {
       invalid: "Preverite vnesene podatke (odstotek 1–100, znesek za zneskovne kupone, konec po začetku).",
       codeTaken: "Koda že obstaja.",
       codeInvalid: "Koda »{code}« ni veljavna: 3–24 znakov, samo črke A–Z (brez šumnikov), številke in vezaj, ki ne sme biti prvi znak.",
+      emailsInvalid: "Preverite polje »Velja za e-naslove«: v vsaki vrstici mora biti en veljaven e-naslov (največ 200).",
       delete: "Izbriši kupon",
       confirmDelete: "Izbrišem kupon? Neunovčeni kupon izgine brez sledi.",
       used: "Kupon je bil že unovčen — namesto brisanja ga deaktivirajte.",
@@ -766,6 +820,7 @@ export const admin = {
         categories: { gtmId: "analitika ali trženje", ga4Id: "analitika", metaPixelId: "trženje", tiktokPixelId: "trženje" },
         categoryLabel: "kategorija privolitve",
         invalid: "Preverite obliko ID-jev (GTM-XXXX, G-XXXX, Meta samo številke).",
+        invalidFields: "Napačna oblika:",
       },
       verification: { title: "Google Search Console", token: "Koda za potrditev lastništva (vsebina meta oznake)" },
       seo: {
@@ -796,6 +851,8 @@ export const admin = {
         hint: "Poti do pravnih strani, ki jih uporabljajo blagajna, pasica piškotkov ter obrazci za kontakt, odstop od pogodbe in prijavo neželenega učinka; noga uporablja meni Noga — Pravno.",
         fields: { terms: "Pogoji poslovanja", privacy: "Politika zasebnosti", cookies: "Politika piškotkov", withdrawal: "Odstop od pogodbe" },
         invalid: "Poti morajo biti relativne (/stran).",
+        /** A link that would send checkout or the forms to a 404 (QA 2026-10-03 T6-03). */
+        unpublished: "Te povezave ne vodijo na objavljeno stran: {fields}. Objavite stran ali popravite pot.",
       },
       maintenance: {
         title: "Vzdrževalni način",
@@ -866,6 +923,7 @@ export const admin = {
     marquee: {
       title: "Oglasna vrstica",
       fields: { text: "Besedilo", href: "Povezava (neobvezno)", active: "Vrstica je vklopljena" },
+      textHint: "Znesek brezplačne dostave vpišite kot {prag}: trgovina ga nadomesti s pragom iz nastavitev dostave, zato ostane resničen, ko prag spremenite.",
       save: "Shrani vrstico",
       saved: "Oglasna vrstica je shranjena.",
       invalid: "Preverite besedilo in povezavo.",
@@ -877,6 +935,7 @@ export const admin = {
         active: "Okno je vklopljeno", delaySeconds: "Zamik (sekunde)", couponCode: "Koda kupona", title: "Naslov", body: "Besedilo",
         cta: "Gumb", thankYouTitle: "Zahvala — naslov", thankYouBody: "Zahvala — besedilo",
       },
+      codeHint: "Kodo v besedilu vpišite kot {koda}: okno jo nadomesti s kodo iz polja Koda kupona, zato zahvala vedno navede kodo, ki je res shranjena.",
       save: "Shrani okno",
       saved: "Pozdravno okno je shranjeno.",
       invalid: "Preverite vnesene podatke (zamik 0–600 s, koda kot pri kuponih).",
@@ -894,11 +953,17 @@ export const admin = {
       },
       hints: {
         enabled: "Izklop odstrani samo preusmeritev s strani izdelka; naslov /sestavi-paket ostane dosegljiv.",
-        subscriptionRow: "Vrstica samo zbira zanimanje za mesečno dostavo: nima odstotka, ne spremeni nobenega zneska in se ne pošlje v košarico.",
+        subscriptionRow: "Vrstica le napove mesečno dostavo z oznako »Kmalu«: nima stikala, ničesar ne zbira, nima odstotka, ne spremeni nobenega zneska in se ne pošlje v košarico.",
         offerUnits: "Od ena do štiri števila, ločena z vejico; prvo mora biti 1. Vsako je število kosov izdelka, s katerega je kupec prišel.",
         addOnSlugs: "Do trije slugi, ločeni z vejico. Prazno pomeni, da dodatke izbere trgovina sama iz kolekcij osnovnega izdelka.",
         couponCode: "Prazno pomeni brez popusta. Vpisana koda mora obstajati med aktivnimi kuponi in biti odstotkovna (PERCENT), sicer bi blagajna zaračunala drugače, kot je pokazala stran.",
       },
+      couponProblem: "Kupon »{code}« {reason}, zato sestavljanje paketa in blagajna trenutno ne obračunata popusta. Uredite ga v Kuponih ali kodo tukaj odstranite.",
+      couponProblemReasons: {
+        missing: "ne obstaja več", inactive: "je izklopljen", notPercent: "ni več odstotkovni",
+        notStarted: "še ne velja", expired: "je potekel", usedUp: "je dosegel omejitev uporab",
+      },
+      couponProblemLink: "Kuponi",
       save: "Shrani sestavljanje paketa",
       saved: "Sestavljanje paketa je shranjeno.",
       invalid: "Preverite vnesene podatke (prvo število mora biti 1, največ štiri količine in trije slugi).",
@@ -924,7 +989,8 @@ export const admin = {
         lockedHint: "Pravna stran: slug je zaklenjen, ker nanj vodijo noga, blagajna, obrazci ali pravne povezave v nastavitvah. Strani ni mogoče izbrisati, objavo pa lahko umaknete.",
         templateLockedHint: "Pravna stran obdrži pravno predlogo, ki do pregleda prikazuje opozorilo o osnutku.",
         slugLocked: "Slug in pravna predloga te strani sta zaklenjena: nanjo vodijo noga, blagajna in obrazci.",
-        confirmUnpublishLegal: "Umaknem objavo pravne strani? Povezave v nogi, na blagajni in v obrazcih bodo vračale 404, dokler strani znova ne objavite.",
+        /** Orders record the terms and withdrawal texts the buyer accepted; an unpublished page leaves that record empty (QA 2026-10-03 V6-01). */
+        confirmUnpublishLegal: "Umaknem objavo pravne strani? Povezave v nogi, na blagajni in v obrazcih bodo vračale 404, dokler strani znova ne objavite. Pri pogojih poslovanja in odstopu od pogodbe naročila medtem ne bodo zabeležila, katero besedilo je kupec sprejel.",
         savedReviewCleared: "Stran je shranjena, oznaka pravnega pregleda pa ne: besedilo se je spremenilo. Ko je novo besedilo pregledano, jo označite in stran znova shranite.",
         preview: "Predogled shranjene vsebine",
         previewEmpty: "Shranite vsebino, da se prikaže predogled.",
@@ -1034,7 +1100,10 @@ export const admin = {
         confirmReset: "Odstranim prilagojeno predlogo? Uporabi se privzeto besedilo iz kode.",
         resetDone: "Privzeta predloga je spet v uporabi.",
         invalid: "Preverite zadevo in vsebino.",
+        invalidAddress: "Vnesite veljaven e-poštni naslov za preizkusno sporočilo.",
         unknown: "Neznana polja: {names}",
+        /** The mail's action link left out: without it the customer cannot confirm or reset (QA 2026-10-03 T6-02). */
+        missing: "Predloga mora vsebovati {names} — brez te povezave sporočilo ne deluje.",
       },
     },
   },

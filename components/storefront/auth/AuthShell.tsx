@@ -1,19 +1,22 @@
 import type { ReactNode } from "react";
 import { auth as copy } from "@/lib/copy/auth";
-import { UiButton } from "../ui/UiButton";
 
-/** Social-first auth layout (§11.1): OAuth buttons (disabled until Phase 8)
- *  + "Ali" divider above the credentials form. The social row belongs to the
- *  sign-in and registration pages only; password recovery shows the form alone (QA T3). */
+/** Social-first auth layout (§11.1): the configured OAuth providers' buttons
+ *  + "Ali" divider above the credentials form. OAuth is Phase 8 and no provider
+ *  is configured yet, so the sign-in and registration pages pass none and the
+ *  row renders nothing — no disabled "coming soon" buttons (QA 2026-10-03 t3
+ *  N4); a provider slots in here without a redesign. Password recovery shows
+ *  the form alone (QA T3). */
 export function AuthShell({
   title,
   subtitle,
-  social = false,
+  social,
   children,
 }: {
   title: string;
   subtitle?: string;
-  social?: boolean;
+  /** Buttons of the configured OAuth providers; nothing renders without them. */
+  social?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -23,14 +26,7 @@ export function AuthShell({
 
       {social ? (
         <>
-          <div className="mt-8 flex flex-col gap-3">
-            <UiButton variant="outline" fullWidth disabled title={copy.social.note}>
-              Google · {copy.social.note}
-            </UiButton>
-            <UiButton variant="outline" fullWidth disabled title={copy.social.note}>
-              Facebook · {copy.social.note}
-            </UiButton>
-          </div>
+          <div className="mt-8 flex flex-col gap-3">{social}</div>
 
           <div className="my-6 flex items-center gap-4" aria-hidden="true">
             <span className="h-px flex-1 bg-light-2" />

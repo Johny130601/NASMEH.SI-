@@ -12,7 +12,7 @@ import {
 import { contentLinksToProducts, type ContentLinkPlace } from "@/lib/admin/cms";
 import { InvalidMediaFile, prepareMediaImage, removeMediaImage, saveMediaImage } from "@/lib/admin/media";
 import { variantIsPurchasable } from "@/lib/cart/visibility";
-import { setVariantStockInTx } from "@/lib/inventory/stock";
+import { setVariantStockInTx, StockChangedError } from "@/lib/inventory/stock";
 import { sendPendingRestockAlerts } from "@/lib/jobs/restock-alerts";
 import { changeVariantPriceInTx, recordInitialPriceInTx } from "@/lib/price-history";
 import { sanitizeContentHtml } from "@/lib/security/html-sanitizer";
@@ -24,7 +24,13 @@ import { sanitizeContentHtml } from "@/lib/security/html-sanitizer";
  */
 export type CatalogActionResult =
   | { ok: true; id?: string; armed?: number; sent?: number; failed?: number; linkedFrom?: ContentLinkPlace[] }
-  | { ok: false; error: "invalid" | "not_found" | "slugTaken" | "skuTaken" | "extraJson" | "lastVariant" | "inBundle" | "bundlePrice" | "media" | "noStock"; field?: ProductFieldKey | ProductCreateField };
+  | {
+    ok: false;
+    error: "invalid" | "not_found" | "slugTaken" | "skuTaken" | "extraJson" | "lastVariant" | "inBundle" | "bundlePrice" | "media" | "noStock" | "stockChanged" | "stockNegative" | "hasHistory";
+    field?: ProductFieldKey | ProductCreateField;
+    /** stockChanged: what the variant holds now. */
+    currentStock?: number;
+  };
 
 const idSchema = z.string().min(1).max(64);
 
@@ -119,12 +125,28 @@ export async function saveProductAction(input: { productId: string; basics: Prod
   return linkedFrom.length ? { ok: true, linkedFrom } : { ok: true };
 }
 
-/** Prices go through the price-history helper, stock through the stock helper (AGENTS §8.9, §8.13). */
-export async function saveVariantAction(input: { productId: string; variantId: string | null; variant: VariantInput }): Promise<CatalogActionResult> {
+/**
+ * Prices go through the price-history helper, stock through the stock helper (AGENTS §8.9, §8.13).
+ *
+ * `stockLoaded` is the stock the form showed when it opened. Stock is written only when the
+ * operator changed that figure, and only if the variant still holds it: a form left open while
+ * an order deducted stock used to write the old figure back — phantom units and false "back in
+ * stock" alerts — and a backordered variant (stock below zero) could not be saved at all
+ * (QA 2026-10-03 T5-01, T5-02).
+ */
+export async function saveVariantAction(input: {
+  productId: string; variantId: string | null; variant: VariantInput; stockLoaded?: number | null;
+}): Promise<CatalogActionResult> {
   await requirePermission("catalog:manage");
-  const parsed = z.object({ productId: idSchema, variantId: idSchema.nullable(), variant: variantSchema }).safeParse(input);
+  const parsed = z.object({
+    productId: idSchema, variantId: idSchema.nullable(), variant: variantSchema,
+    stockLoaded: z.number().int().min(-1_000_000).max(1_000_000).nullable().optional(),
+  }).safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid" };
   const { productId, variantId, variant } = parsed.data;
+  const stockLoaded = parsed.data.stockLoaded ?? null;
+  const stockEdited = !variantId || stockLoaded === null || variant.stock !== stockLoaded;
+  if (stockEdited && variant.stock < 0) return { ok: false, error: "stockNegative" };
   const product = await db.product.findUnique({ where: { id: productId }, select: { slug: true, bundle: { select: { priceCents: true } } } });
   if (!product) return { ok: false, error: "not_found" };
   // A bundle sells at its bundle price (saveBundleAction keeps every variant in
@@ -155,7 +177,10 @@ export async function saveVariantAction(input: { productId: string; variantId: s
       if (variantId) {
         await changeVariantPriceInTx(tx, { variantId: id, priceCents: variant.priceCents, compareAtPriceCents: variant.compareAtPriceCents });
       }
-      return (await setVariantStockInTx(tx, id, variant.stock)).armedAlerts;
+      if (!stockEdited) return 0;
+      // an existing variant is written only over the figure the operator saw
+      const expectedBefore = variantId && stockLoaded !== null ? stockLoaded : undefined;
+      return (await setVariantStockInTx(tx, id, variant.stock, { expectedBefore })).armedAlerts;
     }, { maxWait: 10_000, timeout: 20_000 });
     if (armed > 0) {
       try { await sendPendingRestockAlerts(); } catch (error) { console.error("Restock alerts remain queued", error instanceof Error ? error.name : "unknown"); }
@@ -163,6 +188,7 @@ export async function saveVariantAction(input: { productId: string; variantId: s
     refreshProduct(product.slug);
     return { ok: true, armed };
   } catch (error) {
+    if (error instanceof StockChangedError) return { ok: false, error: "stockChanged", currentStock: error.current };
     if (error instanceof Error && error.message === "not_found") return { ok: false, error: "not_found" };
     if (uniqueViolation(error, "sku")) return { ok: false, error: "skuTaken" };
     throw error;
@@ -182,6 +208,14 @@ export async function deleteVariantAction(input: { productId: string; variantId:
   if (!product || !target) return { ok: false, error: "not_found" };
   if (product.variants.length <= 1) return { ok: false, error: "lastVariant" };
   if (target._count.bundleItems > 0) return { ok: false, error: "inBundle" };
+  // The price history is the Omnibus compliance record (AGENTS §5.6) and deleting a variant would take
+  // it along: a variant that was sold or ever repriced stays (QA 2026-10-03 T5-09). A fresh one, with only
+  // its initial price row and no order, can still go.
+  const [priceRows, orderLines] = await Promise.all([
+    db.priceHistory.count({ where: { variantId: target.id } }),
+    db.orderItem.count({ where: { variantId: target.id } }),
+  ]);
+  if (priceRows > 1 || orderLines > 0) return { ok: false, error: "hasHistory" };
   await db.$transaction([
     db.backInStockSubscription.updateMany({ where: { variantId: target.id }, data: { variantId: null } }),
     db.variant.delete({ where: { id: target.id } }),

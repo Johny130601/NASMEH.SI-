@@ -92,6 +92,15 @@ describe("sendOrderConfirmationEmail", () => {
     expect(sent().html).not.toContain("tel:");
   });
 
+  it("never states a seed placeholder as the seller's identity (QA 2026-10-03)", async () => {
+    const seller = { ...content().legal.seller, address: "Trg nasmeha 1, 1000 Ljubljana", registrationNumber: "0000000000", vatId: "SI00000000" };
+    await sendOrderConfirmationEmail(order, content({ legal: { ...content().legal, seller } }));
+    const { html } = sent();
+    for (const placeholder of ["Trg nasmeha", "0000000000", "SI00000000", "Matična številka", "ID za DDV"]) expect(html).not.toContain(placeholder);
+    expect(html).toContain("Nasmeh &amp; Co, d.o.o.");
+    expect(html).toContain(`href="mailto:info@nasmeh.si"`);
+  });
+
   it("links a '+386 (0)1' number without the trunk zero and shows it as typed (S7)", async () => {
     await sendOrderConfirmationEmail(order, content({ legal: { ...content().legal, seller: { ...content().legal.seller, phone: "+386 (0)1 234 56 78" } } }));
     expect(sent().html).toContain(`<a href="tel:+38612345678" style="color:rgb(0,122,255);word-break:break-all;">+386 (0)1 234 56 78</a>`);

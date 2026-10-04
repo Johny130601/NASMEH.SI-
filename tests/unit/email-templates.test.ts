@@ -15,6 +15,25 @@ beforeEach(() => {
   mocks.findUnique.mockResolvedValue(null);
 });
 
+describe("an override without its action link is never sent (QA 2026-10-03 T6-02)", () => {
+  it("falls back to the code template", async () => {
+    mocks.findUnique.mockResolvedValue({ key: "resetPassword", subject: "Geslo", bodyHtml: "<p>Brez povezave.</p>" });
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const mail = await resolveMail("resetPassword", { resetUrl: "https://nasmeh.si/ponastavi-geslo/x" }, () => ({ subject: "Koda", html: "<a href=\"https://nasmeh.si/ponastavi-geslo/x\">x</a>" }));
+      expect(mail).toEqual({ subject: "Koda", html: "<a href=\"https://nasmeh.si/ponastavi-geslo/x\">x</a>" });
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("every default body carries its own required placeholders", () => {
+    for (const key of EMAIL_TEMPLATE_KEYS) {
+      for (const name of EMAIL_TEMPLATE_DEFS[key].requiredPlaceholders ?? []) expect(EMAIL_TEMPLATE_DEFS[key].defaultBody, key).toContain(`{{${name}}}`);
+    }
+  });
+});
+
 describe("template definitions", () => {
   it("cover the P1 mails, sample every placeholder and use only known placeholders in the defaults", () => {
     expect(EMAIL_TEMPLATE_KEYS).toEqual([
@@ -96,6 +115,8 @@ describe("resolveMail", () => {
     const mail = await resolveMail("verifyAccount", { confirmUrl: "https://nasmeh.si/potrdi-racun/abc" }, fallback);
     expect(mail.subject).toBe("Aktivacija https://nasmeh.si/potrdi-racun/abc");
     expect(mail.html).toContain(`<a href="https://nasmeh.si/potrdi-racun/abc">go</a>`);
+    // an override carrying its key's action link renders; one without it is never sent (QA 2026-10-03 T6-02)
+    mocks.findUnique.mockResolvedValue({ key: "resetPassword", subject: "Geslo", bodyHtml: "<a href=\"{{resetUrl}}\">novo geslo</a>" });
     expect(await renderEmailOverride("resetPassword", {})).not.toBeNull();
   });
 

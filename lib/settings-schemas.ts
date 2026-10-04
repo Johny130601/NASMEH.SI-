@@ -112,11 +112,13 @@ export const lowStockThresholdSchema = z.number().int().min(0).max(1000);
 // ---------- marketing, SEO, consent, store (§14.14) ----------
 
 const optionalId = (pattern: RegExp) => z.union([z.literal(""), z.string().trim().regex(pattern)]);
+/** Google ids are upper case: a pasted "gtm-abc123" is stored as "GTM-ABC123", not refused (QA 2026-10-03 T6-10). */
+const optionalUpperId = (pattern: RegExp) => z.string().trim().toUpperCase().pipe(z.union([z.literal(""), z.string().regex(pattern)]));
 
 /** Only GTM fires at P1; the other ids are stored for Phase 8 and mapped to their consent category. */
 export const analyticsSchema = z.object({
-  gtmId: optionalId(/^GTM-[A-Z0-9]{4,10}$/),
-  ga4Id: optionalId(/^G-[A-Z0-9]{4,12}$/),
+  gtmId: optionalUpperId(/^GTM-[A-Z0-9]{4,10}$/),
+  ga4Id: optionalUpperId(/^G-[A-Z0-9]{4,12}$/),
   metaPixelId: optionalId(/^[0-9]{6,20}$/),
   tiktokPixelId: optionalId(/^[A-Z0-9]{10,30}$/i),
 });

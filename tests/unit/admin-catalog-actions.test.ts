@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   collectionCreate: vi.fn(), collectionUpdate: vi.fn(), collectionFindUnique: vi.fn(), collectionDelete: vi.fn(),
   bundleCreate: vi.fn(), bundleUpdate: vi.fn(), bundleItemDeleteMany: vi.fn(), bundleItemCreateMany: vi.fn(),
   changePrice: vi.fn(), recordInitial: vi.fn(), setStock: vi.fn(), sendAlerts: vi.fn(), removeMedia: vi.fn(),
+  priceHistoryCount: vi.fn(), orderItemCount: vi.fn(),
 }));
 vi.mock("@/lib/auth", () => ({ auth: mocks.auth }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidate }));
@@ -19,6 +20,8 @@ vi.mock("@/lib/db", () => {
     product: { findUnique: mocks.productFindUnique, create: mocks.productCreate, update: mocks.productUpdate },
     variant: { create: mocks.variantCreate, update: mocks.variantUpdate, updateMany: mocks.variantUpdateMany, findFirst: mocks.variantFindFirst, findMany: mocks.variantFindMany, delete: mocks.variantDelete },
     backInStockSubscription: { updateMany: mocks.subscriptionUpdateMany },
+    priceHistory: { count: mocks.priceHistoryCount },
+    orderItem: { count: mocks.orderItemCount },
     setting: { upsert: mocks.settingUpsert, findUnique: mocks.settingFindUnique },
     menu: { findMany: mocks.menuFindMany },
     collection: { create: mocks.collectionCreate, update: mocks.collectionUpdate, findUnique: mocks.collectionFindUnique, delete: mocks.collectionDelete },
@@ -29,7 +32,7 @@ vi.mock("@/lib/db", () => {
   return { db: client };
 });
 vi.mock("@/lib/price-history", () => ({ changeVariantPriceInTx: mocks.changePrice, recordInitialPriceInTx: mocks.recordInitial }));
-vi.mock("@/lib/inventory/stock", () => ({ setVariantStockInTx: mocks.setStock }));
+vi.mock("@/lib/inventory/stock", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/inventory/stock")>()), setVariantStockInTx: mocks.setStock }));
 vi.mock("@/lib/jobs/restock-alerts", () => ({ sendPendingRestockAlerts: mocks.sendAlerts }));
 vi.mock("@/lib/admin/media", () => ({
   InvalidMediaFile: class InvalidMediaFile extends Error {}, prepareMediaImage: vi.fn(), saveMediaImage: vi.fn(), removeMediaImage: mocks.removeMedia,
@@ -71,6 +74,9 @@ beforeEach(() => {
   mocks.setStock.mockResolvedValue({ variantId, before: 0, after: 3, armedAlerts: 0 });
   mocks.changePrice.mockResolvedValue({ priceRecorded: true });
   mocks.recordInitial.mockResolvedValue({});
+  // a variant as created: its initial PriceHistory row, never sold
+  mocks.priceHistoryCount.mockResolvedValue(1);
+  mocks.orderItemCount.mockResolvedValue(0);
   mocks.sendAlerts.mockResolvedValue({ processed: 1, sent: 1, failed: 0, skipped: 0 });
   mocks.subscriptionUpdateMany.mockResolvedValue({ count: 2 });
   mocks.settingUpsert.mockResolvedValue({});
@@ -188,7 +194,7 @@ describe("products and variants", () => {
     expect(mocks.variantUpdate.mock.calls[0][0].data).not.toHaveProperty("priceCents");
     expect(mocks.variantUpdate.mock.calls[0][0].data).not.toHaveProperty("stock");
     expect(mocks.changePrice).toHaveBeenCalledWith(expect.anything(), { variantId, priceCents: 2990, compareAtPriceCents: 3499 });
-    expect(mocks.setStock).toHaveBeenCalledWith(expect.anything(), variantId, 3);
+    expect(mocks.setStock).toHaveBeenCalledWith(expect.anything(), variantId, 3, { expectedBefore: undefined });
     expect(mocks.sendAlerts).toHaveBeenCalledTimes(1);
 
     mocks.sendAlerts.mockClear();
@@ -201,9 +207,31 @@ describe("products and variants", () => {
     expect(mocks.variantCreate.mock.calls[0][0].data).toMatchObject({ productId, sku: "NAS-TRK-07", priceCents: 2990, compareAtPriceCents: 3499, stock: 0 });
     expect(mocks.recordInitial).toHaveBeenCalledWith(expect.anything(), { variantId: "cmf0variant00000000000002", priceCents: 2990, compareAtPriceCents: 3499 });
     expect(mocks.changePrice).not.toHaveBeenCalled();
-    expect(mocks.setStock).toHaveBeenCalledWith(expect.anything(), "cmf0variant00000000000002", 5);
+    expect(mocks.setStock).toHaveBeenCalledWith(expect.anything(), "cmf0variant00000000000002", 5, { expectedBefore: undefined });
     mocks.variantCreate.mockRejectedValueOnce(p2002("sku"));
     expect(await saveVariantAction({ productId, variantId: null, variant })).toEqual({ ok: false, error: "skuTaken" });
+  });
+
+  it("writes stock only when the operator changed it, and only over the figure the form showed (QA 2026-10-03 T5-01)", async () => {
+    // an unrelated field saved on a form opened at 3: stock is left to whatever orders made of it
+    expect(await saveVariantAction({ productId, variantId, variant: { ...variant, stock: 3 }, stockLoaded: 3 })).toEqual({ ok: true, armed: 0 });
+    expect(mocks.setStock).not.toHaveBeenCalled();
+    // a new figure is written over the one the form showed
+    mocks.setStock.mockResolvedValueOnce({ variantId, before: 7, after: 10, armedAlerts: 0 });
+    expect(await saveVariantAction({ productId, variantId, variant: { ...variant, stock: 10 }, stockLoaded: 7 })).toEqual({ ok: true, armed: 0 });
+    expect(mocks.setStock).toHaveBeenCalledWith(expect.anything(), variantId, 10, { expectedBefore: 7 });
+    // and refused when an order moved the stock since the form opened
+    const { StockChangedError } = await import("@/lib/inventory/stock");
+    mocks.setStock.mockRejectedValueOnce(new StockChangedError(5));
+    expect(await saveVariantAction({ productId, variantId, variant: { ...variant, stock: 10 }, stockLoaded: 7 })).toEqual({ ok: false, error: "stockChanged", currentStock: 5 });
+  });
+
+  it("saves a backordered variant below zero without touching its stock, and refuses a new negative figure (QA 2026-10-03 T5-02)", async () => {
+    expect(await saveVariantAction({ productId, variantId, variant: { ...variant, stock: -2, allowBackorder: true }, stockLoaded: -2 })).toEqual({ ok: true, armed: 0 });
+    expect(mocks.setStock).not.toHaveBeenCalled();
+    expect(await saveVariantAction({ productId, variantId, variant: { ...variant, stock: -1 }, stockLoaded: 4 })).toEqual({ ok: false, error: "stockNegative" });
+    expect(await saveVariantAction({ productId, variantId: null, variant: { ...variant, sku: "NAS-NEG-1", stock: -1 } })).toEqual({ ok: false, error: "stockNegative" });
+    expect(mocks.setStock).not.toHaveBeenCalled();
   });
 
   it("refuses invalid variants and variants of another product without writing", async () => {
@@ -225,6 +253,17 @@ describe("products and variants", () => {
     expect(await deleteVariantAction({ productId, variantId })).toEqual({ ok: true });
     expect(mocks.subscriptionUpdateMany).toHaveBeenCalledWith({ where: { variantId }, data: { variantId: null } });
     expect(mocks.variantDelete).toHaveBeenCalledWith({ where: { id: variantId } });
+  });
+
+  it("refuses to delete a variant whose price history or sales are the Omnibus record (QA 2026-10-03 T5-09)", async () => {
+    mocks.productFindUnique.mockResolvedValue({ slug: "trakci", variants: [{ id: variantId, _count: { bundleItems: 0 } }, { id: "v2", _count: { bundleItems: 0 } }] });
+    mocks.priceHistoryCount.mockResolvedValue(2);
+    expect(await deleteVariantAction({ productId, variantId })).toEqual({ ok: false, error: "hasHistory" });
+    mocks.priceHistoryCount.mockResolvedValue(1);
+    mocks.orderItemCount.mockResolvedValue(1);
+    expect(await deleteVariantAction({ productId, variantId })).toEqual({ ok: false, error: "hasHistory" });
+    expect(mocks.variantDelete).not.toHaveBeenCalled();
+    expect(mocks.subscriptionUpdateMany).not.toHaveBeenCalled();
   });
 
   it("re-arms confirmed, un-notified subscriptions for stocked variants and flushes the queue; refuses without stock", async () => {

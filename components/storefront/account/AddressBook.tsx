@@ -8,7 +8,7 @@ import {
   setDefaultAddressAction,
   updateMarketingPreferenceAction,
 } from "@/app/(storefront)/actions/address";
-import { EU_COUNTRIES, isValidPostalCode } from "@/lib/orders/checkout-constants";
+import { EU_COUNTRIES, isValidPostalCode, parseStreetLine, savedStreetLine } from "@/lib/orders/checkout-constants";
 import { isValidPhone, PHONE_MAX_LENGTH } from "@/lib/phone";
 import { account as copy } from "@/lib/copy/account";
 import { UiButton } from "../ui/UiButton";
@@ -111,7 +111,8 @@ export function AddressBook({
                 <br />
                 {address.fullName}, {address.line1}
                 {address.line2 ? `, ${address.line2}` : ""},{" "}
-                {address.postalCode} {address.city}, {address.country}
+                {/* the country's name, as the order pages and the invoice print it (QA 2026-10-03 V3-02) */}
+                {address.postalCode} {address.city}, {EU_COUNTRIES.find((country) => country.code === address.country)?.label ?? address.country}
               </div>
               <div className="flex gap-2">
                 {!address.isDefault ? (
@@ -167,7 +168,7 @@ export function AddressBook({
   );
 }
 
-type AddressFieldErrors = Partial<Record<"phone" | "postalCode", string>>;
+type AddressFieldErrors = Partial<Record<"phone" | "postalCode" | "line1", string>>;
 
 function AddressForm({ initial, onDone }: { initial: AddressRow | null; onDone: () => void }) {
   const router = useRouter();
@@ -184,6 +185,10 @@ function AddressForm({ initial, onDone }: { initial: AddressRow | null; onDone: 
     const phone = String(form.get("phone") ?? "").trim();
     const postalCode = String(form.get("postalCode") ?? "").trim();
     const invalid: AddressFieldErrors = {};
+    // the checkout reads the saved address through the same rule (QA 2026-10-03 T3-03)
+    if (parseStreetLine(savedStreetLine(String(form.get("line1") ?? ""), String(form.get("line2") ?? ""))) === null) {
+      invalid.line1 = copy.addresses.invalidLine1;
+    }
     if (phone && !isValidPhone(phone)) invalid.phone = copy.addresses.invalidPhone;
     if (!isValidPostalCode(String(form.get("country") ?? ""), postalCode)) invalid.postalCode = copy.addresses.invalidPostalCode;
     setFieldErrors(invalid);
@@ -206,6 +211,8 @@ function AddressForm({ initial, onDone }: { initial: AddressRow | null; onDone: 
         onDone();
       } else if (result.error === "invalid_phone") {
         setFieldErrors({ phone: copy.addresses.invalidPhone });
+      } else if (result.error === "invalid_line1") {
+        setFieldErrors({ line1: copy.addresses.invalidLine1 });
       } else {
         setError(result.error === "invalid" ? copy.addresses.invalid : copy.addresses.failed);
       }
@@ -216,7 +223,8 @@ function AddressForm({ initial, onDone }: { initial: AddressRow | null; onDone: 
     <form onSubmit={submit} className="mt-5 flex flex-col gap-4 border-t border-light-3 pt-5" data-address-form>
       <UiInput label={copy.addresses.label} name="label" maxLength={40} defaultValue={initial?.label ?? ""} />
       <UiInput label={copy.addresses.fullName} name="fullName" required maxLength={120} defaultValue={initial?.fullName ?? ""} />
-      <UiInput label={copy.addresses.line1} name="line1" required maxLength={160} defaultValue={initial?.line1 ?? ""} />
+      <UiInput label={copy.addresses.line1} name="line1" autoComplete="address-line1" required maxLength={160} defaultValue={initial?.line1 ?? ""}
+        error={fieldErrors.line1} onChange={() => setFieldErrors(prev => ({ ...prev, line1: undefined }))} />
       <UiInput label={copy.addresses.line2} name="line2" maxLength={160} defaultValue={initial?.line2 ?? ""} />
       <div className="grid grid-cols-2 gap-3">
         <UiInput label={copy.addresses.postalCode} name="postalCode" required maxLength={10} defaultValue={initial?.postalCode ?? ""}

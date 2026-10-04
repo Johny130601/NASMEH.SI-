@@ -31,6 +31,15 @@ describe("address book authorization and invariants", () => {
   it.each([["SI", "10000"], ["DE", "1000"], ["NL", "1000"], ["US", "10001"]])("rejects unsupported address %s/%s", (country, postalCode) => {
     expect(addressSchema.safeParse({ ...input, country, postalCode }).success).toBe(false);
   });
+  it("requires the house number the checkout needs, as the checkout reads a saved address (QA 2026-10-03 T3-03)", async () => {
+    expect(addressSchema.safeParse({ ...input, line1: "Slovenska cesta" }).success).toBe(false);
+    expect(addressSchema.safeParse({ ...input, line1: "Grajska ulica b. š." }).success).toBe(true);
+    // the supplement follows after a comma, as the checkout joins it
+    expect(addressSchema.safeParse({ ...input, line1: "Dunajska cesta 20", line2: "2. nadstropje" }).success).toBe(true);
+    expect(addressSchema.safeParse({ ...input, line1: "Dunajska cesta", line2: "2. nadstropje" }).success).toBe(false);
+    expect(await saveAddressForUser("owner", { ...input, line1: "Slovenska cesta" })).toEqual({ ok: false, error: "invalid_line1" });
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
   it("rejects unvalidated IDs and malformed addresses before opening a transaction", async () => {
     expect(await deleteAddressForUser("owner", { id: {} })).toEqual({ ok: false, error: "invalid" });
     expect(await setDefaultAddressForUser("owner", { id: "" })).toEqual({ ok: false, error: "invalid" });

@@ -5,6 +5,7 @@ import { requirePagePermission } from "@/lib/admin/access";
 import { can } from "@/lib/admin/permissions";
 import { loadOrderDetail } from "@/lib/admin/orders";
 import { refundRequiredReason, timelineDetail, timelineEventLabel } from "@/lib/admin/order-display";
+import { orderMailStates, type OrderMailState } from "@/lib/admin/order-mail-state";
 import { snapshotAddressLines, hasIssuedInvoice } from "@/lib/account/order-view";
 import { formatEUR } from "@/lib/pricing";
 import { configuredCarriers, getShippingMethods, trackingUrl } from "@/lib/tracking";
@@ -19,6 +20,19 @@ export const metadata: Metadata = { title: copy.orders.title, robots: { index: f
 
 function formatDateTime(date: Date): string {
   return date.toLocaleString("sl-SI", { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+/** One queued mail's delivery state in words; the date never breaks inside (QA 2026-10-03 T4-03). */
+function MailState({ kind, mail }: { kind: "confirmation" | "shipped"; mail: OrderMailState }) {
+  const m = copy.orders.detail.mails;
+  if (mail.state === "sent") {
+    const [before, after = ""] = m.sent.split("{date}");
+    return <>{before}<span className="whitespace-nowrap">{formatDateTime(mail.at)}</span>{after}</>;
+  }
+  if (mail.state === "queued") {
+    return <>{m.queued}{mail.lastError ? <span className="text-error"> · {m.lastError.replace("{error}", mail.lastError)}</span> : null}</>;
+  }
+  return <>{mail.state === "notDue" ? m.notDue[kind] : m.notQueued}</>;
 }
 
 /** /admin/narocila/[number] — order detail with the operator actions (§14.7). */
@@ -39,6 +53,9 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
   const d = copy.orders.detail;
   const refundReason = order.refundRequired ? refundRequiredReason(order.fulfillmentIssue, order.items) : null;
   const canRefund = can(staff.role, "orders:refund");
+  const mails = orderMailStates(order);
+  // Only an account holder reads a customer-visible note (/racun/narocilo); erasure leaves no reader (QA 2026-10-03 T4-04).
+  const notesAudience = order.anonymizedAt ? "anonymised" : order.userId ? "account" : "guest";
   // A withdrawal claiming this number is the consumer's notice; any other unlinked report (e.g. an adverse event) is listed apart (QA T4-F5).
   const unlinkedGroups = [
     { key: "withdrawals", title: d.unlinkedTickets, hint: d.unlinkedTicketsHint, tickets: unlinkedTickets.filter((ticket) => ticket.kind === "withdrawal") },
@@ -65,14 +82,24 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
 
       {/* Three cards to a row only where each gets 18rem (1280 and up); beside the sidebar at 991 that is two. The min() keeps one track inside the page at a large root font. */}
       <div className="mt-6 grid gap-4 lg:grid-cols-[repeat(auto-fit,minmax(min(18rem,100%),1fr))]">
-        <section className="rounded-card border border-light-2 bg-white p-5">
+        <section className="rounded-card border border-light-2 bg-white p-5" data-order-customer>
           <h2 className="text-base font-medium">{d.customer}</h2>
-          <p className="mt-2 text-sm">{shipping[0] ?? copy.common.none}</p>
-          <p className="break-words text-sm text-mid-1">{order.email}</p>
-          {order.phone ? <p className="text-sm text-mid-1">{d.phone}: {order.phone}</p> : null}
+          {order.anonymizedAt ? (
+            // Erasure leaves a placeholder address and a country-only address: neither is a person to show (QA 2026-10-03 T4-07).
+            <p className="mt-2 text-sm text-mid-1" data-order-customer-anonymised>{copy.common.anonymised}</p>
+          ) : (
+            <>
+              <p className="mt-2 text-sm">{shipping[0] ?? copy.common.none}</p>
+              <p className="break-words text-sm text-mid-1">{order.email}</p>
+              {order.phone ? <p className="text-sm text-mid-1">{d.phone}: {order.phone}</p> : null}
+            </>
+          )}
           <p className="mt-2 text-sm">
             {order.user ? (
               <Link href={`/admin/stranke/${order.user.id}`} className="underline underline-offset-4">{d.accountLink}</Link>
+            ) : order.anonymizedAt ? (
+              // The erased guest has no person page left, only this order.
+              <span className="text-mid-1" data-order-guest-anonymised>{d.guest}</span>
             ) : (
               <Link href={`/admin/stranke/gost?email=${encodeURIComponent(order.email)}`} className="underline underline-offset-4">{d.guest}</Link>
             )}
@@ -159,6 +186,16 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
               </li>
             ))}
           </ol>
+          {/* The confirmation and shipment notice go out through durable queues (payment webhook, daily job, re-send): their state lives on the order, not in the log. */}
+          <h3 className="mt-5 text-sm font-medium">{d.mails.title}</h3>
+          <dl className="mt-2 flex flex-col gap-1 text-sm" data-order-mails>
+            {(["confirmation", "shipped"] as const).map((kind) => (
+              <div key={kind} className="flex flex-wrap gap-x-2" data-order-mail={kind} data-order-mail-state={mails[kind].state}>
+                <dt className="text-mid-1">{d.mails[kind]}:</dt>
+                <dd><MailState kind={kind} mail={mails[kind]} /></dd>
+              </div>
+            ))}
+          </dl>
         </section>
       </div>
 
@@ -241,6 +278,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
           shippingRefunded={order.shippingRefunded}
           remainingCents={remainingCents}
           permissions={{ fulfil: can(staff.role, "orders:fulfil"), refund: canRefund, notes: can(staff.role, "orders:notes") }}
+          notesAudience={notesAudience}
         />
       </div>
     </section>

@@ -12,6 +12,8 @@ import { isTestMode } from "@/lib/turnstile";
 import { buildMetadata } from "@/lib/seo";
 import { checkout } from "@/lib/copy";
 import { buildCheckoutPricing } from "@/lib/orders/quote";
+import { findUnpaidOrderToResume } from "@/lib/orders/access";
+import { formatEUR } from "@/lib/pricing";
 import { soldOutLineTitles } from "@/lib/orders/sold-out";
 import { CheckoutWizard } from "@/components/storefront/checkout/CheckoutWizard";
 import { TrackBeginCheckout } from "@/components/storefront/analytics/TrackBeginCheckout";
@@ -21,11 +23,27 @@ import { buildBeginCheckoutEvent } from "@/lib/analytics";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = buildMetadata({ title: checkout.title, path: "/checkout", noindex: true });
 
+/** An order this browser left unpaid, offered back above everything else (QA 2026-10-03 T2-02). */
+function UnpaidOrderNotice({ order }: { order: { number: string; totalCents: number } }) {
+  return (
+    <section role="status" className="mt-6 rounded-card border border-brand bg-white p-5 text-left text-sm" data-checkout-unpaid-order={order.number}>
+      <p className="font-medium text-dark-1">{checkout.unpaidOrder.title}</p>
+      <p className="mt-1 text-mid-1">{checkout.unpaidOrder.body(order.number, formatEUR(order.totalCents))}</p>
+      <div className="mt-4"><UiButton href={`/potrditev/${encodeURIComponent(order.number)}`} variant="primary">{checkout.unpaidOrder.cta}</UiButton></div>
+    </section>
+  );
+}
+
 export default async function CheckoutPage() {
   const session = await auth();
   const hydrated = await hydrateCartLines(await getCartLines(session?.user?.id ?? null));
+  // A reload or Back during payment must not lose the way back to the order just placed —
+  // nor a cart emptied elsewhere hide it (QA 2026-10-03 T2-02).
+  const unpaid = await findUnpaidOrderToResume().catch(() => null);
   if (!hydrated.length) return <section className="mx-auto max-w-md px-(--padding) py-24 text-center">
-    <h1 className="text-[2rem]">{checkout.empty.title}</h1><p className="mt-4 text-sm text-mid-1">{checkout.empty.body}</p>
+    <h1 className="text-[2rem]">{checkout.empty.title}</h1>
+    {unpaid ? <UnpaidOrderNotice order={unpaid} /> : null}
+    <p className="mt-4 text-sm text-mid-1">{checkout.empty.body}</p>
     <div className="mt-8 flex justify-center"><UiButton href="/trgovina">{checkout.empty.cta}</UiButton></div>
   </section>;
   const userId = session?.user?.id ?? null;
@@ -54,6 +72,7 @@ export default async function CheckoutPage() {
   const providers = listAvailableProviders().filter(provider => provider !== "stripe" || !!env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY);
   return <div className="mx-auto max-w-(--container-narrow) px-(--padding) py-10">
     <h1 className="text-[2rem]">{checkout.title}</h1>
+    {unpaid ? <UnpaidOrderNotice order={unpaid} /> : null}
     <div className="mt-8"><CheckoutWizard providers={providers} shippingMethods={methods}
       checkoutKey={crypto.randomBytes(16).toString("hex")} defaultEmail={defaultEmail}
       defaultName={account?.name ?? ""} savedAddresses={account?.addresses ?? []}

@@ -48,3 +48,44 @@ export function photoBatchProblem(files: File[], count: number, budget = REQUEST
   if (files.reduce((total, file) => total + file.size, 0) > budget) return "request";
   return null;
 }
+
+/**
+ * The support forms' photo rule (contact, adverse event): the limits
+ * lib/support/tickets.ts enforces — at most four JPEG, PNG or WebP photos,
+ * none empty, each at most 2 MB. Four photos at the cap stay inside one
+ * request's budget.
+ */
+export const SUPPORT_PHOTO_LIMITS = {
+  count: 4,
+  maxBytes: 2 * 1024 * 1024,
+  types: ["image/jpeg", "image/png", "image/webp"],
+} as const;
+
+/** One re-encode per selected file, so a retry sends the same bytes the first attempt did. */
+const supportPhotoCache = new WeakMap<File, Promise<File>>();
+
+/**
+ * The photos a support form may send (QA 2026-10-03 T3-06): a phone photo over
+ * the per-photo cap is downscaled in the browser first, like the review form's,
+ * and the selection is refused only when it still breaks the rule — too many
+ * files, an empty or non-image file, or a photo the browser could not bring
+ * under the cap. Null: refused. Each file is re-encoded once and the result
+ * reused, so a retry after a lost response carries identical bytes (the
+ * contact form's replay key hashes them).
+ */
+export async function supportPhotosWithinLimits(files: File[]): Promise<File[] | null> {
+  const types: readonly string[] = SUPPORT_PHOTO_LIMITS.types;
+  if (files.length > SUPPORT_PHOTO_LIMITS.count || files.some((file) => file.size === 0 || !types.includes(file.type))) {
+    return null;
+  }
+  const photos: File[] = [];
+  for (const file of files) {
+    let photo = supportPhotoCache.get(file);
+    if (!photo) {
+      photo = downscalePhoto(file, SUPPORT_PHOTO_LIMITS.maxBytes);
+      supportPhotoCache.set(file, photo);
+    }
+    photos.push(await photo);
+  }
+  return photos.some((photo) => photo.size > SUPPORT_PHOTO_LIMITS.maxBytes) ? null : photos;
+}

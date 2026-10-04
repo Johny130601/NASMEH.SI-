@@ -1,6 +1,13 @@
 import { expect, test } from "@playwright/test";
+import { legal } from "@/lib/copy/legal";
+import { companyPlaceholderFields, companySchema } from "@/lib/settings-schemas";
+import { prisma } from "./helpers";
 
 /** SSR audit (view-source / JS-disabled): everything in the initial HTML. */
+
+test.afterAll(async () => {
+  await prisma.$disconnect();
+});
 
 test("GET / — chrome + homepage copy in initial HTML", async ({ request }) => {
   const response = await request.get("/");
@@ -35,9 +42,22 @@ test("GET / — chrome + homepage copy in initial HTML", async ({ request }) => 
   expect(html).not.toContain("rutina beljenja — urejena");
 
   // footer
-  expect(html).toContain("Nasmeh.si, d.o.o.");
   expect(html).toContain("Nastavitve piškotkov");
   expect(html).toContain("Prejmite novosti med prvimi");
+  // One rule for the seller identity (AGENTS §22, QA 2026-10-03 T1-03): the footer
+  // prints the company block only when the legal pages do, and the same missing
+  // line while the Setting still holds the seed placeholders.
+  const stored = await prisma.setting.findUnique({ where: { key: "company" } });
+  const company = companySchema.safeParse(stored?.value);
+  if (company.success && companyPlaceholderFields(company.data).length === 0) {
+    expect(html).toContain("data-company-block");
+    expect(html).not.toContain("data-company-missing");
+  } else {
+    expect(html).toContain("data-company-missing");
+    expect(html).toContain(legal.seller.missing);
+    expect(html).not.toContain("data-company-block");
+    expect(html).not.toContain("SI00000000");
+  }
 });
 
 test("GET / — JSON-LD Organization + WebSite(+SearchAction) valid", async ({
@@ -70,6 +90,34 @@ test("legal page renders with draft notice", async ({ request }) => {
   expect(html).toContain("Osnutek dokumenta");
 });
 
+test("a LEGAL page carries a table of contents linking every section in its initial HTML (QA 2026-10-03 T1-04)", async ({ request }) => {
+  // the generic page route and the three dedicated legal routes alike
+  for (const path of ["/politika-zasebnosti", "/pogoji-poslovanja", "/garancija-vracila-denarja", "/politika-piskotkov", "/odstop-od-pogodbe", "/reklamacije"]) {
+    const html = await (await request.get(path)).text();
+    const toc = /<nav[^>]*data-legal-toc[^>]*>([\s\S]*?)<\/nav>/.exec(html);
+    expect(toc, path).not.toBeNull();
+    const anchors = [...toc![1].matchAll(/href="#([^"]+)"/g)].map((match) => match[1]);
+    // the body's h2s: the sanitizer's own attributes at most, then the id (chrome headings carry a class)
+    const headingIds = [...html.matchAll(/<h2(?: (?:dir|lang|title)="[^"]*")* id="([^"]+)">/g)].map((match) => match[1]);
+    // one anchor per section heading of the body, in order, and every id unique
+    expect(anchors.length, path).toBeGreaterThan(1);
+    expect(anchors, path).toEqual(headingIds);
+    expect(new Set(anchors).size, path).toBe(anchors.length);
+  }
+  const privacy = await (await request.get("/politika-zasebnosti")).text();
+  expect(privacy).toContain('<h2 id="1-upravljavec">1. Upravljavec</h2>');
+  expect(privacy).toContain('href="#16-vase-pravice"');
+});
+
+test("a product page is og:type product, the other pages website (QA 2026-10-03)", async ({ request }) => {
+  const pdp = await (await request.get("/izdelek/belilni-trakci-za-zobe")).text();
+  expect(pdp).toMatch(/<meta (name|property)="og:type" content="product"\/?>/);
+  expect(pdp).not.toMatch(/og:type" content="website"/);
+  const home = await (await request.get("/")).text();
+  expect(home).toMatch(/<meta property="og:type" content="website"\/?>/);
+  expect(home).not.toMatch(/og:type" content="product"/);
+});
+
 test("cookie-policy page renders live cookie table", async ({ request }) => {
   const response = await request.get("/politika-piskotkov");
   expect(response.status()).toBe(200);
@@ -91,6 +139,15 @@ test("sitemap.xml and robots.txt", async ({ request }) => {
   }
   for (const retired of ["pomoc", "o-nas", "razisli", "dostava", "paketi"]) {
     expect(xml).not.toContain(`/${retired}</loc>`);
+  }
+  // the indexable collection views, at the canonical /trgovina gives each, and never a noindex one (QA 2026-10-03)
+  const collections = await prisma.collection.findMany({ select: { slug: true, noindex: true } });
+  const listedCollections = [...xml.matchAll(/\/trgovina\?kolekcija=([^<]+)<\/loc>/g)].map((match) => decodeURIComponent(match[1]));
+  if (collections.some((collection) => collection.slug === "beljenje" && !collection.noindex)) {
+    expect(listedCollections).toContain("beljenje");
+  }
+  for (const slug of listedCollections) {
+    expect(collections.find((collection) => collection.slug === slug)?.noindex, slug).toBe(false);
   }
   for (const hidden of ["/cart", "/checkout", "/racun", "/iskanje", "/kontakt", "/sledi", "/prijava", "/odjava-zaloga", "/potrdi", "/admin"]) {
     expect(xml, hidden).not.toContain(`${hidden}</loc>`);

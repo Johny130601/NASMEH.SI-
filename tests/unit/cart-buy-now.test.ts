@@ -81,11 +81,12 @@ describe("buyNowAction never carries a short line into the checkout", () => {
   it("keeps a refusal distinct from a cap", async () => {
     mocks.findUnique.mockResolvedValue(variant({ stock: 0 }));
     const soldOut = await buyNowAction({ variantId, quantity: 1 });
-    expect(soldOut).toEqual({ ok: false, count: 0 });
+    // named, so the button says why (QA 2026-10-03 T5-07)
+    expect(soldOut).toEqual({ ok: false, count: 0, soldOut: true });
     expect(soldOut.capped).toBeUndefined();
 
     mocks.findUnique.mockResolvedValue(null);
-    expect(await buyNowAction({ variantId, quantity: 1 })).toEqual({ ok: false, count: 0 });
+    expect(await buyNowAction({ variantId, quantity: 1 })).toEqual({ ok: false, count: 0, unavailable: true });
     expect(await buyNowAction({ variantId, quantity: 0 })).toEqual({ ok: false, count: 0 });
     expect(await getCartLines(null)).toEqual([]);
   });

@@ -120,7 +120,7 @@ describe("the figures the copy is given", () => {
   });
 });
 
-describe("the monthly-delivery row is interest capture only", () => {
+describe("the monthly-delivery row is information only", () => {
   it("exposes no percentage, and no key that would carry one", () => {
     expect(Object.keys(bundle.subscription).some((key) => /percent|odstot|popust|save|prihran/i.test(key))).toBe(false);
     expect(Object.values(bundle.subscription).join(" ")).not.toMatch(/\d/);
@@ -129,8 +129,10 @@ describe("the monthly-delivery row is interest capture only", () => {
     );
   });
 
-  it("says plainly what ticking it does not do", () => {
+  it("says it is not available yet, and confirms nothing it never did (AGENTS §8.23, QA 2026-10-03 T1-02)", () => {
     expect(bundle.subscription.note).toBe("Redna dostava izdelka še ni na voljo.");
-    expect(bundle.subscription.acknowledged).toContain("Na ceno paketa to ne vpliva.");
+    // no control asks for anything, so there is no interest line and no thank-you to show
+    expect(Object.keys(bundle.subscription).sort()).toEqual(["note", "soon", "title"]);
+    expect(Object.values(bundle.subscription).join(" ")).not.toMatch(/hvala|sporočili|obvestimo|obvestite/i);
   });
 });

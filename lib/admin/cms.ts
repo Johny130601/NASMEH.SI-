@@ -74,6 +74,30 @@ export async function loadMarquee(): Promise<MarqueeInput> {
   return { text: text(marqueeText, home.marqueeFallback), href: text(href), active: active !== false };
 }
 
+export type BuilderCouponProblem = "missing" | "inactive" | "notPercent" | "notStarted" | "expired" | "usedUp";
+
+/**
+ * Why the bundle builder's coupon would not discount today, or null when it
+ * would. The code is checked only when it is saved, and a coupon switched off,
+ * expired or used up in Kuponi afterwards silently stops the builder's
+ * discount (the cart and the checkout agree, so nothing is overcharged); the
+ * settings page says so (QA 2026-10-03 T5-13).
+ */
+export async function builderCouponProblem(code: string, now = new Date()): Promise<BuilderCouponProblem | null> {
+  if (!code) return null;
+  const coupon = await db.coupon.findUnique({
+    where: { code },
+    select: { active: true, type: true, startsAt: true, endsAt: true, usageLimitTotal: true, usedCount: true },
+  });
+  if (!coupon) return "missing";
+  if (!coupon.active) return "inactive";
+  if (coupon.type !== "PERCENT") return "notPercent";
+  if (coupon.startsAt && coupon.startsAt > now) return "notStarted";
+  if (coupon.endsAt && coupon.endsAt <= now) return "expired";
+  if (coupon.usageLimitTotal !== null && coupon.usedCount >= coupon.usageLimitTotal) return "usedUp";
+  return null;
+}
+
 export async function loadPopup(): Promise<WelcomePopupInput> {
   const popup = await getSetting<WelcomePopupSetting>("welcomePopup");
   return {

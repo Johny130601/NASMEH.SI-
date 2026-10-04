@@ -25,6 +25,14 @@ export default async function AdminBundleEditorPage({ params }: { params: Promis
       <Link href="/admin/paketi" className="text-sm text-mid-1 underline underline-offset-4">{copy.catalog.bundles.editor.back}</Link>
       <h1 className="mt-3 text-[2rem]">{product.title}</h1>
       <p className="text-sm text-mid-1">/{product.slug} · {copy.catalog.products.statuses[product.status]} · <Link href={`/admin/izdelki/${product.id}`} className="underline underline-offset-4">{copy.catalog.products.title}</Link></p>
+      {/* The bundle product's own stock row caps what is sold (lib/bundle/availability); a new bundle starts at 0 and
+          would read sold out with every component in stock, with nothing on this page saying why (QA 2026-10-03 T5-03). */}
+      {(product.variants[0]?.stock ?? 0) <= 0 ? (
+        <p role="status" className="mt-4 rounded-card border border-warning bg-white p-4 text-sm" data-bundle-own-stock-zero>
+          {copy.catalog.bundles.editor.ownStockZero.replace("{stock}", String(product.variants[0]?.stock ?? 0))}{" "}
+          <Link href={`/admin/izdelki/${product.id}`} className="underline underline-offset-4">{copy.catalog.bundles.editor.ownStockLink}</Link>
+        </p>
+      ) : null}
       <div className="mt-6">
         <BundleEditor
           productId={product.id}

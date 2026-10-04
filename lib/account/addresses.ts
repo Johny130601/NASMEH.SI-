@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { EU_COUNTRIES, isValidPostalCode } from "@/lib/orders/checkout-schema";
+import { parseStreetLine, savedStreetLine } from "@/lib/orders/checkout-constants";
 
 const idSchema = z.string().trim().min(1).max(80);
 export const addressIdSchema = z.object({ id: idSchema });
@@ -16,9 +17,11 @@ export const addressSchema = z.object({
   country: z.string().refine(code => EU_COUNTRIES.some(country => country.code === code)),
   phone: z.string().trim().max(24).optional(),
   isDefault: z.boolean().default(false),
-}).refine(value => isValidPostalCode(value.country, value.postalCode), { path: ["postalCode"], message: "Invalid postal code" });
+}).refine(value => isValidPostalCode(value.country, value.postalCode), { path: ["postalCode"], message: "Invalid postal code" })
+  // the checkout reads the saved address through the same rule: never store one it would refuse (QA 2026-10-03 T3-03)
+  .refine(value => parseStreetLine(savedStreetLine(value.line1, value.line2)) !== null, { path: ["line1"], message: "No house number" });
 
-export interface AddressResult { ok: boolean; error?: "invalid" | "not_found" | "failed" }
+export interface AddressResult { ok: boolean; error?: "invalid" | "invalid_line1" | "not_found" | "failed" }
 
 /** The parent lock also covers an empty address book and concurrent deletions. */
 async function lockOwner(tx: Prisma.TransactionClient, userId: string) {
@@ -28,7 +31,11 @@ async function lockOwner(tx: Prisma.TransactionClient, userId: string) {
 
 export async function saveAddressForUser(userId: string, input: unknown): Promise<AddressResult> {
   const parsed = addressSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "invalid" };
+  if (!parsed.success) {
+    // a missing house number is named, so the form can mark the street field
+    const line1 = parsed.error.issues.some(issue => issue.path[0] === "line1");
+    return { ok: false, error: line1 ? "invalid_line1" : "invalid" };
+  }
   const { id, ...fields } = parsed.data;
   return db.$transaction(async tx => {
     if (!await lockOwner(tx, userId)) return { ok: false, error: "not_found" };

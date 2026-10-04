@@ -270,8 +270,10 @@ export async function loadBundleBuilder(
     redundant: units < existingBaseQuantity,
   }));
 
-  // Spec default: the smallest offer with every add-on ticked — but never an
-  // offer that would change nothing because the cart already holds more.
+  // The smallest offer — but never an offer that would change nothing because
+  // the cart already holds more — and no add-on ticked: an add-on is an extra
+  // payment, so it needs the shopper's own tick, never a default they must
+  // clear (CRD Art. 22, "sneaking into the basket"; QA 2026-10-03 T2-01).
   const firstUsable = offers.findIndex((offer) => !offer.redundant);
   const defaultOfferIndex = firstUsable === -1 ? 0 : firstUsable;
 
@@ -292,7 +294,7 @@ export async function loadBundleBuilder(
     table,
     badgeOfferIndex: bestOfferIndex(table, offers.length),
     defaultOfferIndex,
-    defaultMask: (1 << addOnProducts.length) - 1,
+    defaultMask: 0,
     applyCouponCode: activeCode ? null : config.couponCode || null,
     // without a code of the shopper's own, the coupon priced above is the configured one
     applyCouponType: activeCode ? null : (coupon?.type ?? null),

@@ -51,8 +51,8 @@ export default async function ConfirmSubscriptionPage({
     );
   }
 
-  // The confirmation tab opens from the mail with an empty sessionStorage: the welcome popup must not
-  // ask for the address just confirmed (QA T7-F14).
+  // The confirmation may open in a browser session that never saw the popup's flag (a mail read on
+  // another day, or in another browser): the welcome popup must not ask for the address just confirmed (QA T7-F14).
   const success = (
     <>
       <MarkWelcomeSeen />

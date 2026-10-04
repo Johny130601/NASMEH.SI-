@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { signInPath } from "@/lib/auth-callback";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { buildMetadata } from "@/lib/seo";
@@ -18,7 +19,7 @@ export const metadata: Metadata = buildMetadata({
 
 export default async function AccountDetailsPage() {
   const session = await auth();
-  if (!session?.user) redirect("/prijava");
+  if (!session?.user) redirect(signInPath("/racun/podatki"));
 
   const [addresses, user] = await Promise.all([
     db.address.findMany({

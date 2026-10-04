@@ -62,15 +62,25 @@ const guestOrderSelect = {
  * in the shippingAddress JSON, and Prisma's JSON filter takes no `mode`, so
  * `string_contains` renders a case-sensitive LIKE that no capitalised name ever
  * matches: the search runs as one ILIKE statement over both columns instead.
+ *
+ * Anonymised orders are left out (QA 2026-10-03 T4-07): erasure gives each
+ * guest order its own placeholder address (`anonymised-<orderId>@invalid`), so
+ * they would come back as one pseudo-customer per order. The orders stay in
+ * the order list; the person is gone.
  */
 function scanGuestOrders(q: string): Promise<GuestOrderRow[]> {
   if (!q) {
-    return db.order.findMany({ where: { userId: null }, select: guestOrderSelect, orderBy: { createdAt: "desc" }, take: GUEST_ORDER_SCAN_LIMIT });
+    return db.order.findMany({ where: { userId: null, anonymizedAt: null }, select: guestOrderSelect, orderBy: { createdAt: "desc" }, take: GUEST_ORDER_SCAN_LIMIT });
   }
   const pattern = `%${likeEscaped(q)}%`;
   return db.$queryRaw<GuestOrderRow[]>`SELECT "email", "status", "totalCents", "refundedCents", "createdAt", "shippingAddress", "anonymizedAt"
-FROM "Order" WHERE "userId" IS NULL AND ("email" ILIKE ${pattern} OR ("shippingAddress"->>'fullName') ILIKE ${pattern})
+FROM "Order" WHERE "userId" IS NULL AND "anonymizedAt" IS NULL AND ("email" ILIKE ${pattern} OR ("shippingAddress"->>'fullName') ILIKE ${pattern})
 ORDER BY "createdAt" DESC LIMIT ${GUEST_ORDER_SCAN_LIMIT}`;
+}
+
+/** An erasure placeholder (`anonymised-<id>@invalid`, `anonymised@invalid`): staff screens show a neutral label instead (T4-07). */
+export function isAnonymisedEmail(email: string): boolean {
+  return /^anonymised(-[^@\s]*)?@invalid$/.test(email);
 }
 
 export async function listCustomers(filters: CustomerFilters): Promise<{ rows: CustomerRow[]; total: number; page: number; pages: number; truncated: boolean }> {
@@ -78,6 +88,9 @@ export async function listCustomers(filters: CustomerFilters): Promise<{ rows: C
     db.user.findMany({
       where: {
         role: "CUSTOMER",
+        // An erased account keeps its row for the order history (its page says when it was
+        // anonymised), but it is no longer a person to list under a placeholder address (T4-07).
+        anonymizedAt: null,
         // Prisma's `contains` does not escape % and _ either: a bare "%" listed every account.
         ...(filters.q ? { OR: [{ email: { contains: likeEscaped(filters.q), mode: "insensitive" } }, { name: { contains: likeEscaped(filters.q), mode: "insensitive" } }] } : {}),
         ...(filters.marketing !== null ? { marketingOptIn: filters.marketing } : {}),

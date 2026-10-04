@@ -97,7 +97,8 @@ describe("sanitizeEmailHtml", () => {
     expect(sanitizeEmailHtml(`<a href="javascript:alert(1)">a</a><a href="java&#115;cript:x">b</a><a href=" https://nasmeh.si/x?a=1&b=2 " target="_blank">c</a>`))
       .toBe(`<a>a</a><a>b</a><a href="https://nasmeh.si/x?a=1&amp;b=2" target="_blank">c</a>`);
     expect(sanitizeEmailHtml(`<a href="{{accountUrl}}">p</a><a href="{{ javascript:x }}">q</a><img src="data:image/png;base64,x" alt="a"><img src="https://nasmeh.si/a.png" alt="b">`))
-      .toBe(`<a href="{{accountUrl}}">p</a><a>q</a><img alt="a" /><img src="https://nasmeh.si/a.png" alt="b" />`);
+      // an image whose source is refused goes, rather than staying as an empty <img> (QA 2026-10-03 T6-11)
+      .toBe(`<a href="{{accountUrl}}">p</a><a>q</a><img src="https://nasmeh.si/a.png" alt="b" />`);
     expect(sanitizeEmailHtml(`<meta http-equiv="refresh" content="0"><base href="https://evil"><link rel="stylesheet" href="https://x">ok`)).toBe("ok");
   });
 

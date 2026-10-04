@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePagePermission } from "@/lib/admin/access";
 import { countRefundRequired, listOrders, ORDER_STATUSES, parseOrderFilters, type OrderFilters } from "@/lib/admin/orders";
+import { isAnonymisedEmail } from "@/lib/admin/customers";
 import { formatEUR } from "@/lib/pricing";
 import { admin as copy } from "@/lib/copy";
 import { AdminOrderStatusPill } from "@/components/admin/OrderStatusPill";
+import { AdminTableScroll } from "@/components/admin/AdminTableScroll";
 
 export const metadata: Metadata = { title: copy.orders.title, robots: { index: false, follow: false } };
 
@@ -84,7 +86,8 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
         </div>
       </form>
 
-      <div className="mt-4 overflow-x-auto rounded-card border border-light-2 bg-white">
+      {/* Ten columns are wider than the card below about 1300 px: the wrapper shows that it scrolls (QA 2026-10-03 T4-10). */}
+      <AdminTableScroll label={copy.orders.title} className="mt-4">
         <table className="w-full min-w-[64rem] text-sm">
           <thead className="text-left text-xs text-mid-2">
             <tr>
@@ -100,7 +103,7 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
               <tr key={row.id} className="border-t border-light-2" data-order-row={row.number}>
                 <td className="px-4 py-3 font-medium"><Link href={`/admin/narocila/${row.number}`} className="whitespace-nowrap underline underline-offset-4">{row.number}</Link>{row.refundRequired ? <span className="ml-2 whitespace-nowrap rounded-btn bg-warning/20 px-2 py-0.5 text-xs" data-refund-required-tag>{copy.orders.detail.refundRequiredTag}</span> : null}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-mid-1" style={{ fontVariantNumeric: "tabular-nums" }}>{row.createdAt.toLocaleDateString("sl-SI")}</td>
-                <td className="px-4 py-3">{row.customerName || copy.common.none}<br /><span className="text-xs text-mid-1">{row.email}</span></td>
+                <td className="px-4 py-3">{row.customerName || copy.common.none}<br /><span className="text-xs text-mid-1">{isAnonymisedEmail(row.email) ? copy.common.anonymised : row.email}</span></td>
                 <td className="px-4 py-3"><AdminOrderStatusPill status={row.status} /></td>
                 <td className="px-4 py-3 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>{row.itemCount}</td>
                 <td className="px-4 py-3 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>{formatEUR(row.totalCents)}</td>
@@ -112,7 +115,7 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
             ))}
           </tbody>
         </table>
-      </div>
+      </AdminTableScroll>
 
       {result.pages > 1 ? (
         <nav className="mt-4 flex items-center gap-3 text-sm" aria-label={copy.common.page.replace("{page}", String(result.page)).replace("{pages}", String(result.pages))}>

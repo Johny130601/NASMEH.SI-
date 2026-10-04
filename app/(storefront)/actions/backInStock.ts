@@ -88,7 +88,7 @@ export async function subscribeBackInStockAction(input: {
 
     const armed = await armBackInStock(email, product.id, product.variants[0]?.id ?? null);
     if (armed && checkRateLimit(`restock-capture-email:${email}`, CAPTURE_LIMIT.perEmail, CAPTURE_LIMIT.windowMs).allowed) {
-      await sendBackInStockVerification(email, armed.token, product.title);
+      await sendBackInStockVerification(email, armed.token, product.title, armed.id);
     }
     return { ok: true, message: copy.success };
   } catch (error) {
@@ -112,7 +112,7 @@ async function armBackInStock(
   email: string,
   productId: string,
   variantId: string | null,
-): Promise<{ token: string } | null> {
+): Promise<{ token: string; id: string } | null> {
   for (let attempt = 0; attempt < MAX_ARM_ATTEMPTS; attempt += 1) {
     const existing = await db.backInStockSubscription.findUnique({
       where: { email_productId: { email, productId } },
@@ -124,7 +124,7 @@ async function armBackInStock(
       const [created] = await db.backInStockSubscription.createManyAndReturn({
         data: [{ email, productId, variantId, confirmToken: token }], skipDuplicates: true, select: { id: true },
       });
-      if (created) return { token };
+      if (created) return { token, id: created.id };
       continue;
     }
 
@@ -148,7 +148,7 @@ async function armBackInStock(
       const kept = await db.backInStockSubscription.updateMany({
         where: { id: existing.id, status: "PENDING", confirmToken: existing.confirmToken }, data: { variantId },
       });
-      if (kept.count === 1) return { token: existing.confirmToken };
+      if (kept.count === 1) return { token: existing.confirmToken, id: existing.id };
       continue;
     }
 
@@ -161,7 +161,7 @@ async function armBackInStock(
         alertPendingSince: null, alertLeaseUntil: null, alertLeaseToken: null, variantId,
       },
     });
-    if (rearmed.count === 1) return { token };
+    if (rearmed.count === 1) return { token, id: existing.id };
   }
   throw new Error("back_in_stock_subscription_contended");
 }

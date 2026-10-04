@@ -29,8 +29,10 @@ export const CHECKOUT_LIMITS = {
   fullName: 120,
   street: 120,
   streetNumber: 12,
-  /** The one "Ulica in hišna številka" input: a street, a ", " and a house number at their limits. */
-  streetLine: 134,
+  /** A supplement after the house number ("2. nadstropje"), kept apart so it prints after the number. */
+  streetSupplement: 80,
+  /** The one "Ulica in hišna številka" input: street, house number and a supplement at their limits. */
+  streetLine: 215,
   city: 80,
   postalCode: 10,
 } as const;
@@ -79,7 +81,10 @@ export function validateCheckoutAddress(form: {
   const parts = parseStreetLine(line);
   if (!line) errors.streetLine = "required";
   else if (!parts || parts.street.length < 2) errors.streetLine = "invalid";
-  else if (parts.street.length > CHECKOUT_LIMITS.street || parts.streetNumber.length > CHECKOUT_LIMITS.streetNumber) {
+  else if (
+    parts.street.length > CHECKOUT_LIMITS.street || parts.streetNumber.length > CHECKOUT_LIMITS.streetNumber ||
+    (parts.supplement?.length ?? 0) > CHECKOUT_LIMITS.streetSupplement
+  ) {
     errors.streetLine = "tooLong";
   }
   text("city", 2);
@@ -96,8 +101,8 @@ export function fieldErrorsFromPaths(paths: string[]): CheckoutFieldErrors {
   const known: CheckoutField[] = ["email", "phone", "fullName", "streetLine", "city", "postalCode"];
   const errors: CheckoutFieldErrors = {};
   for (const path of paths) {
-    // the server checks street and house number apart; the wizard asks for both in one field
-    const field = path === "street" || path === "streetNumber" ? "streetLine" : path;
+    // the server checks street, house number and supplement apart; the wizard asks for them in one field
+    const field = path === "street" || path === "streetNumber" || path === "streetSupplement" ? "streetLine" : path;
     if ((known as string[]).includes(field)) errors[field as CheckoutField] = "invalid";
   }
   return errors;
@@ -127,6 +132,16 @@ export const EU_COUNTRIES: Array<{ code: string; label: string }> = [
   { code: "BE", label: "Belgija" },
 ];
 
+/**
+ * A saved address as the one checkout line: "Ulica in hišna številka" with the
+ * book's "Dopolnilo" after a comma, where `parseStreetLine` keeps it with the
+ * street. The address book validates with this very line (QA 2026-10-03 T3-03).
+ */
+export function savedStreetLine(line1: string, line2?: string | null): string {
+  const supplement = line2?.trim();
+  return supplement ? `${line1.trim()}, ${supplement}` : line1.trim();
+}
+
 /** "12", "12a", "12 a", "5/3", "12-14" — or "b. š." (brez številke) for a building without one. */
 const HOUSE_NUMBER = String.raw`(?:\d+(?: ?[a-z])?(?:[/-]\d+(?: ?[a-z])?)?|b\. ?š\.?|bš)`;
 // the street may not end in the separator: "Via Roma, 10" is "Via Roma" + "10", not "Via Roma," + "10"
@@ -141,14 +156,16 @@ const LEADING_NUMBER = new RegExp(String.raw`^(${HOUSE_NUMBER})[\s,]+(.*\S)$`, "
  * the field asks for one.
  *
  * - the number closes the line: "Čopova ulica 12", "Ulica 12 a", "Via Roma, 10";
- * - a supplement after a comma rides with the street, as the address book's
- *   "Dopolnilo" always has: "Ulica 12, 2. nadstropje" → "Ulica, 2. nadstropje" + "12";
+ * - a supplement after a comma is kept apart, as the address book's "Dopolnilo"
+ *   is: "Ulica 12, 2. nadstropje" → "Ulica" + "12" + "2. nadstropje", printed back
+ *   in that order (`snapshotAddressLines`; QA 2026-10-03 T2-04 — joined to the
+ *   street it printed as "Ulica, 2. nadstropje 12");
  * - the number opens the line where that is the custom: "12 rue de la Paix".
  *
- * `${street} ${streetNumber}` reads back as the shopper typed it whenever the
- * line ends with its number (a comma before the number is dropped).
+ * `${street} ${streetNumber}` (+ `, ${supplement}`) reads back as the shopper
+ * typed it (a comma before the number is dropped).
  */
-export function parseStreetLine(line: string): { street: string; streetNumber: string } | null {
+export function parseStreetLine(line: string): { street: string; streetNumber: string; supplement?: string } | null {
   const text = line.replace(/\s+/g, " ").trim();
   const trailing = TRAILING_NUMBER.exec(text);
   if (trailing) return { street: trailing[1], streetNumber: trailing[2] };
@@ -156,7 +173,7 @@ export function parseStreetLine(line: string): { street: string; streetNumber: s
   if (comma > 0) {
     const head = TRAILING_NUMBER.exec(text.slice(0, comma).trim());
     const supplement = text.slice(comma + 1).trim();
-    if (head && supplement) return { street: `${head[1]}, ${supplement}`, streetNumber: head[2] };
+    if (head && supplement) return { street: head[1], streetNumber: head[2], supplement };
   }
   const leading = LEADING_NUMBER.exec(text);
   if (leading) return { street: leading[2], streetNumber: leading[1] };

@@ -77,13 +77,13 @@
 
 ### 3.1 Header & navigation
 
-- **Announcement marquee bar** — full-width, brand-color, infinite CSS marquee with ONE clickable message (config-driven in admin; e.g. "BREZPLAČNO DARILO OB VSAKEM NAKUPU" when a GWP campaign is on) [BASE: 01 §2.1]. `[P1-core]`
+- **Announcement marquee bar** — full-width, brand-color, infinite CSS marquee with ONE clickable message (config-driven in admin; e.g. "BREZPLAČNO DARILO OB VSAKEM NAKUPU" when a GWP campaign is on) [BASE: 01 §2.1]. `[P1-core]` A free-shipping amount in the message is written `{prag}` and filled from the shipping Setting, so the claim follows the threshold (QA 2026-10-03).
 - Marquee swaps to **"Koda: {CODE} uporabljena 🎉"** when a discount code is active in session [BASE: 05 §11]. `[P2-growth]`
 - **Promotion/account rows**: configured promotion messaging and Prijava / Moj račun; SI primary, EN later. The user's 2026-09-09 screenshot direction removes the Help Centre link [ADAPT: 01 §2.1–2.2]. `[P1-core]`
 - **Sticky header block**: marquee + utility bar + main nav stay pinned while scrolling [BASE: 01 §2.0]. `[P1-core]`
 - **Main nav**: Nasmeh logo; "TRGOVINA ⌄" mega-menu and highlighted "PAKETI & PRIHRANKI" link to `/trgovina?kolekcija=paketi`; search and cart controls. No Explore dropdown or About Us/Help Centre destinations (user direction, 2026-09-09) [ADAPT: 01 §2.3]. `[P1-core]`
 - **Mega-menu "TRGOVINA"**: a full-width pale panel with a shopping-link column (Vsi izdelki, Paketi, posamezni izdelki) and **two landscape featured-product cards**, titles above images, using Nasmeh products/assets and following the screenshot's layout [ADAPT: 01 §2.3]. `[P1-core]`
-- **Site search in header** (icon → full-width overlay): instant product results as you type, links to all results [NEW — HiSmile has zero search: 01 §1, 07 §9.8]. `[P1-core]`
+- **Site search in header** (icon → full-width overlay): instant product results as you type, links to all results [NEW — HiSmile has zero search: 01 §1, 07 §9.8]. `[P1-core]` A one-character query and a query over 80 characters get a hint instead of an empty form (QA 2026-10-03).
   - Typo tolerance, synonyms ("beljenje" → strips/serum), search analytics (top queries, zero-result queries) `[P2-growth]`
 - **Cart icon** with item-count badge; **hover mini-preview popover** on desktop (64×64 thumbs, qty × title, line price; pure preview, no editing) [BASE: 03 §2]. `[P2-growth]`
 - **Mobile header**: hamburger left, centered logo, search + cart right; drawer mirrors desktop (accordions + featured cards + colored sale link) [BASE: 01 §2.3]. `[P1-core]`
@@ -93,7 +93,7 @@
 - **Email capture block** top of footer — hook: "možnost testiranja novih izdelkov" (trial exclusivity, not discount) [BASE: 01 §2.8]. `[P1-core]`
 - **Link groups** (accordions on mobile): shopping, contact/support, order tracking, legal and social destinations. Keep `/kontakt` and `/sledi`; remove Help Centre, About Us, Explore and standalone Delivery links (user direction, 2026-09-09) [ADAPT: 01 §2.8]. `[P1-core]`
 - **Payment icon row** filtered to what we actually accept: Visa, Mastercard, PayPal, Apple Pay, Google Pay, Klarna [ADAPT: 03 §8]. `[P1-core]`
-- **Company identification block** (SI e-commerce practice): company name, registered address, registration no., VAT ID (davčna številka), contact email — required for trust and invoicing consistency [NEW vs HiSmile, which shows none]. `[P1-core]`
+- **Company identification block** (SI e-commerce practice): company name, registered address, registration no., VAT ID (davčna številka), contact email — required for trust and invoicing consistency [NEW vs HiSmile, which shows none]. `[P1-core]` Printed only once the seed placeholders are replaced; until then the footer says the details are not available, as the legal pages do (QA 2026-10-03).
 - Legal links: Pogoji poslovanja, Politika zasebnosti, Politika piškotkov, Odstop od pogodbe, Reklamacije, Nastavitve piškotkov (reopens consent) [NEW/ADAPT: 01 §2.8]. `[P1-core]`
 
 ### 3.3 SEO & structured data (SSR advantage)
@@ -102,14 +102,14 @@
 - **Per-page SEO fields** (title, meta description, canonical, noindex) editable in admin; hand-written meta descriptions (HiSmile leaves most empty — free win) [NEW: 07 §7]. `[P1-core]`
 - **JSON-LD server-side**: Organization, WebSite (+ SearchAction), Product + Offer + AggregateRating + Review, BreadcrumbList, FAQPage on PDPs [NEW — HiSmile injects schema client-side]. `[P1-core]`
 - Canonical on every page; `noindex` on /cart, /checkout, /account, /search, utility routes [BASE: 07 §7]. `[P1-core]`
-- Auto-generated sitemap.xml + robots.txt; Google Search Console verification [BASE: 07 §7]. `[P1-core]`
-- Open Graph + Twitter cards (og:title/description/image per page; 1200×628 social image) [ADAPT: 07 §7 — HiSmile only sets og:image]. `[P1-core]`
+- Auto-generated sitemap.xml + robots.txt; Google Search Console verification [BASE: 07 §7]. `[P1-core]` The sitemap lists the indexable collection views (`/trgovina?kolekcija=…`); while the store is locked, sitemap.xml and robots.txt answer 503 (QA 2026-10-03).
+- Open Graph + Twitter cards (og:title/description/image per page; 1200×628 social image) [ADAPT: 07 §7 — HiSmile only sets og:image]. `[P1-core]` PDPs carry `og:type` product (QA 2026-10-03).
 - hreflang sl/en when English launches `[P2-growth]`; localized URL slugs `[P2-growth]`
 - SEO content hub (kratek blog/vodiči: "kako delujejo trakovi za beljenje"…) to build organic demand in SI — HiSmile under-invests here [NEW: 05 §10, 07 §9.8]. `[P2-growth]`
 
 ### 3.4 GDPR cookie consent (real CMP, not HiSmile's session bar)
 
-- **Granular consent banner** on first visit: categories Nujni / Analitični / Trženjski with per-category toggles, "Sprejmi vse", "Zavrni", "Shrani izbiro" [NEW — HiSmile's is cosmetic, session-scoped: 01 §3.1, 05 §12]. `[P1-core]`
+- **Granular consent banner** on first visit: categories Nujni / Analitični / Trženjski with per-category toggles, "Sprejmi vse", "Zavrni", "Shrani izbiro" [NEW — HiSmile's is cosmetic, session-scoped: 01 §3.1, 05 §12]. `[P1-core]` The banner keeps keyboard focus inside while it waits for a choice and gives accept and reject equal weight; on the cookie policy page it links to it is not modal and folds its switches away, so the policy can be read before choosing (QA 2026-10-03).
 - **Consent persisted** (cookie + server-side consent log with timestamp, version, choices); re-openable anytime via footer "Nastavitve piškotkov" [NEW]. `[P1-core]`
 - **Script gating**: no analytics/marketing pixel fires before consent; Google Consent Mode v2 signals passed to GTM [NEW]. `[P1-core]`
 - Cookie policy page with a live table of cookies (name, provider, purpose, duration) [NEW]. `[P1-core]`
@@ -128,7 +128,7 @@
 - **Site-wide ops notice banner** (delayed-shipping/ops messaging broadcast from admin) [BASE: 04 §9]. `[P2-growth]`
 - Skeleton loaders + lazy sections via IntersectionObserver; font-display swap [BASE: 01 §4, 06 §3]. `[P1-core]`
 - **Motion system** (2026-09-16, AGENTS §8.23): tokenised, compositor-only animations (research 06 §14 restraint) — card lift + shadow + image cross-fade on hover, press feedback on every pill button, a popping cart badge and success label, pulsing low-stock dot, pure-CSS scroll-driven reveals for below-the-fold sections (`animation-timeline: view()`, progressive enhancement), a scroll shadow under the sticky header, drawn-in nav underlines, an ambient highlight on the bundle banner; all disabled by `prefers-reduced-motion`, nothing in the first viewport animates on load [ADAPT: 06 §6, §10, §14]. `[P1-core]`
-- Accessibility baseline: semantic landmarks, focus states, alt-text discipline (descriptive, not marketing captions — HiSmile's alts are captions; we do better), contrast AA, keyboard-navigable menus/modals [NEW: 02 §5.1]. `[P2-growth]`
+- Accessibility baseline: semantic landmarks, focus states, alt-text discipline (descriptive, not marketing captions — HiSmile's alts are captions; we do better), contrast AA, keyboard-navigable menus/modals [NEW: 02 §5.1]. `[P2-growth]` A skip link to the main content is the first focusable element on every storefront page (QA 2026-10-03).
 - Bot protection (Cloudflare Turnstile/hCaptcha) on all forms + checkout [BASE: 05 §1]. `[P1-core]`
 - Maintenance/password mode for pre-launch [BASE: 07 §8.4]. `[P1-core]`
 - Monitoring: uptime, error tracking, RUM. `[P2-growth]`
@@ -240,12 +240,12 @@ One template, three products; strips get the most built-out landing variant [BAS
 
 ## 8. Checkout
 
-Custom Next.js checkout (we are not on Shopify — everything here is built, not configured). One-page, accordion-step layout: Kontakt → Dostava → Plačilo → Pregled [standard practice; ADAPT from 03 §8]. `[P1-core]`
+Custom Next.js checkout (we are not on Shopify — everything here is built, not configured). One-page, accordion-step layout: Kontakt → Dostava → Plačilo → Pregled [standard practice; ADAPT from 03 §8]. `[P1-core]` Each step is its own history entry (`?korak=N`), so the browser's Back returns to the previous step; "Naprej" scrolls to and focuses the first refused field (QA 2026-10-03).
 
 ### 8.1 Contact & shipping steps
 
 - **Guest checkout default**; optional account creation post-purchase ("shrani podatke za naslednjič") [standard practice]. `[P1-core]`
-- Fields: email (with account detection → "imate račun? prijavite se"), phone (courier SMS), name, street + house no., city, 4-digit postal code, country (Slovenia default; EU list) [standard practice]. `[P1-core]` Street and house number are **one field**, "Ulica in hišna številka" (`autocomplete="address-line1"`, as the address book has it), so browser autofill fills it in one go — a separate number field tagged `address-line2` stayed empty under autofill and stopped the step. The order still stores street and number apart, split by `parseStreetLine`; a line without a house number asks for it (2026-10-03).
+- Fields: email (with account detection → "imate račun? prijavite se"), phone (courier SMS), name, street + house no., city, 4-digit postal code, country (Slovenia default; EU list) [standard practice]. `[P1-core]` Street and house number are **one field**, "Ulica in hišna številka" (`autocomplete="address-line1"`, as the address book has it), so browser autofill fills it in one go — a separate number field tagged `address-line2` stayed empty under autofill and stopped the step. The order still stores street and number apart, split by `parseStreetLine`; a line without a house number asks for it (2026-10-03). A supplement after a comma ("Dunajska cesta 20, 2. nadstropje") is stored apart and printed after the number (QA 2026-10-03).
 - **Shipping methods with prices + delivery estimates**: Pošta Slovenije standard (2–4 dni), Pošta Slovenije express, GLS; **free over €45** (config per zone) [ADAPT: 03 §8]. `[P1-core]`
 - **Parcel-locker/pickup-point selection** (Pošta Slovenije Paketomat, GLS ParcelShop) with map/search [standard SI practice]. `[P2-growth]`
 - Address autocomplete/validation (postal-code → city lookup) [standard practice]. `[P2-growth]`
@@ -269,7 +269,7 @@ Custom Next.js checkout (we are not on Shopify — everything here is built, not
 - Order button labelled **"Naročilo z obveznostjo plačila"** (CRD art. 8(2)) [EU requirement]. `[P1-core]`
 - T&Cs + withdrawal-right links at pay step; **marketing opt-in checkbox unchecked by default** (GDPR; HiSmile pre-checks — we deliberately don't) [NEW/ADAPT: 05 §3.3]. `[P1-core]`
 - **Abandoned-checkout capture**: email recorded at step 1 → recovery flow (§11) [ADAPT: 03 §10]. `[P1-core]`
-- Idempotent order creation, stock check at payment confirm, SCA failure retry path [standard practice]. `[P1-core]`
+- Idempotent order creation, stock check at payment confirm, SCA failure retry path [standard practice]. `[P1-core]` An unpaid order placed in the last 24 hours is offered back on `/checkout` (its receipt cookie, or the signed-in owner) instead of being lost to a reload or Back (QA 2026-10-03).
 - **Confirmation page**: order number (NS-…), summary, delivery estimate, "spremljajte pošiljko" explainer, invite to create account / leave email preferences [standard practice]. `[P1-core]`
 - Confirmation email + PDF invoice sent immediately (§14.7, §14.11). `[P1-core]`
 
@@ -292,7 +292,7 @@ Custom Next.js checkout (we are not on Shopify — everything here is built, not
 
 ### 9.3 Campaign mechanics (the HiSmile playbook, phased)
 
-- **Welcome popup** (10 % off first order): opens after ~55 s; **suppressed** on /cart, /account, /checkout, for known subscribers, and once-interacted-per-session; bottom sheet on mobile / centered on desktop; thank-you state auto-stores code for checkout [ADAPT: 01 §3.2, 04 §3]. `[P1-core]`
+- **Welcome popup** (10 % off first order): opens after ~55 s; **suppressed** on /cart, /account, /checkout, for known subscribers, and once interacted with, not again in the browser session in any tab (a session cookie); bottom sheet on mobile / centered on desktop; thank-you state auto-stores code for checkout [ADAPT: 01 §3.2, 04 §3]. `[P1-core]` A code named in its texts is written `{koda}` and filled with the popup's coupon code (QA 2026-10-03).
 - **Escalating abandonment codes** (CART10 → CART15 via ESP flows; browse-abandon 15 %) [BASE: 04 §2]. `[P2-growth]`
 - **Free gift with purchase (GWP)**: $0 auto-added mystery gift, weighted SKU pool (clearance high, hero low ~0.1–2.5), auto-removed when it's the only item, fixed-gift exception for promo carts; marquee + card badges echo the campaign [BASE: 04 §7]. `[P2-growth]`
 - **Deal-SKU ladder per hero**: single → value 2-pack (~30–40 % off) → 3-pack → B3G2; hidden from catalog, surfaced via PDP/cart upsells and ad landing pages [BASE: 04 §4]. `[P2-growth]`
@@ -315,7 +315,7 @@ HiSmile runs **zero on-site reviews** (Amazon screenshots instead; Trustpilot 2.
 
 - **Review collection**: automated post-delivery email (timed ~7–10 days after delivery, per product usage cycle) with one-click in-email star rating → full form on site [standard practice]. `[P1-core]`
 - **Verified-buyer badge** (review tied to order) [standard practice]. `[P1-core]`
-- **Review content**: star rating, title, text, **photo upload** (up to 4), optional attributes (e.g. "stopnja občutljivosti", "bi priporočili") [standard practice]. `[P1-core]`
+- **Review content**: star rating, title, text, **photo upload** (up to 4), optional attributes (e.g. "stopnja občutljivosti", "bi priporočili") [standard practice]. `[P1-core]` No star is preselected: the form asks for a rating, except one carried from the e-mail's one-click stars (QA 2026-10-03).
 - **Display**: PDP summary (average, count, star distribution bar), photo wall, review cards (verified badge, date, photos, merchant reply), sort (najnovejše/najvišje ocenjene/najnižje), filter by stars & "s fotografijo" [standard practice]. `[P1-core]`
 - Stars on **product cards** (home/collection/related) + AggregateRating JSON-LD feeding Google stars [NEW: 07 §9.8]. `[P1-core]`
 - **Moderation queue in admin**: approve/reject, merchant reply, spam/photo moderation; auto-publish verified 4–5★ optional [standard practice]. `[P1-core]`
@@ -330,9 +330,9 @@ HiSmile runs **zero on-site reviews** (Amazon screenshots instead; Trustpilot 2.
 
 ### 11.1 Auth
 
-- Register: first/last name, email, password, **unchecked** marketing checkbox, email verification (double opt-in for the account) [ADAPT: 05 §3.3]. `[P1-core]`
-- Login, forgot-password (email reset link), reset/activate token flows [BASE: 05 §3]. `[P1-core]`
-- **Social login** (Google, Facebook) placed above the classic form with "Ali" divider [BASE: 05 §3.1]. `[P2-growth]`
+- Register: first/last name, email, password, **unchecked** marketing checkbox, email verification (double opt-in for the account) [ADAPT: 05 §3.3]. `[P1-core]` Activation asks for the password chosen at registration; registering an address that awaits activation again does not replace the first registration; activation and reset mails are bounded per address (QA 2026-10-03).
+- Login, forgot-password (email reset link), reset/activate token flows [BASE: 05 §3]. `[P1-core]` Sign-out ends every copy of the session (AGENTS §5.12); a sign-in, a refused session and the staff second factor all return to the page asked for (QA 2026-10-03).
+- **Social login** (Google, Facebook) placed above the classic form with "Ali" divider [BASE: 05 §3.1]. `[P2-growth]` Its buttons stay hidden until a provider is configured (QA 2026-10-03).
 - hCaptcha/Turnstile on all auth forms [BASE: 05 §3]. `[P1-core]`
 
 ### 11.2 Dashboard ("Moj račun")
@@ -351,6 +351,7 @@ HiSmile runs **zero on-site reviews** (Amazon screenshots instead; Trustpilot 2.
 ### 11.3 Guest surfaces
 
 - **Guest order lookup** (email + order number) on contact page and tracking page — kills the #1 ticket type [BASE: 05 §6]. `[P1-core]`
+- The order confirmation of a guest whose e-mail already has an account offers sign-in, not account creation (QA 2026-10-03). `[P1-core]`
 
 ---
 
@@ -367,14 +368,14 @@ HiSmile runs **zero on-site reviews** (Amazon screenshots instead; Trustpilot 2.
 - **Guided topic triage** (icon cards): Spremljanje naročila / Sprememba naročila / Preklic / Vračilo / Napačno naročilo / Poškodovano / Svetovanje o izdelku / Prijava neželenega učinka / Drugo — with sub-reasons and photo-attach instructions for wrong/damaged [ADAPT: 05 §8.3]. `[P1-core]`
 - **Real form → ticket** (POST to our backend → helpdesk/email queue with topic routing), NOT HiSmile's `mailto:` hack [NEW: 05 §8.3]. `[P1-core]`
 - Order-context step via guest order lookup + "izberite naročilo" dropdown [BASE: 05 §6]. `[P1-core]`
-- Photo upload for wrong/damaged claims [ADAPT: 05 §8.3]. `[P1-core]`
+- Photo upload for wrong/damaged claims [ADAPT: 05 §8.3]. `[P1-core]` Photos over 2 MB are downscaled in the browser, as the review form does (QA 2026-10-03).
 - Support hours + response-time promise (e.g. "odgovor v enem delovnem dnevu") [BASE: 05 §8.5]. `[P1-core]`
 - Channels: email + contact form at launch; live chat `[P3-later]`; **AI chatbot with commerce actions** (add-to-cart in chat) `[P3-later]` [BASE: 05 §8.4]; no phone/WhatsApp [BASE: 05 §8.5].
 
 ### 12.3 Order tracking (public)
 
 - **"Sledi naročilu" page**: enter tracking no. or email+order no. → status + **carrier tracking link** (Pošta Slovenije / GLS) + delivery estimate [NEW: 05 §12]. `[P1-core]`
-- Tracking links in shipped-email + account order detail (same carrier-URL templates, §14.12). `[P1-core]`
+- Tracking links in shipped-email + account order detail (same carrier-URL templates, §14.12). `[P1-core]` A `?sledenje=` link runs the lookup at once (QA 2026-10-03).
 
 ### 12.4 Returns, withdrawal & complaints (EU)
 
@@ -387,7 +388,7 @@ HiSmile runs **zero on-site reviews** (Amazon screenshots instead; Trustpilot 2.
 ### 12.5 Legal pages
 
 - Pogoji poslovanja (T&Cs), Politika zasebnosti (GDPR: rights, DPO/contact, processors incl. ESP/pixels), Politika piškotkov (live cookie table), Odstop od pogodbe, Reklamacije [standard practice; ADAPT: 05 §9]. Delivery information is handled in checkout rather than a separate Dostava page (user scope correction, 2026-09-09). `[P1-core]`
-- Sticky table-of-contents on long legal pages [BASE: 05 §9]. `[P2-growth]`
+- Every LEGAL page renders a table of contents (an anchor list of its sections) in its initial HTML (QA 2026-10-03). `[P1-core]` A sticky one on long legal pages [BASE: 05 §9]. `[P2-growth]`
 
 ### 12.6 Cosmetics-compliance surfaces
 
@@ -403,7 +404,7 @@ HiSmile runs **zero on-site reviews** (Amazon screenshots instead; Trustpilot 2.
 
 - **Welcome popup** (10 % off, §9.3) [ADAPT: 01 §3.2]. `[P1-core]`
 - **Footer newsletter** (trial-exclusivity hook) [BASE: 01 §2.8]. `[P1-core]`
-- **Back-in-stock capture** on sold-out cards/PDPs ("Obvestili vas bomo, ko bo spet na zalogi!") [BASE: 02 §2.4]. `[P1-core]`
+- **Back-in-stock capture** on sold-out cards/PDPs ("Obvestili vas bomo, ko bo spet na zalogi!") [BASE: 02 §2.4]. `[P1-core]` The confirmation mail and the confirmed page carry the one-click withdrawal link, so an alert can be withdrawn before it fires (QA 2026-10-03).
 - Checkout opt-in (unchecked) + account preferences [ADAPT]. `[P1-core]`
 - **Double opt-in for marketing lists** (GDPR/ZEKom-1 practice) [NEW]. `[P1-core]`
 - SMS capture (secondary step / dedicated landing page) [BASE: 04 §3]. `[P3-later]`
@@ -438,7 +439,7 @@ Custom admin web app (separate secured area, role-based). Everything the storefr
 
 ### 14.1 Dashboard (admin home)
 
-- KPI cards: revenue, orders, AOV, items/order, conversion rate, sessions (date-range selector) [standard practice]. `[P1-core]`
+- KPI cards: revenue, orders, AOV, items/order, conversion rate, sessions (date-range selector) [standard practice]. `[P1-core]` One cohort: the orders paid in the range, whatever happened to them since; revenue is net of every refund on them, a paid order cancelled later included, and revenue by product is net of the units that went back (QA 2026-10-03).
 - **Sales charts**: revenue & orders over time (day/week/month), revenue by product, orders by status [standard practice]. `[P1-core]`
 - Lists: recent orders, **low-stock alerts**, pending review queue, active coupons expiring soon [standard practice]. `[P1-core]`
 - Top search queries & zero-result searches (from site search) [NEW]. `[P2-growth]`
@@ -448,7 +449,7 @@ Custom admin web app (separate secured area, role-based). Everything the storefr
 ### 14.2 Products
 
 - **Product CRUD**: title, slug, rich description (bullets with highlight markup), status (draft/active/archived), template picker [Woo parity; BASE: 07 §8.1]. `[P1-core]`
-- **Variants** (options e.g. pack size/flavor later): SKU, price, compare-at, cost, barcode, weight, stock per variant [Woo parity]. `[P1-core]`
+- **Variants** (options e.g. pack size/flavor later): SKU, price, compare-at, cost, barcode, weight, stock per variant [Woo parity]. `[P1-core]` A save writes stock only when the figure was changed, and only over the figure the form opened with — a sale in between is reported, not overwritten; a backordered variant below zero still saves its other fields; a variant with sales or price changes cannot be deleted, because its price history is the Omnibus record (QA 2026-10-03).
 - **Image & media library**: gallery w/ drag-sort, alt text, video upload, separate mobile crops, badge/sticker overlays per product [ADAPT: 07 §8.1]. `[P1-core]`
 - **Inventory**: stock tracking, low-stock threshold, sold-out behavior (hide vs "Obvestite me"), backorders [Woo parity]. `[P1-core]`
 - **Per-product rules**: maxCartQuantity, visibility flags (catalog/search/**hidden deal SKU**), badges/pills, USP chips, unit-price text, Klarna eligibility [ADAPT: 07 §5]. `[P1-core]`
@@ -478,7 +479,7 @@ Custom admin web app (separate secured area, role-based). Everything the storefr
 
 ### 14.6 Bundle builder
 
-- **Fixed bundles**: component SKUs + quantities, bundle price, inventory deduction from components, fulfillment expansion on order line [task-required; BASE: 07 §5.2]. `[P1-core]`
+- **Fixed bundles**: component SKUs + quantities, bundle price, inventory deduction from components, fulfillment expansion on order line [task-required; BASE: 07 §5.2]. `[P1-core]` The bundle editor warns while the bundle product's own stock is 0, which caps what it can sell (QA 2026-10-03).
 - Per-component "vrednost" display math (auto-computed savings line, Omnibus-checked) [ADAPT]. `[P1-core]`
 - **BYO bundle config**: paid slots, free slots, product pools per slot, flat price, wizard copy [BASE: 04 §6]. `[P3-later]`
 
@@ -487,7 +488,7 @@ Custom admin web app (separate secured area, role-based). Everything the storefr
 - **Orders list**: search (no., email, name, tracking), filters (status, date, payment, country), bulk actions, CSV export [Woo parity]. `[P1-core]`
 - **Statuses**: `pending` (created, unpaid) → `paid` → `processing` → `shipped` → `delivered`; `cancelled`; `refunded` (full/partial) [task-required]. `[P1-core]`
 - **Status-transition rules** (validated; each transition can fire an email): pending→paid (auto on PSP webhook), paid→processing, processing→shipped (**requires carrier + tracking no.** → generates tracking URL → sends shipped email), shipped→delivered (manual or carrier webhook `[P2-growth]`), pending/paid→cancelled (with auto-void/refund), any→refunded (full/partial via Stripe/PayPal/Klarna) [standard practice]. `[P1-core]`
-- **Order detail**: line items (with bundle expansion + line properties like `_free_gift`), totals + VAT breakdown, customer, addresses, payment status/PSP reference, **timeline/activity log**, **internal notes + customer-visible notes**, resend email, invoice/packing-slip PDF [Woo parity; BASE: 07 §8.3]. `[P1-core]`
+- **Order detail**: line items (with bundle expansion + line properties like `_free_gift`), totals + VAT breakdown, customer, addresses, payment status/PSP reference, **timeline/activity log**, **internal notes + customer-visible notes**, resend email, invoice/packing-slip PDF [Woo parity; BASE: 07 §8.3]. `[P1-core]` Customer-visible notes only on account orders (a guest has no page that shows them); a paid order cancelled with a refund mails the refunded amount (QA 2026-10-03).
 - **Refunds**: full/partial with restock toggle + reason; partial-refund line math incl. proportional VAT [Woo parity]. `[P1-core]`
 - Manual order creation (phone/DM orders) [Woo parity]. `[P2-growth]`
 - Fulfillment export (CSV/API to 3PL) [BASE: 07 §8.3]. `[P2-growth]`
@@ -496,7 +497,7 @@ Custom admin web app (separate secured area, role-based). Everything the storefr
 
 - **Customers list**: search, filters (orders count, country, marketing consent), CSV export [Woo parity]. `[P1-core]`
 - **Customer detail**: profile, addresses, order history, LTV/orders count, marketing-consent status + history, tags, notes [Woo parity]. `[P1-core]`
-- **GDPR actions**: export customer data, **anonymize/delete** (keeps order financials, scrubs PII) [GDPR; task-relevant]. `[P1-core]` (anonymize) / self-service `[P2-growth]`
+- **GDPR actions**: export customer data, **anonymize/delete** (keeps order financials, scrubs PII) [GDPR; task-relevant]. `[P1-core]` (anonymize) / self-service `[P2-growth]`. An anonymised guest's placeholder address is never listed as a customer (QA 2026-10-03).
 - Segments (e.g. "kupili trakove, niso seruma") with ESP sync [standard practice]. `[P2-growth]`
 
 ### 14.9 Reviews moderation
@@ -510,7 +511,7 @@ Custom admin web app (separate secured area, role-based). Everything the storefr
 - **Campaign presets**: save/switch homepage+marquee+badge bundles per campaign (one-click launch looks) [BASE: 04 §1]. `[P2-growth]`
 - **Pages CRUD**: title, slug, rich body, template picker (default, legal w/ TOC, contact, landing), SEO fields [Woo parity]. Generic CMS capability does not add the removed Help Centre, About Us, Explore or Delivery pages back to scope. `[P1-core]`
 - **Navigation menus**: header (incl. mega-menu featured product cards + colored sale link), utility bar, footer columns, mobile drawer [task-required]. `[P1-core]`
-- **Announcement marquee config**: message, link, active [BASE]. `[P1-core]`
+- **Announcement marquee config**: message, link, active [BASE]. `[P1-core]` The `{prag}` token (§3.1) (QA 2026-10-03).
 - **Blog/news CMS** (SEO content hub) [NEW]. `[P2-growth]`
 - Media library (global assets, folders, alt text) [Woo parity]. `[P1-core]`
 - Redirects manager (301s) + 404 log [standard practice]. `[P2-growth]`
@@ -519,7 +520,7 @@ Custom admin web app (separate secured area, role-based). Everything the storefr
 
 - **Discount popup config**: headline, % / code, body, timing delay, suppression rules (paths, known users, per-session), active flag, A/B variant support later [task-required; BASE: 04 §3]. `[P1-core]`
 - Sticky info banner / ops notice config [BASE: 04 §9]. `[P2-growth]`
-- **Email templates** (transactional, editable per language, preview + test-send): order confirmation (+invoice), payment failed, processing, shipped (tracking link), delivered, cancelled, refunded (full/partial), withdrawal received/confirmed, review request, back-in-stock alert, welcome (+code), abandoned cart #1/#2, password reset, email verification [task-required]. `[P1-core]` (marketing-flow templates live in ESP; transactional in admin)
+- **Email templates** (transactional, editable per language, preview + test-send): order confirmation (+invoice), payment failed, processing, shipped (tracking link), delivered, cancelled, refunded (full/partial), withdrawal received/confirmed, review request, back-in-stock alert, welcome (+code), abandoned cart #1/#2, password reset, email verification [task-required]. `[P1-core]` (marketing-flow templates live in ESP; transactional in admin). An override without its action link (`{{confirmUrl}}`, `{{resetUrl}}`) is refused on save and never sent (QA 2026-10-03).
 - ESP integration settings (API keys, list IDs, event mapping) [ADAPT: 07 §8.4]. `[P2-growth]`
 
 ### 14.12 Shipping settings
@@ -544,12 +545,13 @@ Custom admin web app (separate secured area, role-based). Everything the storefr
 - **SEO defaults**: title template (`{Page} | Nasmeh.si`), default meta description, default OG image, robots control, sitemap toggles [standard practice]. `[P1-core]`
 - **Cookie-consent config**: banner copy, category definitions, cookie table entries, consent-version bump [GDPR]. `[P1-core]`
 - **Store settings**: store name/logo, contact emails (podpora@, info@), company registration + VAT ID (footer/invoice), social links, languages (SI; EN toggle when ready), maintenance/password mode [Woo parity]. `[P1-core]`
-- Legal-page link mapping (used by checkout/footer/consent flows) [standard practice]. `[P1-core]`
+- Legal-page link mapping (used by checkout/footer/consent flows) [standard practice]. `[P1-core]` Every mapped link must point to a published page (QA 2026-10-03).
 
 ### 14.15 Admin platform
 
 - **Roles & permissions**: Owner (everything), Manager (catalog/promos/content), Support (orders/customers/reviews, no settings), Fulfillment (orders, shipments) [standard practice]. `[P1-core]`
-- 2FA for all admin users; session management [standard practice]. `[P1-core]`
+- 2FA for all admin users; session management [standard practice]. `[P1-core]` Second-factor attempts are bounded and the refusal says so (QA 2026-10-03).
+- Admin not-found page inside the admin; wide tables show that they scroll (QA 2026-10-03). `[P1-core]`
 - **Audit log** (who changed what, when — esp. prices, refunds, coupon rules) [standard practice]. `[P2-growth]`
 - API keys/webhooks (ERP/3PL/ESP hooks), import/export tools [standard practice]. `[P2-growth]`
 - Staging environment + preview links for content [standard practice]. `[P1-core]`

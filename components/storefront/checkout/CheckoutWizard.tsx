@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useState, useTransition, type ReactNode } from "react";
 import { formatEUR } from "@/lib/pricing";
 import {
@@ -10,7 +10,7 @@ import {
   placeOrderAction,
 } from "@/app/(storefront)/actions/checkout";
 import {
-  CHECKOUT_LIMITS, EU_COUNTRIES, fieldErrorsFromPaths, isPlausibleEmail, parseStreetLine,
+  CHECKOUT_LIMITS, EU_COUNTRIES, fieldErrorsFromPaths, isPlausibleEmail, parseStreetLine, savedStreetLine,
   validateCheckoutAddress, validateCheckoutContact,
   type CheckoutField, type CheckoutFieldErrors, type ShippingMethodSetting,
 } from "@/lib/orders/checkout-constants";
@@ -127,7 +127,7 @@ function addressToFields(address: SavedAddress, shippingMethods: ShippingMethodS
   const country = shippingMethods.some(method => methodServes(method, address.country)) ? address.country : "SI";
   return {
     phone: address.phone ?? "", fullName: address.fullName,
-    streetLine: address.line2 ? `${address.line1}, ${address.line2}` : address.line1,
+    streetLine: savedStreetLine(address.line1, address.line2),
     city: address.city, postalCode: address.postalCode, country,
   };
 }
@@ -169,8 +169,11 @@ export function CheckoutWizard({
   klarnaEnabled = false,
 }: WizardProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const savedAddressId = useId();
   const [step, setStep] = useState(0);
+  // The furthest step this visit has reached: Back/Forward and ?korak= move within it, never past it.
+  const [reached, setReached] = useState(0);
   const [stableCheckoutKey] = useState(checkoutKey);
   const [turnstileToken, setTurnstileToken] = useState(testToken ?? "");
   const [widgetAttempt, setWidgetAttempt] = useState(0);
@@ -200,6 +203,38 @@ export function CheckoutWizard({
   const [payInfo, setPayInfo] = useState<Extract<PlaceOrderResult, {ok: true}> | null>(null);
   const [pending, startTransition] = useTransition();
   const [, startEmailCheck] = useTransition();
+
+  /**
+   * Opens a step and records it in the browser history (`?korak=`, Next keeps the page), so the
+   * system Back gesture returns to the previous step instead of leaving the checkout
+   * (QA 2026-10-03 T2-03).
+   */
+  const goTo = (next: number) => {
+    setStep(next);
+    setReached(previous => Math.max(previous, next));
+    window.history.pushState(null, "", next === 0 ? "/checkout" : `/checkout?korak=${next + 1}`);
+  };
+
+  // Back/Forward (and a reload or typed ?korak=) open the step the address names, clamped to what
+  // this visit has reached: the fields are not kept across a reload, so a later step would be empty.
+  useEffect(() => {
+    const requested = Number(searchParams.get("korak") ?? "1") - 1;
+    const target = Number.isInteger(requested) && requested > 0 ? Math.min(requested, reached) : 0;
+    setStep(target);
+    if (target !== Math.max(0, requested)) window.history.replaceState(null, "", target === 0 ? "/checkout" : `/checkout?korak=${target + 1}`);
+    // only the address drives this; `reached` is read at the moment it changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  /** On a phone the first refused field can sit below the fold: bring it into view and focus it (QA 2026-10-03 T2-06). */
+  const focusFirstInvalid = () => {
+    requestAnimationFrame(() => {
+      const field = document.querySelector<HTMLElement>("[data-checkout-wizard] [aria-invalid='true']");
+      if (!field) return;
+      field.scrollIntoView({ block: "center" });
+      field.focus({ preventScroll: true });
+    });
+  };
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -261,7 +296,7 @@ export function CheckoutWizard({
   const continueFromContact = () => {
     setError(null);
     const errors = validateCheckoutContact(form);
-    if (errors.email) { setFieldErrors(prev => ({ ...prev, ...errors })); return; }
+    if (errors.email) { setFieldErrors(prev => ({ ...prev, ...errors })); focusFirstInvalid(); return; }
     // The server already refused this address (the quote marked it); it stays marked until edited.
     if (fieldErrors.email) return;
     const email = form.email.trim().toLowerCase();
@@ -276,9 +311,10 @@ export function CheckoutWizard({
         // An address the client mirror let through but the server refuses stops here, not at the order button (QA M11).
         if (!captured.ok && captured.reason === "invalid_email") {
           setFieldErrors(prev => ({ ...prev, email: "invalid" }));
+          focusFirstInvalid();
           return;
         }
-        setStep(1);
+        goTo(1);
       } catch {
         setError(checkout.errors.orderFailed);
       }
@@ -288,8 +324,8 @@ export function CheckoutWizard({
   const continueFromShipping = () => {
     setError(null);
     const errors = validateCheckoutAddress(form);
-    if (Object.keys(errors).length) { setFieldErrors(prev => ({ ...prev, ...errors })); return; }
-    setStep(2);
+    if (Object.keys(errors).length) { setFieldErrors(prev => ({ ...prev, ...errors })); focusFirstInvalid(); return; }
+    goTo(2);
   };
 
   // A saved row fills the fields; "Vnesite nov naslov" empties them, so no part of the previous
@@ -320,6 +356,7 @@ export function CheckoutWizard({
         ...fields,
         street: parts?.street ?? streetLine.trim(),
         streetNumber: parts?.streetNumber ?? "",
+        streetSupplement: parts?.supplement ?? "",
         email: form.email.trim().toLowerCase(),
         turnstileToken,
         checkoutKey: stableCheckoutKey,
@@ -336,8 +373,9 @@ export function CheckoutWizard({
         const marked = fieldErrorsFromPaths(result.fields ?? []);
         setFieldErrors(prev => ({ ...prev, ...marked }));
         setError(Object.keys(marked).length ? checkout.errors.invalidForm : checkout.errors.orderFailed);
-        if (marked.email) setStep(0);
-        else if (Object.keys(marked).length) setStep(1);
+        if (marked.email) goTo(0);
+        else if (Object.keys(marked).length) goTo(1);
+        if (Object.keys(marked).length) focusFirstInvalid();
       } else {
         setQuoteRefresh(value => value + 1);
         setError(
@@ -393,7 +431,7 @@ export function CheckoutWizard({
         index={0}
         title={checkout.steps.contact}
         step={step}
-        onOpen={setStep}
+        onOpen={goTo}
       >
         <div className="flex flex-col gap-4">
           <div>
@@ -452,7 +490,7 @@ export function CheckoutWizard({
         index={1}
         title={checkout.steps.shipping}
         step={step}
-        onOpen={setStep}
+        onOpen={goTo}
       >
         <div className="flex flex-col gap-4">
           {savedAddresses.length > 0 ? (
@@ -590,7 +628,7 @@ export function CheckoutWizard({
 
           {error ? (<p role="alert" className="text-sm text-error">{error}</p>) : null}
           <div className="flex gap-3">
-            <UiButton variant="ghost" onClick={() => setStep(0)}>
+            <UiButton variant="ghost" onClick={() => goTo(0)}>
               {checkout.shipping.back}
             </UiButton>
             {/* Empty fields do not disable the button: continuing marks them, so the shopper sees what is missing (QA M11). */}
@@ -610,7 +648,7 @@ export function CheckoutWizard({
         index={2}
         title={checkout.steps.payment}
         step={step}
-        onOpen={setStep}
+        onOpen={goTo}
       >
         <div className="flex flex-col gap-4">
           {providers.length === 0 ? <p role="alert">{checkout.errors.noProvider}</p> : null}
@@ -639,10 +677,10 @@ export function CheckoutWizard({
             ))}
           </fieldset>
           <div className="flex gap-3">
-            <UiButton variant="ghost" onClick={() => setStep(1)}>
+            <UiButton variant="ghost" onClick={() => goTo(1)}>
               {checkout.shipping.back}
             </UiButton>
-            <UiButton variant="primary" disabled={providers.length === 0} onClick={() => setStep(3)} data-continue-payment>
+            <UiButton variant="primary" disabled={providers.length === 0} onClick={() => goTo(3)} data-continue-payment>
               {checkout.payment.continue}
             </UiButton>
           </div>
@@ -653,7 +691,7 @@ export function CheckoutWizard({
         index={3}
         title={checkout.steps.review}
         step={step}
-        onOpen={setStep}
+        onOpen={goTo}
       >
         <div className="flex flex-col gap-4">
           <dl className="flex flex-col gap-2 text-sm">
@@ -709,7 +747,7 @@ export function CheckoutWizard({
                 ) : null}
                 <div className="flex justify-between gap-3">
                   <dt>{checkout.summary.shipping}{quotedMethod ? ` (${quotedMethod.label})` : ""}</dt>
-                  <dd className="whitespace-nowrap" data-review-shipping>{formatEUR(quote.shippingCents)}</dd>
+                  <dd className="whitespace-nowrap" data-review-shipping>{quote.shippingCents === 0 ? checkout.shipping.free : formatEUR(quote.shippingCents)}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt>{checkout.summary.vat} ({quote.vatRatePercent} %)</dt>

@@ -67,10 +67,17 @@ describe("account invoice access", () => {
 
 describe("order address snapshots", () => {
   it("renders checkout snapshots and saved-address-shaped billing snapshots", () => {
+    // the country is named as the seller block names it (QA 2026-10-03 T2-12)
     expect(snapshotAddressLines({ fullName: "Živa Ščuk", street: "Čopova", streetNumber: "12", postalCode: "1000", city: "Ljubljana", country: "SI" }))
-      .toEqual(["Živa Ščuk", "Čopova 12", "1000 Ljubljana", "SI"]);
+      .toEqual(["Živa Ščuk", "Čopova 12", "1000 Ljubljana", "Slovenija"]);
     expect(snapshotAddressLines({ fullName: "Podjetje", line1: "Hauptstraße 10", line2: "2. nadstropje", postalCode: "10115", city: "Berlin", country: "DE" }))
-      .toEqual(["Podjetje", "Hauptstraße 10", "2. nadstropje", "10115 Berlin", "DE"]);
+      .toEqual(["Podjetje", "Hauptstraße 10", "2. nadstropje", "10115 Berlin", "Nemčija"]);
+  });
+  it("prints a supplement after the house number, never before it (QA 2026-10-03 T2-04)", () => {
+    expect(snapshotAddressLines({ fullName: "Živa Ščuk", street: "Dunajska cesta", streetNumber: "20", streetSupplement: "2. nadstropje", postalCode: "1000", city: "Ljubljana", country: "SI" }))
+      .toEqual(["Živa Ščuk", "Dunajska cesta 20, 2. nadstropje", "1000 Ljubljana", "Slovenija"]);
+    // an unknown code is printed as stored rather than dropped
+    expect(snapshotAddressLines({ fullName: "X", street: "Y", streetNumber: "1", country: "US" }).at(-1)).toBe("US");
   });
   it("does not render nulls or crash on malformed legacy JSON", () => {
     for (const value of [null, [], "address", { fullName: { unexpected: true } }]) expect(snapshotAddressLines(value)).toEqual([]);

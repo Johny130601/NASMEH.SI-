@@ -18,6 +18,8 @@ class BotCheckError extends CredentialsSignin { code = "bot_check"; }
 class MfaRequiredError extends CredentialsSignin { code = "mfa_required"; }
 class MfaInvalidError extends CredentialsSignin { code = "mfa_invalid"; }
 class MfaExpiredError extends CredentialsSignin { code = "mfa_expired"; }
+/** Too many wrong codes for this member: said as such, not as one more wrong code (QA 2026-10-03 T4-01). */
+class MfaRateLimitedError extends CredentialsSignin { code = "mfa_rate_limited"; }
 /** Too many password attempts for the address or from the client (Phase 9 step 1). */
 class RateLimitedError extends CredentialsSignin { code = "rate_limited"; }
 
@@ -106,7 +108,7 @@ async function authorizeSecondFactor(input: z.infer<typeof secondFactorSchema>) 
   const user = await db.user.findUnique({ where: { id: preAuth.userId } });
   if (!user?.emailVerified || !isStaffRole(user.role) || !user.totpEnabledAt) throw new MfaExpiredError();
   const outcome = await verifySecondFactor(user.id, input.totpCode);
-  if (!outcome.ok) throw new MfaInvalidError();
+  if (!outcome.ok) throw outcome.reason === "rate_limited" ? new MfaRateLimitedError() : new MfaInvalidError();
   try {
     (await cookies()).delete(PRE_AUTH_COOKIE);
   } catch {

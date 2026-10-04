@@ -36,6 +36,16 @@ describe("saveEmailTemplateAction", () => {
     expect(mocks.upsert).toHaveBeenCalledTimes(1);
   });
 
+  it("refuses an override without the mail's action link (QA 2026-10-03 T6-02)", async () => {
+    for (const [key, name] of [["verifySubscription", "confirmUrl"], ["verifyAccount", "confirmUrl"], ["backInStockConfirm", "confirmUrl"], ["resetPassword", "resetUrl"]] as const) {
+      expect(await saveEmailTemplateAction({ key, subject: "Zadeva", bodyHtml: "<p>Brez povezave.</p>" }), key)
+        .toEqual({ ok: false, error: "missingPlaceholders", names: [name] });
+    }
+    // a key without an action link of its own saves without one
+    expect(await saveEmailTemplateAction({ key: "orderProcessing", subject: "V obdelavi {{orderNumber}}", bodyHtml: "<p>Pripravljamo.</p>" })).toEqual({ ok: true });
+    expect(mocks.upsert).toHaveBeenCalledTimes(1);
+  });
+
   it("test-sends the whole mail: sanitized body and the required legal block with sample data", async () => {
     expect(await sendTestEmailAction({ key: "orderConfirmation", subject: "Hvala", bodyHtml: "<h1>Hvala</h1><!--", to: "manager@nasmeh.si" })).toEqual({ ok: true });
     const { html } = mocks.sendMail.mock.calls[0][0] as { html: string };

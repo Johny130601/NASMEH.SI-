@@ -81,19 +81,21 @@ export function CatalogCard({
               data-hover-image
             />
           ) : null}
-          <span className="absolute left-3 top-3 flex flex-col items-start gap-1">
-            {soldOut ? (
-              <BadgePill badge={{ label: catalog.card.soldOut, style: "grey" }} />
-            ) : null}
-            {badge ? <BadgePill badge={badge} /> : null}
-          </span>
-          {reduction && !soldOut ? (
-            <span className="absolute right-3 top-3">
+          {/* One row for the badges and the "−X %" pill: on a narrow card the pill wraps under the
+              badges instead of covering them (QA 2026-10-03 T5-04). */}
+          <span className="absolute inset-x-3 top-3 flex flex-wrap items-start justify-between gap-1">
+            <span className="flex flex-col items-start gap-1">
+              {soldOut ? (
+                <BadgePill badge={{ label: catalog.card.soldOut, style: "grey" }} />
+              ) : null}
+              {badge ? <BadgePill badge={badge} /> : null}
+            </span>
+            {reduction && !soldOut ? (
               <UiPill variant="brand" data-percent-off>
                 {catalog.card.percentOff(reduction.percentOff)}
               </UiPill>
-            </span>
-          ) : null}
+            ) : null}
+          </span>
         </div>
         <h3 className="text-sm font-normal text-dark-1 transition-colors group-hover:text-brand md:text-base">
           {product.title}

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getAuthChallengeProps } from "@/lib/auth-challenge";
 import { buildMetadata } from "@/lib/seo";
 import { getCompany } from "@/lib/settings";
+import { normalizeTrackingNumber } from "@/lib/tracking";
 import { tracking as copy } from "@/lib/copy/tracking";
 import { TrackingLookup } from "@/components/storefront/tracking/TrackingLookup";
 
@@ -15,11 +16,13 @@ export const metadata: Metadata = buildMetadata({
 });
 
 /**
- * Public tracking (§12.3): tracking number or e-mail + order number. Links
- * from the shipped email and the account only prefill; every lookup still
- * passes the challenge and rate limit in the Server Action. The forms' own
- * field names prefill too: without JavaScript a submit reloads this page with
- * them, so the typed values stay (QA T4-F9).
+ * Public tracking (§12.3): tracking number or e-mail + order number. A
+ * tracking number in the link — the shipped email's `sledenje` — is looked up
+ * as soon as the page has its challenge token (QA 2026-10-03 T2-08); the
+ * e-mail + order-number values only prefill. Every lookup, the automatic one
+ * included, passes the challenge and rate limit in the Server Action. The
+ * forms' own field names prefill too: without JavaScript a submit reloads this
+ * page with them, so the typed values stay (QA T4-F9).
  */
 export default async function TrackOrderPage({
   searchParams,
@@ -35,6 +38,7 @@ export default async function TrackOrderPage({
     return "";
   };
   const clip = (value: string, max: number) => value.slice(0, max);
+  const trackingNumber = clip(first(params.sledenje, params.trackingNumber), 80);
 
   return (
     <section className="mx-auto max-w-md px-(--padding) py-16">
@@ -55,10 +59,11 @@ export default async function TrackOrderPage({
       <TrackingLookup
         challenge={getAuthChallengeProps()}
         defaults={{
-          trackingNumber: clip(first(params.sledenje, params.trackingNumber), 80),
+          trackingNumber,
           email: clip(first(params.email), 254),
           orderNumber: clip(first(params.narocilo, params.orderNumber), 20),
         }}
+        autoLookup={normalizeTrackingNumber(trackingNumber) !== null}
       />
     </section>
   );

@@ -42,10 +42,12 @@ export interface CookieRow {
 
 /**
  * Live cookie table data — rendered on /politika-piskotkov, seeded into the
- * `consent.cookies` Setting and mirrored by migration
- * 20260913100000_phase9_cookie_table. Every first-party cookie and storage key
- * the code sets is listed (the unit suite checks the name constants); the
- * Auth.js rows carry their https names (`__Secure-` / `__Host-`). Third-party
+ * `consent.cookies` Setting and mirrored by migrations
+ * 20260913100000_phase9_cookie_table and 20261003110000_cookie_table_login_email
+ * (the sign-in e-mail row; the welcome flag as a session cookie). Every
+ * first-party cookie and storage key the code sets is listed (the unit suite
+ * checks the name constants); the Auth.js rows carry their https names
+ * (`__Secure-` / `__Host-`). Third-party
  * rows name the provider only: their cookie names and lifetimes are set by the
  * provider and are captured on staging before sign-off. The cookie policy body
  * (prisma/seed-legal.ts §4) describes the table in exactly these terms, so a
@@ -93,6 +95,14 @@ export const COOKIES: CookieRow[] = [
     category: "necessary",
   },
   {
+    name: "nasmeh_login_email",
+    provider: "Nasmeh.si",
+    purpose:
+      "E-poštni naslov, vpisan ob neuspeli prijavi, da ga obrazec za prijavo prikaže znova (samo na straneh /prijava).",
+    duration: "5 minut",
+    category: "necessary",
+  },
+  {
     name: "nasmeh_cart",
     provider: "Nasmeh.si",
     purpose: "Košarica obiskovalca brez prijave (izdelki in količine, podpisano).",
@@ -125,8 +135,8 @@ export const COOKIES: CookieRow[] = [
     name: "nasmeh_welcome_seen",
     provider: "Nasmeh.si",
     purpose:
-      "Zapis v shrambi seje brskalnika (sessionStorage), ne piškotek: pojavno okno dobrodošlice se v isti seji ne prikaže znova.",
-    duration: "do zaprtja zavihka",
+      "Piškotek seje: ko pojavno okno dobrodošlice zaprete ali se prijavite na e-novice, se do zaprtja brskalnika ne prikaže znova.",
+    duration: "seja",
     category: "necessary",
   },
   {

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { setVariantStock } from "@/lib/inventory/restock";
+import { cart as cartCopy } from "@/lib/copy/cart";
 import { prisma } from "./helpers";
 
 /** /cart e2e (§7.1) + merge-on-login + tamper. Serial: shared guest/DB state. */
@@ -169,6 +170,10 @@ test("progress bar states: empty → in progress → reached", async ({ page }) 
   // bundle contents listed under the bundle line
   const bundleLine = page.locator("[data-cart-line='NAS-PAK-RUTINA']");
   await expect(bundleLine.getByText("Vsebina paketa:")).toBeVisible();
+  // the bundle line carries its offer label pill, a plain product line none (spec §7.1, QA 2026-10-03 T2-11)
+  await expect(bundleLine.locator("[data-line-pill='bundle']")).toHaveText(cartCopy.line.bundlePill);
+  await expect(bundleLine.locator("[data-line-pill='bundle']")).toHaveCSS("text-transform", "uppercase");
+  await expect(page.locator("[data-line-pill]")).toHaveCount(1);
   await expect(bundleLine.getByText(/1× Belilni trakci/)).toBeVisible();
   // the cap notice states the line's own cap, declined (QA C2-F1)
   await expect(bundleLine.locator("[data-cap-note]")).toHaveText("Največ 1 kos na naročilo");

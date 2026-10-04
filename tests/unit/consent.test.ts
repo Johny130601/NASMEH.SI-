@@ -22,6 +22,7 @@ vi.mock("next/headers", () => ({
 
 import { saveConsentAction } from "@/app/(storefront)/actions/consent";
 import { PRE_AUTH_COOKIE } from "@/lib/admin/pre-auth";
+import { LOGIN_EMAIL_COOKIE } from "@/lib/auth-callback";
 import { GUEST_CART_COOKIE } from "@/lib/cart/codec";
 import {
   clientConsent,
@@ -39,7 +40,7 @@ import {
   withdrawsConsent,
 } from "@/lib/consent";
 import { trackerCookieExpiry } from "@/lib/analytics";
-import { cmp, CONSENT_CLEAR_COOKIES, COOKIES } from "@/lib/copy/cmp";
+import { cmp, CONSENT_CLEAR_COOKIES, COOKIES, type CookieRow } from "@/lib/copy/cmp";
 import { KODA_COOKIE } from "@/lib/koda";
 import { MAINTENANCE_COOKIE } from "@/lib/maintenance";
 import { orderAccessCookieName } from "@/lib/orders/access-token";
@@ -180,8 +181,8 @@ describe("saveConsentAction", () => {
   }
 
   async function exhaustLimit() {
-    for (let index = 0; index < 120; index += 1) await saveConsentAction({ analytics: false, marketing: false });
-    expect(mocks.create).toHaveBeenCalledTimes(120);
+    for (let index = 0; index < 240; index += 1) await saveConsentAction({ analytics: false, marketing: false });
+    expect(mocks.create).toHaveBeenCalledTimes(240);
     mocks.create.mockClear();
     mocks.cookieSet.mockClear();
   }
@@ -364,7 +365,8 @@ describe("cookie table (ZEKom-2 Art. 225 information)", () => {
     pattern.endsWith("*") ? name.startsWith(pattern.slice(0, -1)) : pattern === name;
 
   it("lists every cookie and storage key the code sets", () => {
-    for (const constant of [CONSENT_COOKIE, GUEST_CART_COOKIE, KODA_COOKIE, PRE_AUTH_COOKIE, MAINTENANCE_COOKIE, "nasmeh_welcome_seen"]) {
+    // LOGIN_EMAIL_COOKIE: the address typed into a failed sign-in (QA 2026-10-03 T1-10)
+    for (const constant of [CONSENT_COOKIE, GUEST_CART_COOKIE, KODA_COOKIE, PRE_AUTH_COOKIE, LOGIN_EMAIL_COOKIE, MAINTENANCE_COOKIE, "nasmeh_welcome_seen"]) {
       expect(names).toContain(constant);
     }
     expect(names.some((name) => covers(name, orderAccessCookieName("NS-2026-0001")))).toBe(true);
@@ -401,14 +403,44 @@ describe("cookie table (ZEKom-2 Art. 225 information)", () => {
     for (const row of COOKIES) expect(cmp.categories[row.category].label.length).toBeGreaterThan(0);
   });
 
-  it("the data migration carries exactly COOKIES and only replaces the untouched phase 7 default", () => {
-    const migrations = join(__dirname, "..", "..", "prisma", "migrations");
-    const phase7 = readFileSync(join(migrations, "20260911120000_phase7_settings", "migration.sql"), "utf8");
-    const phase9 = readFileSync(join(migrations, "20260913100000_phase9_cookie_table", "migration.sql"), "utf8");
-    const phase7Default = JSON.parse(/\('consent\.cookies', '(\[[\s\S]*?\])'::jsonb/.exec(phase7)![1]);
+  const migrations = join(__dirname, "..", "..", "prisma", "migrations");
+  const readMigration = (name: string) => readFileSync(join(migrations, name, "migration.sql"), "utf8");
+  /** The phase 9 table and the guard it replaced (20260913100000_phase9_cookie_table). */
+  function phase9Table() {
+    const phase9 = readMigration("20260913100000_phase9_cookie_table");
     const [, next, guard] = /SET "value" = '(\[[\s\S]*?\])'::jsonb[\s\S]*?AND "value" = '(\[[\s\S]*?\])'::jsonb;/.exec(phase9)!;
-    expect(JSON.parse(next)).toEqual(COOKIES);
-    expect(JSON.parse(guard)).toEqual(phase7Default);
+    return { phase9, next: JSON.parse(next) as CookieRow[], guard: JSON.parse(guard) as CookieRow[] };
+  }
+  /** jsonb equality: same keys and values, whatever the key order. */
+  const sameRow = (a: object, b: object) =>
+    JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
+
+  it("the phase 9 migration only replaced the untouched phase 7 default", () => {
+    const phase7Default = JSON.parse(/\('consent\.cookies', '(\[[\s\S]*?\])'::jsonb/.exec(readMigration("20260911120000_phase7_settings"))![1]);
+    const { phase9, guard } = phase9Table();
+    expect(guard).toEqual(phase7Default);
     expect(phase9).toContain(`WHERE "key" = 'consent.cookies'`);
+  });
+
+  it("the 2026-10-03 migration brings the phase 9 table to exactly COOKIES, touching only what is still missing or unedited (T1-10, T1-07)", () => {
+    const sql = readMigration("20261003110000_cookie_table_login_email");
+    const inserted = JSON.parse(/SELECT '(\{"name":"nasmeh_login_email"[^']*\})'::jsonb/.exec(sql)![1]) as CookieRow;
+    const [, oldWelcome, newWelcome] = /WHEN t\.entry = '(\{[^']*\})'::jsonb\s+THEN '(\{[^']*\})'::jsonb/.exec(sql)!;
+    const { next } = phase9Table();
+    // the replaced row is exactly the one phase 9 wrote, and the guard looks for that same row
+    expect(JSON.parse(oldWelcome)).toEqual(next.find((row) => row.name === "nasmeh_welcome_seen"));
+    expect(sql).toContain(`WHERE e.entry = '${oldWelcome}'::jsonb`);
+    // the insert lands after nasmeh_preauth and only where the name is not listed yet
+    expect(sql).toContain(`WHERE p.entry ->> 'name' = 'nasmeh_preauth'`);
+    expect(sql).toMatch(/NOT EXISTS \(\s*SELECT 1\s+FROM jsonb_array_elements\(s\."value"\) AS e\(entry\)\s+WHERE e\.entry ->> 'name' = 'nasmeh_login_email'/);
+    expect(sql.match(/WHERE s\."key" = 'consent\.cookies'/g)).toHaveLength(2);
+    // the array functions only ever see an array
+    expect(sql.match(/CASE WHEN jsonb_typeof\(s\."value"\) = 'array' THEN (NOT )?EXISTS/g)).toHaveLength(2);
+
+    const upgraded = next
+      .flatMap((row) => (row.name === "nasmeh_preauth" ? [row, inserted] : [row]))
+      .map((row) => (sameRow(row, JSON.parse(oldWelcome)) ? (JSON.parse(newWelcome) as CookieRow) : row));
+    expect(upgraded).toEqual(COOKIES);
+    expect(consentCookiesSchema.safeParse(upgraded).success).toBe(true);
   });
 });

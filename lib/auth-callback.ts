@@ -31,6 +31,20 @@ export function safeCallbackPath(raw: unknown): string | null {
   return path;
 }
 
+/**
+ * The sign-in page that returns to `callback` (QA 2026-10-03 V2-02): a server-side guard
+ * that refuses a session — revoked at sign-out elsewhere, invalidated by a password
+ * reset — sends the visitor back where they were, as the middleware does for a
+ * visitor without one. Anything `safeCallbackPath` refuses becomes plain /prijava.
+ */
+export function signInPath(callback: string | null | undefined): string {
+  const path = safeCallbackPath(callback);
+  return path ? `/prijava?callbackUrl=${encodeURIComponent(path)}` : "/prijava";
+}
+
+/** Request header the middleware sets to the page asked for (path and query), so layouts can name it. */
+export const REQUEST_PATH_HEADER = "x-nasmeh-path";
+
 /** The customer's destination after sign-in: the requested page, never the admin. */
 export function customerLanding(callback: string | null): string {
   return callback && !/^\/admin(\/|$|\?|#)/.test(callback) ? callback : "/racun";

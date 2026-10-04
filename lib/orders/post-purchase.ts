@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { marketingVersion, recordConsent } from "@/lib/consent-log";
 import { clearGuestCart, getCartLines } from "@/lib/cart/server";
-import { issueAuthToken } from "@/lib/auth-tokens";
+import { allowAccountMail, issueAuthToken } from "@/lib/auth-tokens";
 import { sendVerifyAccountEmail } from "@/lib/email/mailer";
 import { currentCartVersion, getOrderReceipt } from "./access";
 import { cartDigest } from "./access-token";
@@ -89,8 +89,11 @@ export async function createPurchaserAccount(input: unknown): Promise<{ ok: bool
         return user.id;
       });
     }
+    // the same per-address budget as registration and reset mails (QA 2026-10-03 t3 N2)
+    if (!allowAccountMail("VERIFY_EMAIL", email)) return { ok: true };
     const token = await issueAuthToken(userId, "VERIFY_EMAIL");
-    await sendVerifyAccountEmail(email, token);
+    // activation does not confirm marketing here: the checkout box went through its own double opt-in
+    await sendVerifyAccountEmail(email, token, { newsletter: false });
     return { ok: true };
   } catch (error) {
     // SMTP errors can quote the recipient address: log the error class only.
@@ -111,12 +114,17 @@ export async function clearPurchasedCart(input: unknown): Promise<{ ok: boolean;
   const receipt = await getOrderReceipt(order);
   const session = await auth();
   const principal = session?.user?.id ?? null;
-  if (!receipt || !receipt.allowCartClear || receipt.principal !== principal) return { ok: false };
+  // The account's owner who paid on another device (resumed from /racun) has no receipt there,
+  // but the account cart is the same one: it may be cleared when it still holds exactly the
+  // purchased lines (QA 2026-10-03 T3-05). Without a receipt nothing else qualifies.
+  const ownerElsewhere = !receipt && principal !== null && order.userId === principal;
+  if (!ownerElsewhere && (!receipt || !receipt.allowCartClear || receipt.principal !== principal)) return { ok: false };
   if (order.cartClearedAt) return { ok: true, cleared: false };
   const purchased = order.items.flatMap((item) => item.variantId ? [{ variantId: item.variantId, quantity: item.quantity }] : []);
   const expectedDigest = cartDigest(purchased);
 
   if (!principal) {
+    if (!receipt) return { ok: false };
     const [lines, version] = await Promise.all([getCartLines(null), currentCartVersion(null)]);
     const unchanged = version === receipt.cartVersion && cartDigest(lines) === receipt.cartDigest && receipt.cartDigest === expectedDigest;
     const claimed = await db.order.updateMany({
@@ -136,8 +144,14 @@ export async function clearPurchasedCart(input: unknown): Promise<{ ok: boolean;
       });
       if (claimed.count !== 1) return false;
       const cart = await tx.cart.findUnique({ where: { userId: principal }, include: { items: true } });
-      if (!cart || `${cart.id}:${cart.updatedAt.toISOString()}` !== receipt.cartVersion ||
-          cartDigest(cart.items) !== receipt.cartDigest || receipt.cartDigest !== expectedDigest) return false;
+      if (!cart) return false;
+      if (receipt) {
+        if (`${cart.id}:${cart.updatedAt.toISOString()}` !== receipt.cartVersion ||
+            cartDigest(cart.items) !== receipt.cartDigest || receipt.cartDigest !== expectedDigest) return false;
+      } else if (cartDigest(cart.items) !== expectedDigest) {
+        // owner on another device: only a cart that is exactly what was bought
+        return false;
+      }
       await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
       await tx.cart.update({ where: { id: cart.id }, data: { updatedAt: new Date(Math.max(Date.now(), cart.updatedAt.getTime() + 1)) } });
       return true;

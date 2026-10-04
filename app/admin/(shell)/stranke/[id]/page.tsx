@@ -5,7 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import type { SubscriberStatus } from "@prisma/client";
 import { requirePagePermission } from "@/lib/admin/access";
 import { can } from "@/lib/admin/permissions";
-import { findCustomerAccountId, loadCustomer, loadGuest } from "@/lib/admin/customers";
+import { findCustomerAccountId, isAnonymisedEmail, loadCustomer, loadGuest } from "@/lib/admin/customers";
 import { consentChoiceParts, consentKindLabel, consentVersionLabel } from "@/lib/admin/consent-display";
 import { formatEUR } from "@/lib/pricing";
 import { admin as copy } from "@/lib/copy";
@@ -119,11 +119,13 @@ export default async function AdminCustomerPage({ params, searchParams }: { para
     if (accountId) redirect(`/admin/stranke/${accountId}`);
     const guest = await loadGuest(email);
     if (!guest) notFound();
+    // An erased guest's rows carry a placeholder address: it is shown as a neutral label (QA 2026-10-03 T4-07).
+    const shownEmail = isAnonymisedEmail(guest.email) ? copy.common.anonymised : guest.email;
     return (
       <section className="mx-auto max-w-(--container-wide)" data-admin-customer={guest.email}>
         <Link href="/admin/stranke" className="text-sm text-mid-1 underline underline-offset-4">{d.back}</Link>
-        <h1 className="mt-3 text-[2rem]">{guest.name ?? guest.email}</h1>
-        <p className="text-sm text-mid-1">{guest.email} · {copy.customers.types.guest}</p>
+        <h1 className="mt-3 text-[2rem]">{guest.name ?? shownEmail}</h1>
+        <p className="text-sm text-mid-1">{shownEmail} · {copy.customers.types.guest}</p>
         <p className="mt-1 text-xs text-mid-2">{d.guestNote}</p>
         {guest.anonymizedAt ? <p className="mt-2 text-sm text-mid-2" data-customer-anonymised>{d.anonymised.replace("{date}", guest.anonymizedAt.toLocaleDateString("sl-SI"))}</p> : null}
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
@@ -155,7 +157,7 @@ export default async function AdminCustomerPage({ params, searchParams }: { para
     <section className="mx-auto max-w-(--container-wide)" data-admin-customer={customer.email}>
       <Link href="/admin/stranke" className="text-sm text-mid-1 underline underline-offset-4">{d.back}</Link>
       <h1 className="mt-3 text-[2rem]" data-customer-name>{customer.name ?? copy.common.none}</h1>
-      <p className="text-sm text-mid-1" data-customer-email>{customer.email}</p>
+      <p className="text-sm text-mid-1" data-customer-email>{customer.anonymizedAt ? copy.common.anonymised : customer.email}</p>
       {customer.anonymizedAt ? <p className="mt-2 text-sm text-mid-2" data-customer-anonymised>{d.anonymised.replace("{date}", customer.anonymizedAt.toLocaleDateString("sl-SI"))}</p> : null}
 
       {/* Three cards to a row only where each gets 18rem (1280 and up); beside the 16rem sidebar at 991 that is two, so the 9rem label column keeps room. The min() keeps one track inside the page at a large root font. */}

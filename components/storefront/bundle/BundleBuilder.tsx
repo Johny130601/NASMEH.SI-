@@ -35,7 +35,6 @@ export function BundleBuilder({ view }: { view: BundleBuilderView }) {
   const router = useRouter();
   const [offerIndex, setOfferIndex] = useState(view.defaultOfferIndex);
   const [mask, setMask] = useState(view.defaultMask);
-  const [interest, setInterest] = useState(false);
   const [state, setState] = useState<"idle" | "busy">("idle");
   const [notice, setNotice] = useState<{ kind: "capped" | "error"; text: string } | null>(null);
   const [, startTransition] = useTransition();
@@ -260,36 +259,20 @@ export function BundleBuilder({ view }: { view: BundleBuilderView }) {
         </fieldset>
       </section>
 
-      {/* ---------------- monthly delivery — interest only ---------------- */}
+      {/* ---------------- monthly delivery — information only ----------------
+          No control: nothing is asked for or stored, so nothing is confirmed
+          (AGENTS §8.23, QA 2026-10-03 T1-02). */}
       {view.subscriptionRow ? (
-        <section className="mt-5">
-          <label className="flex cursor-pointer items-center gap-4 rounded-panel border border-light-2 bg-white px-6 py-4">
-            <input
-              type="checkbox"
-              className="peer sr-only"
-              checked={interest}
-              onChange={() => setInterest((value) => !value)}
-              data-bundle-subscription
-            />
-            <span
-              aria-hidden="true"
-              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-input border-2 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand ${
-                interest ? "border-brand bg-brand text-white" : "border-light-1"
-              }`}
-            >
-              {interest ? <UiIcon name="check" className="h-3.5 w-3.5" /> : null}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-2">
-                <span className="font-medium text-dark-1">{copy.subscription.title}</span>
-                <UiPill variant="grey">{copy.subscription.soon}</UiPill>
-              </span>
-              <span className="mt-0.5 block text-sm text-mid-1">
-                {interest ? copy.subscription.acknowledged : copy.subscription.interest}
-              </span>
-            </span>
-          </label>
-        </section>
+        <div
+          className="mt-5 rounded-panel border border-light-2 bg-white px-6 py-4"
+          data-bundle-subscription
+        >
+          <p className="flex flex-wrap items-center gap-2">
+            <span className="font-medium text-dark-1">{copy.subscription.title}</span>
+            <UiPill variant="grey">{copy.subscription.soon}</UiPill>
+          </p>
+          <p className="mt-0.5 text-sm text-mid-1">{copy.subscription.note}</p>
+        </div>
       ) : null}
 
       {/* ---------------- the optional add-ons ---------------- */}

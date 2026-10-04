@@ -12,11 +12,12 @@ function legacyToken(subscriptionId: string) {
   return `${subscriptionId}.${createHmac("sha256", secret).update(`back-in-stock-unsubscribe:${subscriptionId}`).digest("base64url")}`;
 }
 
-/** The page matcher of middleware.ts, as Next.js applies it to a pathname. */
+/** The page matchers of middleware.ts, as Next.js applies them to a pathname. */
 function middlewareMatches(pathname: string): boolean {
   const source = readFileSync(join(__dirname, "..", "..", "middleware.ts"), "utf8");
-  const pattern = /matcher:\s*\["([^"]+)"\]/.exec(source)![1].replace(/\\\\/g, "\\");
-  return new RegExp(`^${pattern}$`).test(pathname);
+  const list = /matcher:\s*\[([^\]]+)\]/.exec(source)![1];
+  const patterns = [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1].replace(/\\\\/g, "\\"));
+  return patterns.some((pattern) => new RegExp(`^${pattern}$`).test(pathname));
 }
 
 describe("restock unsubscribe tokens", () => {
@@ -38,6 +39,10 @@ describe("restock unsubscribe tokens", () => {
     expect(middlewareMatches(`/odjava-zaloga/${signUnsubscribeToken(id, secret)}`)).toBe(true);
     expect(middlewareMatches(`/odjava-zaloga/${legacyToken(id)}`)).toBe(false);
     expect(middlewareMatches("/_next/static/chunk.js")).toBe(false);
+    // the crawler files are the dotted exception: the maintenance gate answers them (QA 2026-10-03 T6-09)
+    expect(middlewareMatches("/sitemap.xml")).toBe(true);
+    expect(middlewareMatches("/robots.txt")).toBe(true);
+    expect(middlewareMatches("/uploads/products/a/b.webp")).toBe(false);
   });
 
   it("rejects tampering, foreign secrets and malformed input", () => {

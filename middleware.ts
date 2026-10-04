@@ -8,6 +8,7 @@ import {
   isValidMaintenanceCookie,
 } from "@/lib/maintenance";
 import { applySecurityHeaders, buildCsp, cspHeaderName, generateNonce } from "@/lib/security/headers";
+import { REQUEST_PATH_HEADER } from "@/lib/auth-callback";
 import {
   SETTING_KEYS,
   type MaintenanceSetting,
@@ -19,6 +20,9 @@ const withAuth = NextAuth(authConfig).auth;
 // Consent confirmation and withdrawal stay reachable while the store is locked:
 // a person must be able to confirm or withdraw a subscription at any time.
 const ALLOWED_WHEN_LOCKED = ["/vzdrzevanje", "/prijava", "/admin", "/potrdi", "/potrdi-zalogo", "/odjava-novice", "/odjava-zaloga"];
+
+/** Dotted paths the matcher adds back for the maintenance gate alone; see maintenanceResponse. */
+const CRAWLER_FILES = ["/sitemap.xml", "/robots.txt"];
 
 /** Carries the address a locked visitor asked for across the gate. */
 const RETURN_PARAM = "od";
@@ -56,6 +60,8 @@ export default async function middleware(request: NextRequest) {
   const csp = buildCsp(nonce, process.env.NODE_ENV === "development");
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
+  // the page asked for, so a server-side guard that refuses the session can send the visitor back to it (QA 2026-10-03 V2-02)
+  requestHeaders.set(REQUEST_PATH_HEADER, requestedPath(request));
   requestHeaders.set(cspHeaderName(enforce), csp);
 
   let response: Response;
@@ -92,7 +98,9 @@ export default async function middleware(request: NextRequest) {
  * on the request's own origin for the reason below.
  */
 function maintenanceResponse(request: NextRequest): NextResponse {
-  if (request.method !== "GET" && request.method !== "HEAD") {
+  // The crawler files say "temporarily unavailable" instead of listing a locked catalog:
+  // a 5xx robots.txt pauses crawling and the sitemap is fetched again later (QA 2026-10-03 T6-09).
+  if ((request.method !== "GET" && request.method !== "HEAD") || CRAWLER_FILES.includes(request.nextUrl.pathname)) {
     return new NextResponse(null, { status: 503, headers: { "retry-after": "3600" } });
   }
   const query = new URLSearchParams(request.nextUrl.search);
@@ -142,14 +150,19 @@ async function maintenanceReturn(request: NextRequest): Promise<NextResponse | n
  * path for the same reason; the RSC cache-buster is not part of the address.
  */
 function signInRedirect(request: NextRequest): NextResponse {
-  const query = new URLSearchParams(request.nextUrl.search);
-  query.delete("_rsc");
-  const search = query.toString();
   const signInUrl = request.nextUrl.clone();
   signInUrl.pathname = authConfig.pages.signIn;
   signInUrl.search = "";
-  signInUrl.searchParams.set("callbackUrl", `${request.nextUrl.pathname}${search ? `?${search}` : ""}`);
+  signInUrl.searchParams.set("callbackUrl", requestedPath(request));
   return NextResponse.redirect(signInUrl);
+}
+
+/** The page asked for, path and query, without the RSC cache-buster. */
+function requestedPath(request: NextRequest): string {
+  const query = new URLSearchParams(request.nextUrl.search);
+  query.delete("_rsc");
+  const search = query.toString();
+  return `${request.nextUrl.pathname}${search ? `?${search}` : ""}`;
 }
 
 /**
@@ -205,6 +218,7 @@ async function readMaintenanceSetting(): Promise<MaintenanceSetting | undefined>
 export const config = {
   runtime: "nodejs",
   // page routes only: skip /api, Next internals, and anything file-like
-  // (fonts, uploads, og-default.svg, favicon…)
-  matcher: ["/((?!api|_next/static|_next/image|.*\\..*).*)"],
+  // (fonts, uploads, og-default.svg, favicon…) — except the two crawler files,
+  // which the maintenance gate must answer (CRAWLER_FILES)
+  matcher: ["/((?!api|_next/static|_next/image|.*\\..*).*)", "/sitemap.xml", "/robots.txt"],
 };

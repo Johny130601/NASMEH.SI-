@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { signInPath } from "@/lib/auth-callback";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { formatEUR } from "@/lib/pricing";
@@ -21,7 +22,7 @@ export const metadata: Metadata = buildMetadata({
 /** Moj račun dashboard (§11.2): greeting, rows, order accordion cards. */
 export default async function AccountPage() {
   const session = await auth();
-  if (!session?.user) redirect("/prijava");
+  if (!session?.user) redirect(signInPath("/racun"));
 
   const orders = await db.order.findMany({
     where: { userId: session.user.id },

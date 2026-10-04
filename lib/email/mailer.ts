@@ -1,6 +1,7 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import type { Order, OrderItem } from "@prisma/client";
 import { getEnv } from "@/lib/env";
+import { signUnsubscribeToken } from "@/lib/back-in-stock/unsubscribe-token";
 import { email as copy } from "@/lib/copy/email";
 import { siteUrl } from "@/lib/seo";
 import { renderProofEmail } from "./templates/proof";
@@ -8,7 +9,7 @@ import { renderSubscriptionUnsubscribeBlock, renderVerifySubscriptionEmail } fro
 import { escapeHtml } from "./templates/layout";
 import { htmlToText } from "./text";
 import { newsletterUnsubscribePath } from "@/lib/newsletter/unsubscribe-token";
-import { renderBackInStockEmail } from "./templates/back-in-stock";
+import { renderBackInStockEmail, renderBackInStockUnsubscribeBlock } from "./templates/back-in-stock";
 import {
   orderConfirmationDeliveryNote, orderConfirmationRequiredHtml, renderOrderConfirmationEmail, renderOrderItemsTable,
   type OrderConfirmationDetails,
@@ -92,17 +93,24 @@ export async function sendSubscriptionVerification(to: string, token: string, su
   return sendMail({ to, ...mail });
 }
 
-/** Back-in-stock double opt-in verification (spec §5/§6). */
+/**
+ * Back-in-stock double opt-in verification (spec §5/§6). The signed one-click
+ * withdrawal link is a required block, as in the newsletter's first mail: an
+ * override gets it appended and cannot remove it (QA 2026-10-03 BIS-UNSUB).
+ */
 export async function sendBackInStockVerification(
   to: string,
   token: string,
   productTitle: string,
+  subscriptionId: string,
 ) {
-  const confirmUrl = `${siteUrl()}/potrdi-zalogo/${token}`;
+  const base = siteUrl();
+  const confirmUrl = `${base}/potrdi-zalogo/${token}`;
+  const unsubscribeUrl = `${base}/odjava-zaloga/${signUnsubscribeToken(subscriptionId, getEnv().AUTH_SECRET)}`;
   const mail = await resolveMail("backInStockConfirm", { confirmUrl, productTitle }, () => ({
     subject: copy.backInStock.subject,
-    html: renderBackInStockEmail(confirmUrl, productTitle),
-  }));
+    html: renderBackInStockEmail(confirmUrl, productTitle, unsubscribeUrl),
+  }), renderBackInStockUnsubscribeBlock(unsubscribeUrl));
   return sendMail({ to, ...mail });
 }
 
@@ -187,7 +195,10 @@ export async function sendOrderStatusEmail(
   kind: OrderStatusMailKind,
   details: { amountCents?: number } = {},
 ) {
-  const accountUrl = order.userId ? `${siteUrl()}/racun/narocilo/${encodeURIComponent(order.number)}` : `${siteUrl()}/sledi`;
+  // a guest has no account page: the tracking-number view when there is one, else the lookup form (QA 2026-10-03 T2-08)
+  const accountUrl = order.userId
+    ? `${siteUrl()}/racun/narocilo/${encodeURIComponent(order.number)}`
+    : order.trackingNumber ? `${siteUrl()}/sledi?sledenje=${encodeURIComponent(order.trackingNumber)}` : `${siteUrl()}/sledi`;
   const key = ({ processing: "orderProcessing", delivered: "orderDelivered", cancelled: "orderCancelled", refunded: "orderRefunded" } as const)[kind];
   const mail = await resolveMail(key, {
     orderNumber: order.number, accountUrl, ...(details.amountCents !== undefined ? { amount: formatEUR(details.amountCents) } : {}),
@@ -203,11 +214,13 @@ export async function sendOrderStatusEmail(
 }
 
 /** Account double opt-in verification (§11.1). */
-export async function sendVerifyAccountEmail(to: string, token: string) {
+export async function sendVerifyAccountEmail(to: string, token: string, options: { newsletter?: boolean } = {}) {
   const confirmUrl = `${siteUrl()}/potrdi-racun/${token}`;
-  const mail = await resolveMail("verifyAccount", { confirmUrl }, () => ({
+  // the click also confirms the newsletter opt-in ticked at registration: the mail says so (QA 2026-10-03 T3-02)
+  const newsletterNote = options.newsletter ? copy.verifyAccount.newsletterNote : "";
+  const mail = await resolveMail("verifyAccount", { confirmUrl, newsletterNote }, () => ({
     subject: copy.verifyAccount.subject,
-    html: renderVerifyAccountEmail(confirmUrl),
+    html: renderVerifyAccountEmail(confirmUrl, options),
   }));
   return sendMail({ to, ...mail });
 }

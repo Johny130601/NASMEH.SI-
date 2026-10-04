@@ -5,11 +5,13 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/admin/access";
 import { sendMail } from "@/lib/email/mailer";
-import { EMAIL_TEMPLATE_KEYS, unknownPlaceholders, type EmailTemplateKey } from "@/lib/email/template-defs";
+import { EMAIL_TEMPLATE_KEYS, missingRequiredPlaceholders, unknownPlaceholders, type EmailTemplateKey } from "@/lib/email/template-defs";
 import { renderSample } from "@/lib/email/templates/render";
 import { sanitizeEmailHtml } from "@/lib/email/sanitize";
 
-export type EmailTemplateActionResult = { ok: true } | { ok: false; error: "invalid" | "unknownPlaceholders" | "send"; names?: string[] };
+export type EmailTemplateActionResult =
+  | { ok: true }
+  | { ok: false; error: "invalid" | "invalidAddress" | "unknownPlaceholders" | "missingPlaceholders" | "send"; names?: string[] };
 
 /**
  * The body is stored sanitized (lib/email/sanitize.ts), so what the operator saves is what
@@ -26,6 +28,9 @@ function validate(input: unknown): { ok: true; data: z.output<typeof templateSch
   if (!parsed.success) return { ok: false, error: "invalid" };
   const names = unknownPlaceholders(parsed.data.key, parsed.data.subject, parsed.data.bodyHtml);
   if (names.length) return { ok: false, error: "unknownPlaceholders", names };
+  // a confirmation or reset mail without its link would strand the customer (QA 2026-10-03 T6-02)
+  const missing = missingRequiredPlaceholders(parsed.data.key, parsed.data.bodyHtml);
+  if (missing.length) return { ok: false, error: "missingPlaceholders", names: missing };
   return { ok: true, data: parsed.data };
 }
 
@@ -59,7 +64,8 @@ export async function resetEmailTemplateAction(input: { key: string }): Promise<
 export async function sendTestEmailAction(input: { key: string; subject: string; bodyHtml: string; to: string }): Promise<EmailTemplateActionResult> {
   await requirePermission("content:manage");
   const to = z.string().trim().toLowerCase().email().max(200).safeParse(input.to);
-  if (!to.success) return { ok: false, error: "invalid" };
+  // the refusal names the address, not the subject and body (QA 2026-10-03 V6-02)
+  if (!to.success) return { ok: false, error: "invalidAddress" };
   const checked = validate(input);
   if (!checked.ok) return checked;
   const mail = renderSample(checked.data.key, checked.data.subject, checked.data.bodyHtml);

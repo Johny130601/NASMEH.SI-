@@ -33,8 +33,9 @@ const SUPPRESSED_PATHS = [
  * Welcome popup (§9.3): Setting-driven copy/timing/code/active. Suppressed on
  * cart/checkout/account/auth and support-form paths, for known subscribers (a signed-in
  * subscriber, or a guest whose stored code is already the popup's — the
- * layout decides), and once-interacted-per-session — a sign-up in the footer
- * form counts, even one made while the delay runs (lib/welcome-popup-flag.ts). It never
+ * layout decides), and once interacted with, not again in the browser session,
+ * in any tab — a sign-up in the footer form counts, even one made while the
+ * delay runs (a session cookie, lib/welcome-popup-flag.ts). It never
  * opens (and hides) while the consent banner awaits a choice, so it cannot
  * cover the banner's buttons. Focus moves into the dialog, stays there and
  * Escape dismisses it. Bottom sheet on mobile / centered on desktop.

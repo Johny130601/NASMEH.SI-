@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /** Phase 7 step 6: direct action calls for the settings screens — only OWNER holds settings:manage; every write is validated. */
 
-const mocks = vi.hoisted(() => ({ auth: vi.fn(), revalidate: vi.fn(), upsert: vi.fn(), findUnique: vi.fn() }));
+const mocks = vi.hoisted(() => ({ auth: vi.fn(), revalidate: vi.fn(), upsert: vi.fn(), findUnique: vi.fn(), pages: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ auth: mocks.auth }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidate }));
-vi.mock("@/lib/db", () => ({ db: { setting: { upsert: mocks.upsert, findUnique: mocks.findUnique } } }));
+vi.mock("@/lib/db", () => ({ db: { setting: { upsert: mocks.upsert, findUnique: mocks.findUnique }, contentPage: { findMany: mocks.pages } } }));
 
 import {
   bumpConsentVersionAction, saveAnalyticsAction, saveCompanyAction, saveConsentConfigAction, saveContactSettingsAction, saveGoogleVerificationAction,
@@ -39,6 +39,8 @@ const written = () => Object.fromEntries(mocks.upsert.mock.calls.map((call) => [
 
 beforeEach(() => {
   vi.resetAllMocks();
+  // every page a legal link names is published unless a test says otherwise
+  mocks.pages.mockImplementation(async ({ where }: { where: { slug: { in: string[] } } }) => where.slug.in.map((slug) => ({ slug })));
   mocks.auth.mockResolvedValue(session("OWNER"));
   mocks.upsert.mockResolvedValue({});
   mocks.findUnique.mockImplementation(async ({ where }: { where: { key: string } }) => (where.key === "consent.version" ? { key: where.key, value: 4 } : null));
@@ -87,7 +89,9 @@ describe("settings actions: validation and stored shapes", () => {
     expect(await saveCompanyAction(company)).toEqual({ ok: true });
     expect(await saveInvoiceFooterAction({ footer: "x".repeat(601) })).toEqual({ ok: false, error: "invalid" });
     expect(await saveInvoiceFooterAction({ footer: " Hvala " })).toEqual({ ok: true });
-    expect(await saveAnalyticsAction({ gtmId: "UA-1", ga4Id: "", metaPixelId: "", tiktokPixelId: "" })).toEqual({ ok: false, error: "invalid" });
+    // the refusal names the field (QA 2026-10-03 T6-10)
+    expect(await saveAnalyticsAction({ gtmId: "UA-1", ga4Id: "", metaPixelId: "", tiktokPixelId: "" })).toEqual({ ok: false, error: "invalid", fields: ["gtmId"] });
+    expect(await saveAnalyticsAction({ gtmId: "UA-1", ga4Id: "x", metaPixelId: "", tiktokPixelId: "" })).toEqual({ ok: false, error: "invalid", fields: ["gtmId", "ga4Id"] });
     expect(await saveAnalyticsAction({ gtmId: "GTM-ABC123", ga4Id: "G-ABCDEF", metaPixelId: "1234567", tiktokPixelId: "" })).toEqual({ ok: true });
     expect(await saveGoogleVerificationAction({ token: "<meta>" })).toEqual({ ok: false, error: "invalid" });
     expect(await saveSeoDefaultsAction({ titleTemplate: "Nasmeh", description: "", indexable: true })).toEqual({ ok: false, error: "invalid" });
@@ -115,6 +119,10 @@ describe("settings actions: validation and stored shapes", () => {
     expect(await bumpConsentVersionAction()).toEqual({ ok: true, version: 5 });
     expect(await saveLegalLinksAction({ ...DEFAULT_LEGAL_LINKS, terms: "https://x" })).toEqual({ ok: false, error: "invalid" });
     expect(await saveLegalLinksAction({ ...DEFAULT_LEGAL_LINKS, terms: "/pogoji-2026" })).toEqual({ ok: true });
+    // a link to a missing or unpublished page is refused and named (QA 2026-10-03 T6-03)
+    mocks.pages.mockResolvedValueOnce([{ slug: "politika-zasebnosti" }, { slug: "politika-piskotkov" }, { slug: "odstop-od-pogodbe" }]);
+    expect(await saveLegalLinksAction({ ...DEFAULT_LEGAL_LINKS, terms: "/ne-obstaja" })).toEqual({ ok: false, error: "legalPage", fields: ["terms"] });
+    expect(mocks.pages).toHaveBeenLastCalledWith({ where: { slug: { in: ["ne-obstaja", "politika-zasebnosti", "politika-piskotkov", "odstop-od-pogodbe"] }, published: true }, select: { slug: true } });
     expect(await saveMaintenanceAction({ enabled: true, password: "", message: "" })).toEqual({ ok: false, error: "invalid" }); // no stored hash
     expect(await saveMaintenanceAction({ enabled: true, password: "geslo123", message: "Kmalu" })).toEqual({ ok: true });
     const stored = written().maintenance as { enabled: boolean; passwordHash?: string; message: string };

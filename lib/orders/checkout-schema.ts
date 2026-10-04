@@ -17,6 +17,8 @@ export const checkoutFormSchema = z.object({
   fullName: z.string().trim().min(2).max(CHECKOUT_LIMITS.fullName),
   street: z.string().trim().min(2).max(CHECKOUT_LIMITS.street),
   streetNumber: z.string().trim().min(1).max(CHECKOUT_LIMITS.streetNumber),
+  /** "2. nadstropje" after the house number; printed after it (QA 2026-10-03 T2-04). */
+  streetSupplement: z.string().trim().max(CHECKOUT_LIMITS.streetSupplement).default(""),
   city: z.string().trim().min(2).max(CHECKOUT_LIMITS.city),
   postalCode: z.string().trim().min(3).max(CHECKOUT_LIMITS.postalCode),
   country: z.enum(["SI", "AT", "HR", "IT", "HU", "DE", "CZ", "SK", "PL", "FR", "NL", "BE"]).default("SI"),

@@ -22,7 +22,8 @@ export async function prepareReviewPhoto(bytes: Buffer, type: string) {
       meta.width > 8000 || meta.height > 8000 || (meta.pages ?? 1) !== 1) {
       throw new InvalidReviewPhoto();
     }
-    const resize = (width: number) => source.clone().rotate().resize({ width, height: width, fit: "inside" }).webp({ quality: 82 }).toBuffer();
+    // never enlarged: a 200 px photo stays 200 px rather than becoming a blurry 960 (QA 2026-10-03 T3-07)
+    const resize = (width: number) => source.clone().rotate().resize({ width, height: width, fit: "inside", withoutEnlargement: true }).webp({ quality: 82 }).toBuffer();
     // Decode one size at a time on the 512 MB deployment target.
     const large = await resize(960);
     const small = await resize(320);

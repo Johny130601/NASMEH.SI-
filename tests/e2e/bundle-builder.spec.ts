@@ -172,7 +172,7 @@ async function openBuilder(page: Page, slug: string): Promise<Locator> {
   return builder;
 }
 
-test("the builder opens on the smallest offer with every add-on ticked", async ({ page }) => {
+test("the builder opens on the smallest offer with no add-on ticked (an extra payment is the shopper's own tick)", async ({ page }) => {
   const { base, baseVariant, offerUnits, addOns } = await builderFixture();
   expect(offerUnits.length, "the Setting names more than one quantity").toBeGreaterThan(1);
   expect(addOns.length, "the base product's shelf resolved add-ons").toBeGreaterThan(0);
@@ -209,21 +209,23 @@ test("the builder opens on the smallest offer with every add-on ticked", async (
   await expect(offers.first()).toHaveAttribute("data-bundle-offer-selected", "true");
   await expect(offers.first().getByRole("radio")).toBeChecked();
 
-  // every add-on the shelf resolved starts ticked, and the counter says how many
+  // every add-on the shelf resolved is offered, none of them ticked: an add-on
+  // is an extra payment, so it needs the shopper's own tick (CRD Art. 22,
+  // QA 2026-10-03 T2-01), and the counter says none is chosen
   await expect(builder.locator("[data-bundle-addon]")).toHaveCount(addOns.length);
   for (const addOn of addOns) {
     const card = builder.locator(`[data-bundle-addon='${addOn.slug}']`);
-    await expect(card, addOn.slug).toHaveAttribute("data-bundle-addon-selected", "true");
+    await expect(card, addOn.slug).not.toHaveAttribute("data-bundle-addon-selected", "true");
     await expect(
       card.getByRole("checkbox", { name: copy.addOns.toggleLabel(addOn.title) }),
       addOn.slug,
-    ).toBeChecked();
+    ).not.toBeChecked();
   }
   expect(flat(await builder.locator("[data-bundle-count]").textContent())).toBe(
-    flat(copy.addOns.selected(addOns.length)),
+    flat(copy.addOns.selected(0)),
   );
-  // the recap states the same two counts, in Slovenian agreement
-  await expect(builder).toContainText(copy.summary.contents(offerUnits[0], addOns.length));
+  // the recap names the offer's units alone
+  await expect(builder).toContainText(copy.summary.contents(offerUnits[0], 0));
 
   // §8.23: the only strikethrough is a history-backed prior price, and it never
   // appears without the 30-day line that explains it
@@ -250,42 +252,59 @@ test("the builder opens on the smallest offer with every add-on ticked", async (
   }
 });
 
+test("the monthly-delivery row says it is not available yet and asks for nothing, so it confirms nothing (§8.23, QA 2026-10-03 T1-02)", async ({ page }) => {
+  const { config, base } = await builderFixture();
+  const builder = await openBuilder(page, base.slug);
+  const row = builder.locator("[data-bundle-subscription]");
+  if (!config.subscriptionRow) {
+    await expect(row).toHaveCount(0);
+    return;
+  }
+  await expect(row).toContainText(copy.subscription.title);
+  await expect(row).toContainText(copy.subscription.soon);
+  await expect(row).toContainText(copy.subscription.note);
+  // no control: nothing to tick, no address asked for, and a click changes nothing
+  await expect(row.locator("input, button, select, textarea, a")).toHaveCount(0);
+  const before = flat(await row.textContent());
+  await row.click();
+  expect(flat(await row.textContent())).toBe(before);
+  expect(before).not.toMatch(/hvala/i);
+});
+
 test("an add-on moves the counter and the totals it is priced into", async ({ page }) => {
   const { base, baseVariant, offerUnits, addOns } = await builderFixture();
   expect(addOns.length, "the base product's shelf resolved add-ons").toBeGreaterThan(0);
 
   const builder = await openBuilder(page, base.slug);
 
-  const ticked = await summaryTotals(builder);
-  expectReconciled(ticked);
-  // the goods are the offer's units plus one of every ticked add-on
-  expect(ticked.subtotalCents).toBe(
-    baseVariant.priceCents * offerUnits[0] + addOns.reduce((sum, addOn) => sum + addOn.priceCents, 0),
-  );
+  const offerOnly = await summaryTotals(builder);
+  expectReconciled(offerOnly);
+  // nothing ticked: the goods are the offer's units alone
+  expect(offerOnly.subtotalCents).toBe(baseVariant.priceCents * offerUnits[0]);
 
   // the control is an sr-only peer input, so the card's own label is the target
-  const dropped = addOns[addOns.length - 1];
-  const card = builder.locator(`[data-bundle-addon='${dropped.slug}']`);
-  await card.click();
-  await expect(card).not.toHaveAttribute("data-bundle-addon-selected", "true");
-  await expect(
-    card.getByRole("checkbox", { name: copy.addOns.toggleLabel(dropped.title) }),
-  ).not.toBeChecked();
-  await expect(builder.locator("[data-bundle-addon-selected='true']")).toHaveCount(addOns.length - 1);
-  expect(flat(await builder.locator("[data-bundle-count]").textContent())).toBe(
-    flat(copy.addOns.selected(addOns.length - 1)),
-  );
-
-  const fewer = await summaryTotals(builder);
-  expectReconciled(fewer);
-  expect(fewer.subtotalCents).toBe(ticked.subtotalCents - dropped.priceCents);
-  expect(fewer.totalCents).not.toBe(ticked.totalCents);
-  await expect(builder).toContainText(copy.summary.contents(offerUnits[0], addOns.length - 1));
-
-  // and back: the same gesture restores the selection and the figures with it
+  const added = addOns[addOns.length - 1];
+  const card = builder.locator(`[data-bundle-addon='${added.slug}']`);
   await card.click();
   await expect(card).toHaveAttribute("data-bundle-addon-selected", "true");
-  expect(await summaryTotals(builder)).toEqual(ticked);
+  await expect(
+    card.getByRole("checkbox", { name: copy.addOns.toggleLabel(added.title) }),
+  ).toBeChecked();
+  await expect(builder.locator("[data-bundle-addon-selected='true']")).toHaveCount(1);
+  expect(flat(await builder.locator("[data-bundle-count]").textContent())).toBe(
+    flat(copy.addOns.selected(1)),
+  );
+
+  const more = await summaryTotals(builder);
+  expectReconciled(more);
+  expect(more.subtotalCents).toBe(offerOnly.subtotalCents + added.priceCents);
+  expect(more.totalCents).not.toBe(offerOnly.totalCents);
+  await expect(builder).toContainText(copy.summary.contents(offerUnits[0], 1));
+
+  // and back: the same gesture clears the selection and restores the figures
+  await card.click();
+  await expect(card).not.toHaveAttribute("data-bundle-addon-selected", "true");
+  expect(await summaryTotals(builder)).toEqual(offerOnly);
 });
 
 test("the code the builder applies is named with its terms sentence (§9.1, QA C2-F14)", async ({ page }) => {
@@ -308,7 +327,7 @@ test("the code the builder applies is named with its terms sentence (§9.1, QA C
 });
 
 test("a larger offer re-prices the whole bundle", async ({ page }) => {
-  const { base, baseVariant, offerUnits, addOns } = await builderFixture();
+  const { base, baseVariant, offerUnits } = await builderFixture();
   expect(offerUnits.length, "the Setting names more than one quantity").toBeGreaterThan(1);
 
   const builder = await openBuilder(page, base.slug);
@@ -327,7 +346,7 @@ test("a larger offer re-prices the whole bundle", async ({ page }) => {
     smallest.subtotalCents + baseVariant.priceCents * (largest - offerUnits[0]),
   );
   expect(bigger.totalCents).toBeGreaterThan(smallest.totalCents);
-  await expect(builder).toContainText(copy.summary.contents(largest, addOns.length));
+  await expect(builder).toContainText(copy.summary.contents(largest, 0));
 });
 
 test("with no add-ons the two summaries state the same amount, and add-ons only move the lower one", async ({
@@ -339,11 +358,8 @@ test("with no add-ons the two summaries state the same amount, and add-ons only 
   const offerTotal = () => builder.locator("[data-bundle-offer-total]").textContent();
   const bundleTotal = () => builder.locator("[data-bundle-total]").textContent();
 
-  // the upper card always prices the main-product offer alone, so with every
-  // add-on unticked the closing summary has to land on the same figure
-  for (const addOn of addOns) {
-    await builder.locator(`[data-bundle-addon='${addOn.slug}']`).click();
-  }
+  // the upper card always prices the main-product offer alone, so with no
+  // add-on ticked (the opening state) the closing summary lands on the same figure
   await expect(builder.locator("[data-bundle-addon-selected='true']")).toHaveCount(0);
   expect(flat(await bundleTotal())).toBe(flat(await offerTotal()));
 
@@ -368,6 +384,12 @@ test("the submit hands the cart exactly the selection, at the figure the page sh
   const offer = builder.locator(`[data-bundle-offer='${units}']`);
   await offer.click();
   await expect(offer).toHaveAttribute("data-bundle-offer-selected", "true");
+  // the shopper ticks every add-on themselves (none starts ticked)
+  for (const addOn of addOns) {
+    const card = builder.locator(`[data-bundle-addon='${addOn.slug}']`);
+    await card.click();
+    await expect(card, addOn.slug).toHaveAttribute("data-bundle-addon-selected", "true");
+  }
   const quoted = await summaryTotals(builder);
 
   // the summary's submit; the purchase bar carries the same label, so the hook

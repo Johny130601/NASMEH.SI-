@@ -85,6 +85,8 @@ test("owner processes, ships, annotates, partially refunds with restock, exports
     const shippedMail = await waitForMailMessage(customer.email);
     expect(`${shippedMail.HTML ?? ""}`).toContain(`${GLS_TEMPLATE}${encodeURIComponent(tracking)}`);
     await expect(page.locator("[data-tracking-link]")).toHaveText(tracking);
+    // QA 2026-10-03 T4-03: the queued shipment notice shows its delivery state on the order.
+    await expect(page.locator("[data-order-mail='shipped']")).toHaveAttribute("data-order-mail-state", "sent");
 
     // Notes: one internal, one for the customer.
     const noteForm = page.locator("[data-note-form]");
@@ -169,6 +171,9 @@ test("cancelling a paid order refunds it in full, restocks and mails the custome
       await supportPage.goto(`/admin/narocila/${order.number}`);
       await expect(supportPage.locator("[data-ship-form]")).toHaveCount(0);
       await expect(supportPage.locator("[data-refund-form]")).toBeVisible();
+      // QA 2026-10-03 T4-04: a guest has no account page, so a note on a guest order is internal only.
+      await expect(supportPage.locator("[data-note-internal-only='guest']")).toBeVisible();
+      await expect(supportPage.locator("[data-note-visible]")).toHaveCount(0);
       const cancel = supportPage.locator("[data-cancel-form]");
       await cancel.getByLabel("Razlog preklica").fill("Stranka je preklicala po telefonu");
       supportPage.once("dialog", (dialog) => dialog.accept());
@@ -350,7 +355,15 @@ test("support exports and anonymises a customer, and handles a ticket", async ({
     await expect(page.locator("[data-admin-ticket]")).not.toContainText(customer.email);
     await page.goto(`/admin/narocila/${fixture.order.number}`);
     await expect(page.locator("[data-order-total]")).toHaveText("34,90 €");
-    await expect(page.getByText("anonymised-")).toHaveCount(1);
+    // QA 2026-10-03 T4-07: the erased buyer reads as a neutral label, never the placeholder address,
+    // and an erased buyer reads no note, so the "visible to the customer" box is gone (T4-04).
+    await expect(page.locator("[data-order-customer-anonymised]")).toHaveText("[anonimizirano]");
+    await expect(page.getByText("anonymised-")).toHaveCount(0);
+    await expect(page.locator("[data-note-internal-only='anonymised']")).toBeVisible();
+    await expect(page.locator("[data-note-visible]")).toHaveCount(0);
+    // The erased account is no longer listed as a customer under its placeholder address.
+    await page.goto(`/admin/stranke?q=${encodeURIComponent(`anonymised-${customer.id}`)}`);
+    await expect(page.locator("[data-customer-row]")).toHaveCount(0);
   } finally {
     await prisma.ticket.deleteMany({ where: { id: { in: [ticket.id, guestTicket.id] } } });
     await prisma.subscriber.deleteMany({ where: { confirmToken: `sub-${key}` } });
@@ -413,6 +426,14 @@ test("a person with no account or order is found by e-mail, exported and anonymi
     const withdrawal = await prisma.consentLog.findFirstOrThrow({ where: { kind: "marketing-preference", choices: { path: ["subscriberId"], equals: subscriber.id } } });
     expect(withdrawal.choices).toMatchObject({ marketing: false, reason: "anonymised" });
     expect((await page.request.get(`/admin/stranke/gost/izvoz.json?email=${encodeURIComponent(email)}`)).status()).toBe(404);
+    // QA 2026-10-03 T4-09: the erased person's old address answers with the admin's own 404 inside
+    // the shell — the way back to the list, and no storefront countdown to the shop home.
+    const gone = await page.goto(`/admin/stranke/gost?email=${encodeURIComponent(email)}`);
+    expect(gone?.status()).toBe(404);
+    await expect(page.locator("[data-admin-not-found]")).toBeVisible();
+    await expect(page.locator("[data-admin-not-found-back]")).toHaveAttribute("href", "/admin/stranke");
+    await expect(page.locator("[data-countdown]")).toHaveCount(0);
+    await expect(page.locator("[data-admin-logout]")).toBeVisible();
   } finally {
     await prisma.ticket.deleteMany({ where: { id: ticket.id } });
     await prisma.subscriber.deleteMany({ where: { id: subscriber.id } });

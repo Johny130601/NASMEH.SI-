@@ -1,10 +1,10 @@
 /** Auth surface copy. */
 export const auth = {
   botCheck: "Preverjanje ni uspelo. Potrdite, da niste robot, in poskusite znova.",
+  /** Labels for the OAuth row of AuthShell, which renders only once a provider is configured (QA 2026-10-03 t3 N4). */
   social: {
     google: "Z Google",
     facebook: "S Facebookom",
-    note: "Socialna prijava kmalu.",
     divider: "Ali",
   },
   login: {
@@ -32,6 +32,8 @@ export const auth = {
     codeLabel: "Koda",
     submit: "Potrdi prijavo",
     invalid: "Koda ni veljavna ali je bila že uporabljena. Poskusite znova.",
+    /** Five wrong codes in five minutes; successful sign-ins do not count (QA 2026-10-03 T4-01). */
+    rateLimited: "Preveč napačnih kod. Počakajte nekaj minut in poskusite znova.",
     recoveryHint: "Nimate dostopa do aplikacije? Vnesite rezervno kodo (oblika abcde-fghjk); vsaka velja enkrat.",
     backToLogin: "Nazaj na prijavo",
   },
@@ -48,7 +50,8 @@ export const auth = {
     submit: "Ustvari račun",
     loginLink: "Že imate račun? Prijavite se",
     successTitle: "Skoraj gotovo!",
-    successBody: "Poslali smo vam potrditveno sporočilo — s klikom na povezavo aktivirate račun.",
+    /** Activation asks for the password chosen here (QA 2026-10-03 T3-02). */
+    successBody: "Poslali smo vam potrditveno sporočilo. Odprite povezavo v njem in vnesite geslo, ki ste ga pravkar izbrali — tako aktivirate račun.",
     weakPassword: "Geslo mora imeti vsaj 8 znakov.",
     invalidInput: "Preverite označena polja.",
     /** Per-field messages the server names on an invalid submission (QA T3-F4). */
@@ -62,12 +65,20 @@ export const auth = {
   },
   verify: {
     title: "Potrdite e-pošto",
-    body: "Za aktivacijo računa potrdite svoj e-poštni naslov.",
+    /** The link proves the inbox, the password the person who chose it (QA 2026-10-03 T3-02). */
+    body: "Za aktivacijo računa vnesite geslo, ki ste ga izbrali ob ustvarjanju računa. Tako preverimo, da račun aktivirate vi.",
+    passwordLabel: "Geslo vašega računa",
+    /** Shown before the click when confirming the link also confirms the newsletter opt-in chosen with the account. */
+    newsletterNote: "Izbrali ste tudi prejemanje e-novic in ponudb: s potrditvijo e-pošte potrdite tudi to prijavo. Prejemanje lahko kadar koli izklopite v razdelku Moj račun.",
     submit: "Potrdi e-pošto",
     requestNew: "Zahtevaj novo povezavo",
     genericError: "Potrditev ni uspela. Poskusite znova.",
+    /** Says only that this password does not fit this link; the link stays usable. */
+    passwordMismatch: "S tem geslom te povezave ni mogoče potrditi. Vnesite geslo, ki ste ga izbrali ob ustvarjanju računa — če ste se registrirali večkrat, tisto iz registracije, za katero ste prejeli to povezavo. Če gesla ne veste več, se znova registrirajte.",
+    rateLimited: "Preveč poskusov. Počakajte nekaj minut in poskusite znova.",
     titleOk: "Račun je aktiven 🎉",
     bodyOk: "Vaša e-pošta je potrjena. Prijavite se in nadaljujte z nakupom.",
+    newsletterOk: "Potrjena je tudi vaša prijava na e-novice in ponudbe.",
     titleInvalid: "Povezava ni veljavna",
     bodyInvalid: "Potrditvena povezava je neveljavna ali je potekla. Zahtevajte novo pri registraciji.",
     /** A used link whose account is already verified leads to sign-in, not to a re-registration that sends nothing (QA T3-F5). */

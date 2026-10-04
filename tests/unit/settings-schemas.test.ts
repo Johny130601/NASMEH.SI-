@@ -64,6 +64,8 @@ describe("marketing, SEO, consent, legal, maintenance, support", () => {
   it("analytics ids follow their provider formats or stay empty", () => {
     expect(analyticsSchema.parse({ gtmId: "GTM-ABC123", ga4Id: "", metaPixelId: "123456789012345", tiktokPixelId: "C1234567890ABCDEF" })).toMatchObject({ gtmId: "GTM-ABC123", ga4Id: "" });
     expect(analyticsSchema.safeParse({ gtmId: "UA-1", ga4Id: "", metaPixelId: "", tiktokPixelId: "" }).success).toBe(false);
+    // a pasted lower-case Google id is stored upper case, not refused (QA 2026-10-03 T6-10)
+    expect(analyticsSchema.parse({ gtmId: " gtm-abc123 ", ga4Id: "g-abcdef", metaPixelId: "", tiktokPixelId: "" })).toMatchObject({ gtmId: "GTM-ABC123", ga4Id: "G-ABCDEF" });
     expect(analyticsSchema.safeParse({ gtmId: "", ga4Id: "GTM-X", metaPixelId: "", tiktokPixelId: "" }).success).toBe(false);
     expect(analyticsSchema.safeParse({ gtmId: "", ga4Id: "", metaPixelId: "abc", tiktokPixelId: "" }).success).toBe(false);
     expect(googleVerificationSchema.safeParse("abcDEF123-_x").success).toBe(true);

@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  auth: vi.fn(), revalidate: vi.fn(), userUpdateMany: vi.fn(), userFindUnique: vi.fn(), ticketUpdateMany: vi.fn(), anonymise: vi.fn(),
+  auth: vi.fn(), revalidate: vi.fn(), userUpdateMany: vi.fn(), userFindUnique: vi.fn(), ticketUpdateMany: vi.fn(), ticketFindUnique: vi.fn(), anonymise: vi.fn(),
 }));
 vi.mock("@/lib/auth", () => ({ auth: mocks.auth }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidate }));
-vi.mock("@/lib/db", () => ({ db: { user: { updateMany: mocks.userUpdateMany, findUnique: mocks.userFindUnique }, ticket: { updateMany: mocks.ticketUpdateMany } } }));
+vi.mock("@/lib/db", () => ({ db: { user: { updateMany: mocks.userUpdateMany, findUnique: mocks.userFindUnique }, ticket: { updateMany: mocks.ticketUpdateMany, findUnique: mocks.ticketFindUnique } } }));
 vi.mock("@/lib/admin/customers", () => ({ anonymiseCustomer: mocks.anonymise }));
 
 import { anonymiseCustomerAction, saveCustomerNotesAction } from "@/app/admin/(shell)/stranke/[id]/actions";
@@ -19,6 +19,7 @@ beforeEach(() => {
   mocks.auth.mockResolvedValue(session("SUPPORT"));
   mocks.userUpdateMany.mockResolvedValue({ count: 1 });
   mocks.ticketUpdateMany.mockResolvedValue({ count: 1 });
+  mocks.ticketFindUnique.mockResolvedValue({ assigneeId: null });
   mocks.userFindUnique.mockResolvedValue({ id: "cmf0staff0000000000000001", role: "SUPPORT" });
   mocks.anonymise.mockResolvedValue({ ok: true, orders: 1, tickets: 0 });
 });
@@ -65,6 +66,16 @@ describe("ticket actions", () => {
     });
     expect(await updateTicketAction({ ticketId: "cmf0ticket000000000000001", status: "CLOSED", assigneeId: "", internalNote: "" })).toEqual({ ok: true });
     expect(mocks.ticketUpdateMany.mock.calls[1][0].data).toEqual({ status: "CLOSED", assigneeId: null, internalNote: null });
+  });
+
+  it("keeps an assignee whose role lost ticket access when the save leaves the assignment unchanged (QA 2026-10-03 V4-02)", async () => {
+    mocks.ticketFindUnique.mockResolvedValue({ assigneeId: "cmf0staff0000000000000002" });
+    mocks.userFindUnique.mockResolvedValue({ id: "cmf0staff0000000000000002", role: "FULFILLMENT" });
+    expect(await updateTicketAction({ ticketId: "cmf0ticket000000000000001", status: "CLOSED", assigneeId: "cmf0staff0000000000000002", internalNote: "" })).toEqual({ ok: true });
+    expect(mocks.ticketUpdateMany.mock.calls[0][0].data).toEqual({ status: "CLOSED", assigneeId: "cmf0staff0000000000000002", internalNote: null });
+    // a NEW assignment still needs the right to open tickets
+    mocks.ticketFindUnique.mockResolvedValue({ assigneeId: null });
+    expect(await updateTicketAction({ ticketId: "cmf0ticket000000000000001", status: "CLOSED", assigneeId: "cmf0staff0000000000000002", internalNote: "" })).toEqual({ ok: false, error: "invalid" });
   });
 
   it("refuses unknown statuses and non-staff assignees", async () => {

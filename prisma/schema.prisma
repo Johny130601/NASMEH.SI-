@@ -490,6 +490,16 @@ model AuthToken {
   @@index([userId])
 }
 
+// A session ended by sign-out before its JWT expired: the token's random session id is refused from then on
+// (a copied cookie would otherwise stay valid until its maxAge — QA 2026-10-03 T3-01). Pruned once expired.
+model RevokedSession {
+  sid       String   @id
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
 // Durable review-request delivery, claimed before SMTP; sentAt records actual acceptance.
 model ReviewRequest {
   id      String   @id @default(cuid())

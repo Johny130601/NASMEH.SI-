@@ -13,6 +13,7 @@ import { STAFF_ROLES, type StaffRole } from "@/lib/admin/permissions";
 import { admin as copy } from "@/lib/copy/admin";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { UiInput, UiFormField } from "@/components/storefront/ui/UiInput";
+import { AdminTableScroll } from "@/components/admin/AdminTableScroll";
 
 export interface TeamMember {
   id: string;
@@ -112,7 +113,7 @@ export function TeamManager({ actorId, members }: { actorId: string; members: Te
 
       {message ? <p role="status" className="text-sm text-mid-1" data-team-message>{message}</p> : null}
 
-      <div className="overflow-x-auto rounded-card border border-light-2 bg-white">
+      <AdminTableScroll label={copy.team.title}>
         <table className="w-full min-w-[48rem] text-sm">
           <thead className="text-left text-xs text-mid-2">
             <tr>
@@ -177,7 +178,7 @@ export function TeamManager({ actorId, members }: { actorId: string; members: Te
             })}
           </tbody>
         </table>
-      </div>
+      </AdminTableScroll>
     </div>
   );
 }

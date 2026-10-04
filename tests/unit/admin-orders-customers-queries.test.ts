@@ -9,7 +9,7 @@ vi.mock("@/lib/orders/refunds", () => ({ refundedQuantities: () => new Map() }))
 vi.mock("@/lib/support/photos", () => ({ removeSupportPhotos: vi.fn() }));
 
 import { csvCell, csvDateTime, csvEur, likeEscaped, ordersCsv, orderWhere, parseOrderFilters } from "@/lib/admin/orders";
-import { listCustomers, parseCustomerFilters } from "@/lib/admin/customers";
+import { isAnonymisedEmail, listCustomers, parseCustomerFilters } from "@/lib/admin/customers";
 
 beforeEach(() => { vi.resetAllMocks(); mocks.subscriberFindMany.mockResolvedValue([]); });
 
@@ -53,6 +53,16 @@ describe("order filters", () => {
     // T5-05: the timestamp is Europe/Ljubljana (CEST here), amounts plain numbers with a decimal comma.
     expect(csv).toContain('NS-2026-00001;2026-09-10 12:00:00;PAID;ana@test.si;"Ana ""Ančka""; Kovač";SI;3;"39,89";"0,00";stripe;;');
     expect(csv.endsWith("\r\n")).toBe(true);
+  });
+
+  it("exports an erased buyer's placeholder as the label the list shows (QA 2026-10-03 V4-03)", async () => {
+    mocks.orderFindMany.mockResolvedValue([{
+      number: "NS-2026-00002", createdAt: new Date("2026-09-10T10:00:00Z"), status: "PAID", email: "anonymised-cmf0order0000000000000001@invalid",
+      shippingAddress: null, totalCents: 1000, refundedCents: 0, paymentProvider: "test", trackingNumber: null, carrier: null, items: [{ quantity: 1 }],
+    }]);
+    const csv = await ordersCsv(parseOrderFilters({}));
+    expect(csv).toContain(";PAID;[anonimizirano];");
+    expect(csv).not.toContain("@invalid");
   });
 
   it("neutralises cells a spreadsheet would run as a formula (S2) and leaves numbers alone", () => {
@@ -166,5 +176,28 @@ describe("customer list", () => {
     const second = await listCustomers(parseCustomerFilters({ stran: "9" }));
     expect(second).toMatchObject({ page: 2 });
     expect(second.rows).toHaveLength(5);
+  });
+
+  /**
+   * QA 2026-10-03 T4-07: erasure gives each guest order its own placeholder address, so an
+   * anonymised guest came back as one "— anonymised-<orderId>@invalid · Gost" row per order, and an
+   * erased account as a row under its placeholder. Neither is a person any more: both scans skip them.
+   */
+  it("never lists an anonymised account or an anonymised guest order", async () => {
+    mocks.userFindMany.mockResolvedValue([]);
+    mocks.orderFindMany.mockResolvedValue([]);
+    mocks.queryRaw.mockResolvedValue([]);
+    await listCustomers(parseCustomerFilters({}));
+    expect(mocks.userFindMany.mock.calls[0][0].where).toMatchObject({ role: "CUSTOMER", anonymizedAt: null });
+    expect(mocks.orderFindMany.mock.calls[0][0].where).toEqual({ userId: null, anonymizedAt: null });
+    await listCustomers(parseCustomerFilters({ q: "anonymised" }));
+    expect(mocks.userFindMany.mock.calls[1][0].where).toMatchObject({ anonymizedAt: null });
+    const [strings] = mocks.queryRaw.mock.calls[0] as [string[], ...unknown[]];
+    expect(strings.join("?").replace(/\s+/g, " ")).toContain(`WHERE "userId" IS NULL AND "anonymizedAt" IS NULL AND (`);
+  });
+
+  it("recognises the erasure placeholders, and only them", () => {
+    for (const email of ["anonymised-cmusavj8c0012i8j82obw08hj@invalid", "anonymised@invalid"]) expect(isAnonymisedEmail(email)).toBe(true);
+    for (const email of ["ana@test.si", "anonymised-ana@test.si", "anonymised-x@invalid.si", "x-anonymised-1@invalid", ""]) expect(isAnonymisedEmail(email)).toBe(false);
   });
 });

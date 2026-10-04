@@ -2,7 +2,7 @@ import QRCode from "qrcode";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getEnv } from "@/lib/env";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkRateLimit, clearRateLimit } from "@/lib/rate-limit";
 import { common } from "@/lib/copy/common";
 import { decryptSecret, encryptSecret } from "./secrets";
 import { generateTotpSecret, otpauthUri, verifyTotp } from "./totp";
@@ -74,8 +74,19 @@ export type SecondFactorOutcome =
   | { ok: true; method: "totp" | "recovery" }
   | { ok: false; reason: "invalid" | "rate_limited" | "not_enrolled" };
 
-/** Login step two: a six-digit TOTP (replay-guarded) or an unused recovery code. */
+/**
+ * Login step two: a six-digit TOTP (replay-guarded) or an unused recovery code.
+ * The limit counts wrong codes only: a success clears the member's window, so
+ * signing in (or regenerating recovery codes) several times never locks out a
+ * valid code (QA 2026-10-03 T4-01).
+ */
 export async function verifySecondFactor(userId: string, input: unknown): Promise<SecondFactorOutcome> {
+  const outcome = await checkSecondFactor(userId, input);
+  if (outcome.ok) clearRateLimit(`mfa-login:${userId}`);
+  return outcome;
+}
+
+async function checkSecondFactor(userId: string, input: unknown): Promise<SecondFactorOutcome> {
   if (!checkRateLimit(`mfa-login:${userId}`, ATTEMPT_LIMIT, ATTEMPT_WINDOW_MS).allowed) return { ok: false, reason: "rate_limited" };
   const user = await db.user.findUnique({
     where: { id: userId },
@@ -105,9 +116,13 @@ export async function verifySecondFactor(userId: string, input: unknown): Promis
 }
 
 /** New codes replace the old set; a current TOTP code is required. */
-export async function regenerateRecoveryCodes(userId: string, code: unknown): Promise<{ ok: true; recoveryCodes: string[] } | { ok: false }> {
+export async function regenerateRecoveryCodes(
+  userId: string,
+  code: unknown,
+): Promise<{ ok: true; recoveryCodes: string[] } | { ok: false; reason: "invalid" | "rate_limited" }> {
   const outcome = await verifySecondFactor(userId, /^\d{6}$/.test(String(code ?? "").trim()) ? code : "");
-  if (!outcome.ok || outcome.method !== "totp") return { ok: false };
+  if (!outcome.ok) return { ok: false, reason: outcome.reason === "rate_limited" ? "rate_limited" : "invalid" };
+  if (outcome.method !== "totp") return { ok: false, reason: "invalid" };
   const recoveryCodes = generateRecoveryCodes();
   await db.user.update({ where: { id: userId }, data: { totpRecoveryCodes: recoveryCodes.map(hashRecoveryCode) } });
   return { ok: true, recoveryCodes };

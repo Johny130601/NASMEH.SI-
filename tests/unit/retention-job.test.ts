@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   tokenDelete: vi.fn(), tokenUpdate: vi.fn(), checkoutFind: vi.fn(), checkoutDelete: vi.fn(), orderFind: vi.fn(),
   reviewFind: vi.fn(), reviewUpdate: vi.fn(), remove: vi.fn(), attachmentFind: vi.fn(), agedFiles: vi.fn(), removeSupport: vi.fn(),
+  sessionDelete: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ db: {
   authToken: { deleteMany: mocks.tokenDelete, updateMany: mocks.tokenUpdate },
@@ -11,6 +12,7 @@ vi.mock("@/lib/db", () => ({ db: {
   order: { findMany: mocks.orderFind },
   review: { findMany: mocks.reviewFind, updateMany: mocks.reviewUpdate },
   ticketAttachment: { findMany: mocks.attachmentFind },
+  revokedSession: { deleteMany: mocks.sessionDelete },
 } }));
 vi.mock("@/lib/reviews/photo-storage", () => ({ removeReviewPhotos: mocks.remove }));
 vi.mock("@/lib/support/photos", () => ({ agedSupportPhotoFiles: mocks.agedFiles, removeSupportPhotos: mocks.removeSupport }));
@@ -22,7 +24,7 @@ const daysBefore = (days: number) => new Date(now.getTime() - days * 24 * 60 * 6
 const photo = `/uploads/reviews/${"c".repeat(24)}.webp`;
 const baseCounts = {
   authTokensDeleted: 2, activationDataCleared: 1, abandonedCheckoutsDeleted: 4,
-  rejectedReviewPhotosRemoved: 1, unownedSupportPhotosRemoved: 0, failed: 0,
+  rejectedReviewPhotosRemoved: 1, unownedSupportPhotosRemoved: 0, revokedSessionsDeleted: 3, failed: 0,
 };
 
 beforeEach(() => {
@@ -38,6 +40,7 @@ beforeEach(() => {
   mocks.agedFiles.mockResolvedValue([]);
   mocks.attachmentFind.mockResolvedValue([]);
   mocks.removeSupport.mockResolvedValue(undefined);
+  mocks.sessionDelete.mockResolvedValue({ count: 3 });
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -55,6 +58,12 @@ describe("daily retention", () => {
       data: { activationData: Prisma.DbNull },
     });
     expect(counts).toMatchObject({ authTokensDeleted: 2, activationDataCleared: 1 });
+  });
+
+  it("forgets signed-out sessions once their token has expired anyway (QA 2026-10-03 T3-01)", async () => {
+    const counts = await runRetention(now);
+    expect(mocks.sessionDelete).toHaveBeenCalledWith({ where: { expiresAt: { lt: now } } });
+    expect(counts.revokedSessionsDeleted).toBe(3);
   });
 
   it("deletes captures that became paid orders at any age and unconverted ones after the window", async () => {

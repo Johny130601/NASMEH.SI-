@@ -24,7 +24,7 @@ beforeEach(() => {
 describe("addToCartAction stock rule", () => {
   it("refuses a sold-out variant without backorders", async () => {
     mocks.findUnique.mockResolvedValue(variant(0, false));
-    expect(await addToCartAction({ variantId, quantity: 1 })).toEqual({ ok: false, count: 0 });
+    expect(await addToCartAction({ variantId, quantity: 1 })).toEqual({ ok: false, count: 0, soldOut: true });
     expect(mocks.addToCart).not.toHaveBeenCalled();
   });
 
@@ -42,6 +42,6 @@ describe("addToCartAction stock rule", () => {
 
   it("still refuses variants of unpurchasable products", async () => {
     mocks.findUnique.mockResolvedValue({ ...variant(5, true), product: { status: "DRAFT", hiddenDeal: false } });
-    expect(await addToCartAction({ variantId, quantity: 1 })).toEqual({ ok: false, count: 0 });
+    expect(await addToCartAction({ variantId, quantity: 1 })).toEqual({ ok: false, count: 0, unavailable: true });
   });
 });

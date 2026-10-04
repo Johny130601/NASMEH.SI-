@@ -24,6 +24,13 @@ export interface CartActionResult {
   /** The line already sat at its per-order cap: nothing was added. */
   capped?: boolean;
   /**
+   * Nothing was added because the product sold out (`soldOut`) or can no longer be bought at all
+   * (`unavailable`: archived, drafted, a withdrawn bundle) since the page was rendered — said as
+   * such, not as a failure to retry (QA 2026-10-03 T5-07).
+   */
+  soldOut?: boolean;
+  unavailable?: boolean;
+  /**
    * Units this add really stored, which is less than the quantity asked for
    * when the cap clamped it. Only the add paths (add and "Kupi zdaj") set it;
    * it is what may be announced to the shopper and reported to analytics.
@@ -114,7 +121,8 @@ export async function addToCartAction(input: unknown): Promise<CartActionResult>
   if (!parsed.success) return { ok: false, count: 0 };
 
   const variant = await resolveVariant(parsed.data.variantId);
-  if (!variant || isSoldOut(availabilityOf(variant))) return { ok: false, count: 0 };
+  if (!variant) return { ok: false, count: 0, unavailable: true };
+  if (isSoldOut(availabilityOf(variant))) return { ok: false, count: 0, soldOut: true };
 
   const session = await auth();
   const { lines, addedQuantity } = await addToCart(
@@ -142,7 +150,8 @@ export async function buyNowAction(input: unknown): Promise<CartActionResult> {
   if (!parsed.success) return { ok: false, count: 0 };
 
   const variant = await resolveVariant(parsed.data.variantId);
-  if (!variant || isSoldOut(availabilityOf(variant))) return { ok: false, count: 0 };
+  if (!variant) return { ok: false, count: 0, unavailable: true };
+  if (isSoldOut(availabilityOf(variant))) return { ok: false, count: 0, soldOut: true };
 
   const session = await auth();
   const { lines, results } = await ensureCartLines(

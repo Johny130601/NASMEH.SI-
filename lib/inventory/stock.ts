@@ -15,6 +15,17 @@ function assertStock(value: number, label: string) {
   }
 }
 
+/**
+ * The stock moved between the operator opening a form and saving it (an order deducted, another
+ * tab restocked): the absolute figure the form carries is stale and is not written over the new
+ * one (QA 2026-10-03 T5-01). `current` is what the row holds now.
+ */
+export class StockChangedError extends Error {
+  constructor(readonly current: number) {
+    super("stock_changed");
+  }
+}
+
 async function lockVariant(tx: Prisma.TransactionClient, variantId: string) {
   const [locked] = await tx.$queryRaw<Array<{ id: string; stock: number; productId: string }>>(Prisma.sql`
     SELECT "id", "stock", "productId" FROM "Variant" WHERE "id" = ${variantId} FOR UPDATE
@@ -36,9 +47,12 @@ export async function setVariantStockInTx(
   tx: Prisma.TransactionClient,
   variantId: string,
   stock: number,
+  /** The stock the caller last saw; when the locked row holds another figure, nothing is written. */
+  options: { expectedBefore?: number } = {},
 ): Promise<StockChange> {
   assertStock(stock, "stock");
   const locked = await lockVariant(tx, variantId);
+  if (options.expectedBefore !== undefined && locked.stock !== options.expectedBefore) throw new StockChangedError(locked.stock);
   if (locked.stock !== stock) {
     await tx.variant.update({ where: { id: variantId }, data: { stock } });
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import {
   trackOrderAction,
   trackShipmentAction,
@@ -41,10 +41,13 @@ function PendingLine() {
   );
 }
 
-/** The refusal, announced, brought into view below the form (which stays in view for the correction) and focused. */
-function ErrorLine({ children }: { children: ReactNode }) {
+/**
+ * The refusal, announced, brought into view below the form (which stays in view for the correction) and focused —
+ * unless nobody asked: the automatic lookup's refusal takes no focus.
+ */
+function ErrorLine({ children, focus = true }: { children: ReactNode; focus?: boolean }) {
   const ref = useRef<HTMLParagraphElement>(null);
-  useRevealOnMount(ref, { block: "nearest" });
+  useRevealOnMount(ref, { block: "nearest", focus });
   return (
     <p ref={ref} role="alert" tabIndex={-1} className="text-sm text-error outline-none" data-lookup-error>
       {children}
@@ -63,53 +66,91 @@ function ErrorLine({ children }: { children: ReactNode }) {
  * page. Without JavaScript a form reloads the page with its values in the
  * query (trackingNumber, email, orderNumber), which the page prefills like the
  * mail links' sledenje/narocilo, and the page says the lookup needs JavaScript.
+ * Opened with a tracking number (the shipped mail's link), the page looks it up
+ * once by itself, and that answer takes no focus (QA 2026-10-03 T2-08).
+ * Turnstile tokens are single-use, so a form's widget mounts afresh after each
+ * of its lookups.
  */
 export function TrackingLookup({
   challenge,
   defaults,
+  autoLookup = false,
 }: {
   challenge: Challenge;
   defaults: { trackingNumber: string; email: string; orderNumber: string };
+  /** Look up `defaults.trackingNumber` as soon as the challenge has a token. */
+  autoLookup?: boolean;
 }) {
   const [trackingNumber, setTrackingNumber] = useState(defaults.trackingNumber);
   const [email, setEmail] = useState(defaults.email);
   const [orderNumber, setOrderNumber] = useState(defaults.orderNumber);
   const [numberToken, setNumberToken] = useState(challenge.testToken ?? "");
   const [orderToken, setOrderToken] = useState(challenge.testToken ?? "");
+  // Remount keys of the two widgets: a fresh challenge after each lookup.
+  const [numberWidget, setNumberWidget] = useState(0);
+  const [orderWidget, setOrderWidget] = useState(0);
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState<Mode | null>(null);
+  // The answer to the automatic lookup: shown under its form, but it takes no focus.
+  const [quiet, setQuiet] = useState(false);
   // Keys the feedback, so an identical second answer is a new element that is revealed again.
   const [attempt, setAttempt] = useState(0);
   const [pending, startTransition] = useTransition();
+  const autoStarted = useRef(false);
 
-  const submitNumber = (event: FormEvent) => {
-    event.preventDefault();
-    if (pending) return;
+  const lookupNumber = (auto: boolean) => {
     setActive("number");
+    setQuiet(auto);
     setAttempt((count) => count + 1);
     startTransition(async () => {
       const outcome = await trackShipmentAction({ trackingNumber, turnstileToken: numberToken });
       setError(outcome.ok ? null : outcome.error);
       setResult(outcome.ok ? { mode: "number", view: outcome.data } : null);
+      if (challenge.siteKey) {
+        setNumberToken(challenge.testToken ?? "");
+        setNumberWidget((key) => key + 1);
+      }
     });
+  };
+
+  const submitNumber = (event: FormEvent) => {
+    event.preventDefault();
+    if (pending) return;
+    lookupNumber(false);
   };
 
   const submitOrder = (event: FormEvent) => {
     event.preventDefault();
     if (pending) return;
     setActive("order");
+    setQuiet(false);
     setAttempt((count) => count + 1);
     startTransition(async () => {
       const outcome = await trackOrderAction({ email, orderNumber, turnstileToken: orderToken });
       setError(outcome.ok ? null : outcome.error);
       setResult(outcome.ok ? { mode: "order", view: outcome.data } : null);
+      if (challenge.siteKey) {
+        setOrderToken(challenge.testToken ?? "");
+        setOrderWidget((key) => key + 1);
+      }
     });
   };
 
-  const challengeField = (token: string, onToken: (value: string) => void, name: string) =>
+  // The shipped mail's link carries its tracking number: look it up once the challenge has a token — the same
+  // Server Action, challenge and rate limit as a click. Nobody pressed anything, so the answer takes no focus
+  // (an open cookie dialog keeps it).
+  useEffect(() => {
+    if (!autoLookup || autoStarted.current || (challenge.siteKey && !numberToken)) return;
+    autoStarted.current = true;
+    lookupNumber(true);
+    // Once, when the challenge first has a token; lookupNumber reads the current values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoLookup, numberToken]);
+
+  const challengeField = (token: string, onToken: (value: string) => void, name: string, widget: number) =>
     challenge.siteKey ? (
-      <TurnstileWidget siteKey={challenge.siteKey} onToken={onToken} />
+      <TurnstileWidget key={widget} siteKey={challenge.siteKey} onToken={onToken} />
     ) : (
       <input type="hidden" name={name} value={token} readOnly />
     );
@@ -138,8 +179,9 @@ export function TrackingLookup({
   const feedback = (mode: Mode) => {
     if (active !== mode) return null;
     if (pending) return <PendingLine key={attempt} />;
-    if (error) return <ErrorLine key={attempt}>{error}</ErrorLine>;
+    if (error) return <ErrorLine key={attempt} focus={!quiet}>{error}</ErrorLine>;
     if (!result) return null;
+    const title = result.mode === "order" ? copy.result.orderTitle : copy.result.title;
     return (
       <section
         key={attempt}
@@ -148,7 +190,7 @@ export function TrackingLookup({
         data-lookup-mode={result.mode}
         aria-live="polite"
       >
-        <ResultHeading className="text-lg">{result.mode === "order" ? copy.result.orderTitle : copy.result.title}</ResultHeading>
+        {quiet ? <h2 className="text-lg">{title}</h2> : <ResultHeading className="text-lg">{title}</ResultHeading>}
         <dl className="mt-3 flex flex-col gap-2 text-sm">
           {result.mode === "order" ? row(copy.result.numberLabel, result.view.number, "number") : null}
           {row(copy.result.statusLabel, status(result.view), "status", "font-medium text-dark-1")}
@@ -216,7 +258,7 @@ export function TrackingLookup({
               value={trackingNumber}
               onChange={(event) => setTrackingNumber(event.target.value)}
             />
-            {challengeField(numberToken, setNumberToken, "turnstileToken")}
+            {challengeField(numberToken, setNumberToken, "turnstileToken", numberWidget)}
             <UiButton type="submit" variant="primary" fullWidth aria-disabled={pending} className="aria-disabled:opacity-50">
               {copy.byNumber.submit}
             </UiButton>
@@ -248,7 +290,7 @@ export function TrackingLookup({
               value={orderNumber}
               onChange={(event) => setOrderNumber(event.target.value)}
             />
-            {challengeField(orderToken, setOrderToken, "turnstileToken")}
+            {challengeField(orderToken, setOrderToken, "turnstileToken", orderWidget)}
             <UiButton type="submit" variant="outline" fullWidth aria-disabled={pending} className="aria-disabled:opacity-50">
               {copy.byOrder.submit}
             </UiButton>

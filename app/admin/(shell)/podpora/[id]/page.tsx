@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePagePermission } from "@/lib/admin/access";
 import { listAssignees, loadTicket, readableDetailValue } from "@/lib/admin/tickets";
+import { isAnonymisedEmail } from "@/lib/admin/customers";
 import { ticketDetailRows } from "@/lib/email/templates/support-ticket";
 import { admin as copy } from "@/lib/copy";
 import { contact } from "@/lib/copy/contact";
@@ -37,7 +38,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ id
         <section className="rounded-card border border-light-2 bg-white p-5">
           <h2 className="text-base font-medium">{d.reporter}</h2>
           <p className="mt-2 text-sm">{ticket.name}</p>
-          <p className="break-words text-sm text-mid-1">{ticket.email}</p>
+          <p className="break-words text-sm text-mid-1">{isAnonymisedEmail(ticket.email) ? copy.common.anonymised : ticket.email}</p>
           {ticket.user ? <p className="mt-2 text-sm"><Link href={`/admin/stranke/${ticket.user.id}`} className="underline underline-offset-4">{d.customer}</Link></p>
             : !ticket.email.endsWith("@invalid") ? <p className="mt-2 text-sm"><Link href={`/admin/stranke/gost?email=${encodeURIComponent(ticket.email)}`} className="underline underline-offset-4" data-ticket-guest-link>{d.customer}</Link></p> : null}
           {/* the wording fingerprint is a record id, not text for staff: kept on the element, as the consent history does */}
@@ -56,7 +57,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ id
             {ticket.deliveries.map((delivery) => (
               <li key={delivery.kind} className="break-words">
                 {/* A long recipient may break when it overflows; the timestamp never breaks inside. */}
-                {d.deliveryKinds[delivery.kind]} → {delivery.recipient}: {delivery.sentAt
+                {d.deliveryKinds[delivery.kind]} → {isAnonymisedEmail(delivery.recipient) ? copy.common.anonymised : delivery.recipient}: {delivery.sentAt
                   ? <>{d.deliverySent} <span className="whitespace-nowrap" style={{ fontVariantNumeric: "tabular-nums" }}>{delivery.sentAt.toLocaleString("sl-SI")}</span></>
                   : `${d.deliveryPending} (${delivery.attempts})`}
               </li>
@@ -95,7 +96,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ id
             </>
           ) : null}
         </section>
-        <TicketActions ticketId={ticket.id} status={ticket.status} assigneeId={ticket.assigneeId} internalNote={ticket.internalNote} assignees={assignees} />
+        <TicketActions ticketId={ticket.id} status={ticket.status} assigneeId={ticket.assigneeId} internalNote={ticket.internalNote} assignees={assignees} currentAssignee={ticket.assignee} />
       </div>
     </section>
   );

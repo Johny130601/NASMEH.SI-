@@ -34,8 +34,9 @@ import { admin as copy } from "@/lib/copy";
 /** The escaping renderToStaticMarkup applies to text. */
 const html = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#x27;");
 
-const bundleProduct = (active: boolean) => ({
+const bundleProduct = (active: boolean, stock = 100) => ({
   id: "p1", title: "Paket", slug: "paket", status: "ACTIVE",
+  variants: [{ id: "v1", sku: "PAK", priceCents: 4990, maxCartQuantity: 1, stock }],
   bundle: { priceCents: 4990, active, items: [] },
   options: { variants: [] },
 });
@@ -62,6 +63,17 @@ describe("bundle editor on load", () => {
     mocks.loadBundle.mockResolvedValue(bundleProduct(false));
     mocks.contentLinksToProducts.mockResolvedValue([]);
     expect(renderToStaticMarkup(await AdminBundleEditorPage({ params: Promise.resolve({ id: "p1" }) }))).not.toContain("data-content-link-warning");
+  });
+});
+
+describe("bundle editor: its own stock (QA 2026-10-03 T5-03)", () => {
+  it("warns that a bundle at its own stock 0 stays sold out, and links to where it is set", async () => {
+    mocks.loadBundle.mockResolvedValue(bundleProduct(true, 0));
+    const markup = renderToStaticMarkup(await AdminBundleEditorPage({ params: Promise.resolve({ id: "p1" }) }));
+    expect(markup).toContain("data-bundle-own-stock-zero");
+    expect(markup).toContain("href=\"/admin/izdelki/p1\"");
+    mocks.loadBundle.mockResolvedValue(bundleProduct(true, 100));
+    expect(renderToStaticMarkup(await AdminBundleEditorPage({ params: Promise.resolve({ id: "p1" }) }))).not.toContain("data-bundle-own-stock-zero");
   });
 });
 

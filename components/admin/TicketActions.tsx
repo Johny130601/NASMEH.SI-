@@ -16,13 +16,19 @@ export function TicketActions({
   assigneeId,
   internalNote,
   assignees,
+  currentAssignee = null,
 }: {
   ticketId: string;
   status: "OPEN" | "IN_PROGRESS" | "CLOSED";
   assigneeId: string | null;
   internalNote: string | null;
   assignees: Array<{ id: string; name: string | null; email: string }>;
+  /** The member the ticket is assigned to now; shown even after their role lost ticket access (QA 2026-10-03 V4-02). */
+  currentAssignee?: { id: string; name: string | null; email: string } | null;
 }) {
+  // An assignee whose role no longer opens tickets stays visible and selected, so saving the
+  // status or the note keeps the assignment instead of silently clearing it.
+  const staleAssignee = currentAssignee && !assignees.some((member) => member.id === currentAssignee.id) ? currentAssignee : null;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
@@ -57,6 +63,7 @@ export function TicketActions({
         <UiFormField label={copy.tickets.detail.assignee} htmlFor="ticket-assignee">
           <select id="ticket-assignee" name="assigneeId" defaultValue={assigneeId ?? ""} className={selectClass}>
             <option value="">{copy.tickets.detail.unassigned}</option>
+            {staleAssignee ? <option value={staleAssignee.id} data-assignee-no-access>{`${staleAssignee.name ?? staleAssignee.email} (${copy.tickets.detail.assigneeNoAccess})`}</option> : null}
             {assignees.map((member) => <option key={member.id} value={member.id}>{member.name ?? member.email}</option>)}
           </select>
         </UiFormField>

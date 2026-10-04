@@ -17,6 +17,20 @@ beforeEach(() => {
   tx.bundle.findMany.mockResolvedValue([]);
 });
 
+describe("setVariantStockInTx with the figure the caller saw (QA 2026-10-03 T5-01)", () => {
+  it("writes nothing when the locked row moved since the caller read it", async () => {
+    const { StockChangedError } = await import("@/lib/inventory/stock");
+    await expect(setVariantStockInTx(client, "v1", 3, { expectedBefore: 2 })).rejects.toEqual(new StockChangedError(0));
+    await expect(setVariantStockInTx(client, "v1", 3, { expectedBefore: 2 })).rejects.toMatchObject({ current: 0 });
+    expect(tx.variant.update).not.toHaveBeenCalled();
+    expect(tx.backInStockSubscription.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("writes as usual when the row still holds that figure", async () => {
+    expect(await setVariantStockInTx(client, "v1", 3, { expectedBefore: 0 })).toEqual({ variantId: "v1", before: 0, after: 3, armedAlerts: 2 });
+  });
+});
+
 describe("setVariantStockInTx", () => {
   it("arms confirmed, un-notified, un-armed subscriptions on a 0 → N transition", async () => {
     expect(await setVariantStockInTx(client, "v1", 3)).toEqual({ variantId: "v1", before: 0, after: 3, armedAlerts: 2 });

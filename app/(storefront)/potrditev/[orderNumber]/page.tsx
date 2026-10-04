@@ -5,13 +5,14 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { getOrderReceipt, hasOrderAccess } from "@/lib/orders/access";
+import { guestAccountOffer } from "@/lib/account/guest-offer";
 import { getEnv } from "@/lib/env";
 import { formatDdvLine, formatEUR } from "@/lib/pricing";
 import { deliveryEstimate, getShippingMethods } from "@/lib/tracking";
 import { buildMetadata } from "@/lib/seo";
 import type { PendingOrderView } from "@/lib/orders/confirmation-view";
 import { pendingOrderViewFromQuery, resolvePendingOrderView } from "@/lib/orders/confirmation-query";
-import { orders } from "@/lib/copy";
+import { checkout, orders } from "@/lib/copy";
 import { UiButton } from "@/components/storefront/ui/UiButton";
 import { CreateAccountForm } from "@/components/storefront/checkout/CreateAccountForm";
 import { ClearCartOnPaid } from "@/components/storefront/checkout/ClearCartOnPaid";
@@ -27,6 +28,9 @@ type RouteQuery = Promise<Record<string, string | string[] | undefined>>;
 
 const PAID_STATUSES = ["PAID", "PROCESSING", "SHIPPED", "DELIVERED"];
 
+/** The visitor's session, read once per request. */
+const loadSession = cache(async () => auth());
+
 /**
  * The order this visitor may see, or null (unknown number, no access). One
  * lookup per request, shared by the page and its title.
@@ -38,7 +42,7 @@ const loadVisibleOrder = cache(async (rawNumber: string) => {
     where: { number: parsed.data.orderNumber },
     include: { items: true },
   });
-  if (!order || !(await hasOrderAccess(order, await auth()))) return null;
+  if (!order || !(await hasOrderAccess(order, await loadSession()))) return null;
   return order;
 });
 
@@ -91,6 +95,10 @@ export default async function ConfirmationPage({
   // does a submitted attempt that has failed since (QA 2026-09-30).
   const view = await loadPendingView(orderNumber, pendingOrderViewFromQuery(await searchParams));
   const purchaser = await getOrderReceipt(order);
+  // A guest order's account box (QA 2026-10-03 T2-09): create, or sign in back to this page when the address has an account.
+  const accountOffer = paid && !order.userId && purchaser
+    ? await guestAccountOffer(order.email, !!(await loadSession())?.user)
+    : null;
   // Same source as the confirmation and shipped mails: the chosen method's configured estimate.
   const estimate = paid ? deliveryEstimate(order.shippingMethod, await getShippingMethods()) : null;
   const env = getEnv();
@@ -178,7 +186,8 @@ export default async function ConfirmationPage({
           ))}
           <li className="flex justify-between border-t border-light-3 pt-2 text-sm">
             <span className="text-mid-1">{order.shippingMethod}</span>
-            <span className="text-dark-1">{formatEUR(order.shippingCents)}</span>
+            {/* free delivery reads as it did in the cart and the checkout (QA 2026-10-03 V2-01) */}
+            <span className="text-dark-1">{order.shippingCents === 0 ? checkout.shipping.free : formatEUR(order.shippingCents)}</span>
           </li>
           {order.discountCents > 0 ? (
             <li className="flex justify-between text-sm text-success">
@@ -209,13 +218,23 @@ export default async function ConfirmationPage({
         ) : null}
       </div>
 
-      {paid && !order.userId && purchaser ? (
+      {accountOffer === "create" ? (
         <div className="mt-8 max-w-md rounded-card border border-light-2 bg-white p-6">
           <h2 className="text-lg">{orders.confirmation.createAccountTitle}</h2>
           <p className="mt-1 text-sm text-mid-1">
             {orders.confirmation.createAccountBody}
           </p>
           <CreateAccountForm orderNumber={order.number} />
+        </div>
+      ) : accountOffer === "signIn" ? (
+        <div className="mt-8 max-w-md rounded-card border border-light-2 bg-white p-6" data-account-sign-in>
+          <h2 className="text-lg">{orders.confirmation.signInTitle}</h2>
+          <p className="mt-1 text-sm text-mid-1">{orders.confirmation.signInBody}</p>
+          <div className="mt-4">
+            <UiButton href={`/prijava?callbackUrl=${encodeURIComponent(`/potrditev/${encodeURIComponent(order.number)}`)}`} variant="outline">
+              {orders.confirmation.signInCta}
+            </UiButton>
+          </div>
         </div>
       ) : null}
 

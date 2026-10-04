@@ -7,10 +7,12 @@ import { requireStaff } from "@/lib/admin/access";
 import { regenerateRecoveryCodes } from "@/lib/admin/mfa";
 
 /** New recovery codes for the signed-in member; requires a current TOTP code. */
-export async function regenerateRecoveryCodesAction(input: { code: string }): Promise<{ ok: true; recoveryCodes: string[] } | { ok: false }> {
+export async function regenerateRecoveryCodesAction(
+  input: { code: string },
+): Promise<{ ok: true; recoveryCodes: string[] } | { ok: false; reason: "invalid" | "rate_limited" }> {
   const staff = await requireStaff();
   const parsed = z.object({ code: z.string().trim().min(6).max(12) }).safeParse(input);
-  if (!parsed.success) return { ok: false };
+  if (!parsed.success) return { ok: false, reason: "invalid" };
   return regenerateRecoveryCodes(staff.id, parsed.data.code);
 }
 

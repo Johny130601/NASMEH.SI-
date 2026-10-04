@@ -40,10 +40,14 @@ export default async function ReviewPage({
   const session = await auth();
   const secret = getEnv().AUTH_SECRET;
   if (!canReviewItem({ orderItemId, orderUserId: item.order.userId, sessionUserId: session?.user?.id, token: r, secret })) {
-    if (!r && !session?.user) redirect("/prijava");
+    // back to this form after signing in, not to the account page (QA 2026-10-03 N7)
+    if (!r && !session?.user) redirect(`/prijava?callbackUrl=${encodeURIComponent(`/oceni/${orderItemId}`)}`);
     notFound();
   }
-  const defaultRating = verifyRatingToken(r, secret)?.rating ?? 5;
+  // Only a star the shopper clicked in the review mail is preselected; from the
+  // account no rating is chosen for them (a default 5 would inflate ratings,
+  // UCPD Annex I 23b; QA 2026-10-03 T3-04).
+  const defaultRating = verifyRatingToken(r, secret)?.rating ?? null;
 
   return (
     <section className="mx-auto max-w-md px-(--padding) py-16">

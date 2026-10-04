@@ -44,6 +44,11 @@ export function can(role: unknown, permission: Permission): boolean {
   return isStaffRole(role) && MATRIX[role].has(permission);
 }
 
+/** The staff roles that hold a permission — e.g. who a ticket may be assigned to. */
+export function rolesWith(permission: Permission): StaffRole[] {
+  return STAFF_ROLES.filter((role) => MATRIX[role].has(permission));
+}
+
 export function permissionsOf(role: unknown): Permission[] {
   return isStaffRole(role) ? PERMISSIONS.filter((permission) => MATRIX[role].has(permission)) : [];
 }

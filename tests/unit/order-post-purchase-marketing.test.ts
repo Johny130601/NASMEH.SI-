@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/lib/orders/access", () => ({ getOrderReceipt: mocks.receipt, currentCartVersion: vi.fn() }));
 vi.mock("@/lib/cart/server", () => ({ getCartLines: vi.fn(), clearGuestCart: vi.fn() }));
-vi.mock("@/lib/auth-tokens", () => ({ issueAuthToken: mocks.issueToken }));
+vi.mock("@/lib/auth-tokens", () => ({ issueAuthToken: mocks.issueToken, allowAccountMail: () => true }));
 vi.mock("@/lib/email/mailer", () => ({ sendVerifyAccountEmail: mocks.mail }));
 vi.mock("@/lib/db", () => ({ db: {
   order: { findUnique: mocks.findOrder },

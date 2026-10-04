@@ -16,7 +16,9 @@ const c = copy.content.email.editor;
 function errorText(result: Extract<EmailTemplateActionResult, { ok: false }>): string {
   switch (result.error) {
     case "unknownPlaceholders": return c.unknown.replace("{names}", (result.names ?? []).map((name) => `{{${name}}}`).join(", "));
+    case "missingPlaceholders": return c.missing.replace("{names}", (result.names ?? []).map((name) => `{{${name}}}`).join(", "));
     case "send": return c.sendFailed;
+    case "invalidAddress": return c.invalidAddress;
     default: return c.invalid;
   }
 }

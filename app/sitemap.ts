@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 import { db } from "@/lib/db";
 import { productHasSellableUnits } from "@/lib/bundle/availability";
 import { PURCHASABLE_PRODUCT_WHERE } from "@/lib/cart/visibility";
+import { getCatalogCollections } from "@/lib/catalog";
 import { siteUrl } from "@/lib/seo";
 import { getMaintenance } from "@/lib/settings";
 
@@ -18,12 +19,17 @@ const RETIRED_SLUGS = ["pomoc", "o-nas", "razisli", "dostava", "paketi"];
 const INDEXABLE_ROUTES = ["/prijava-nezelenega-ucinka"];
 
 /**
- * Auto sitemap (§3.3, backlog B1): homepage, the catalog page, every product
- * the catalog lists — purchasable (ACTIVE, no hidden deal SKU, no withdrawn
- * bundle: lib/cart/visibility) and visible in the catalog; sold-out NOTIFY
- * products stay published, a sold-out HIDE product leaves, a bundle counted
- * by its components' stock — the indexable static routes and the published
- * content pages.
+ * Auto sitemap (§3.3, backlog B1): homepage, the catalog page, its indexable
+ * collection views, every product the catalog lists — purchasable (ACTIVE, no
+ * hidden deal SKU, no withdrawn bundle: lib/cart/visibility) and visible in the
+ * catalog; sold-out NOTIFY products stay published, a sold-out HIDE product
+ * leaves, a bundle counted by its components' stock — the indexable static
+ * routes and the published content pages.
+ *
+ * A collection is listed at exactly the canonical /trgovina gives it
+ * (`/trgovina?kolekcija=<slug>`), and only when /trgovina renders it as a
+ * collection: one of the tabs `getCatalogCollections` returns (it lists a
+ * product someone can buy) and not marked noindex (QA 2026-10-03).
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = siteUrl();
@@ -34,7 +40,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (maintenance.enabled) {
     return [{ url: base, lastModified: new Date(), changeFrequency: "weekly", priority: 1 }];
   }
-  const [products, pages] = await Promise.all([
+  const [products, pages, collections] = await Promise.all([
     db.product.findMany({
       where: { ...PURCHASABLE_PRODUCT_WHERE, visibleInCatalog: true },
       select: {
@@ -50,6 +56,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       where: { published: true, slug: { notIn: RETIRED_SLUGS } },
       select: { slug: true, updatedAt: true },
     }),
+    getCatalogCollections().then((rows) => rows.filter((collection) => !collection.noindex)),
   ]);
   const now = new Date();
   const catalogModified = products.reduce(
@@ -65,6 +72,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "weekly",
       priority: 0.9,
     },
+    ...collections.map((collection) => ({
+      url: `${base}/trgovina?kolekcija=${encodeURIComponent(collection.slug)}`,
+      lastModified: products.length ? catalogModified : now,
+      changeFrequency: "weekly" as const,
+      priority: 0.7,
+    })),
     ...products.map((product) => ({
       url: `${base}/izdelek/${product.slug}`,
       lastModified: product.updatedAt,

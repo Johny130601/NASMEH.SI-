@@ -6,7 +6,7 @@ export const email = {
     subject: "Nasmeh.si — pošta deluje",
     heading: "Poštna storitev deluje",
     body: "To je preizkusno sporočilo transakcijske pošte Nasmeh.si (SMTP/Nodemailer).",
-    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+    footer: "Nasmeh.si — transakcijska pošta.",
   },
   verifySubscription: {
     subject: "Potrdite prijavo na e-novice — Nasmeh.si",
@@ -17,7 +17,7 @@ export const email = {
     // "<unsubscribe> <link>unsubscribeCta</link>" — the signed withdrawal route.
     unsubscribe: "Od e-novic se lahko kadar koli odjavite:",
     unsubscribeCta: "Odjava od e-novic",
-    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+    footer: "Nasmeh.si — transakcijska pošta.",
   },
   backInStock: {
     subject: "Potrdite obvestilo o zalogi — Nasmeh.si",
@@ -26,7 +26,9 @@ export const email = {
     bodySuffix: ", kliknite spodnji gumb.",
     cta: "Aktiviraj obvestilo",
     ignore: "Če obvestila niste zahtevali, to sporočilo preprosto prezrite.",
-    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+    footer: "Nasmeh.si — transakcijska pošta.",
+    unsubscribe: "Ne želite več obvestila o zalogi za ta izdelek?",
+    unsubscribeCta: "Odjava",
   },
   backInStockAlert: {
     subjectPrefix: "Spet na zalogi",
@@ -36,7 +38,7 @@ export const email = {
     cta: "Poglej izdelek",
     unsubscribe: "To je edino obvestilo za ta izdelek. Ne želite več obvestil o zalogi za ta izdelek?",
     unsubscribeCta: "Odjava",
-    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+    footer: "Nasmeh.si — transakcijska pošta.",
   },
   orderConfirmation: {
     subjectPrefix: "Potrditev naročila",
@@ -46,11 +48,13 @@ export const email = {
     deliveryEstimate: (estimate: string) => `Predviden rok dostave: ${estimate}. Ob odpošiljanju prejmete sporočilo s številko sledenja.`,
     deliveryNote: "Ob odpošiljanju prejmete sporočilo s številko sledenja.",
     shippingLabel: "Dostava",
+    /** Free delivery reads as in the cart and the checkout (QA 2026-10-03 T2-12). */
+    shippingFree: "Brezplačna",
     /** The discount row (code and amount) makes the lines add up to the total. */
     discountLabel: "Popust",
     discountWithCode: (code: string) => `Popust (koda ${code})`,
     totalLabel: "Skupaj",
-    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+    footer: "Nasmeh.si — transakcijska pošta.",
     /**
      * Contract confirmation on a durable medium (CRD Art. 8(7)): appended after
      * the body whether the code template or an operator override is sent. The
@@ -93,7 +97,7 @@ export const email = {
     noLink: "Povezava za sledenje pri tem prevozniku ni na voljo; številko vnesite na strani Sledi naročilu.",
     estimateLabel: "Predviden prihod",
     cta: "Sledi naročilu",
-    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+    footer: "Nasmeh.si — transakcijska pošta.",
   },
   orderStatus: {
     processing: {
@@ -106,10 +110,15 @@ export const email = {
       heading: "Vaše naročilo je dostavljeno",
       body: "Pošiljka je označena kot dostavljena. Upamo, da boste z izdelki zadovoljni. Številka naročila:",
     },
+    /** A paid order cancelled by staff: the refund went with the cancellation (QA 2026-10-03 T4-05). */
+    cancelledRefunded: {
+      body: "Naročilo smo preklicali in plačani znesek vrnili na isto plačilno sredstvo; na vaš račun bo prispel v nekaj delovnih dneh. Številka naročila:",
+    },
+    /** An unpaid order cancelled: nothing was charged (a paid one gets cancelledRefunded, QA 2026-10-03). */
     cancelled: {
       subjectPrefix: "Naročilo je preklicano",
       heading: "Vaše naročilo je preklicano",
-      body: "Naročilo smo preklicali. Če je bilo plačano, znesek vrnemo na isto plačilno sredstvo v nekaj delovnih dneh. Številka naročila:",
+      body: "Naročilo smo preklicali. Plačilo zanj ni bilo izvedeno, zato vam ni treba storiti ničesar. Številka naročila:",
     },
     refunded: {
       subjectPrefix: "Vračilo denarja",
@@ -118,15 +127,18 @@ export const email = {
     },
     refundedAmountLabel: "Vrnjeni znesek",
     cta: "Poglej naročilo",
-    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+    footer: "Nasmeh.si — transakcijska pošta.",
   },
   verifyAccount: {
     subject: "Potrdite svoj račun — Nasmeh.si",
     heading: "Dobrodošli na Nasmeh.si!",
-    body: "Za aktivacijo računa kliknite spodnji gumb (povezava velja 24 ur).",
+    /** The page asks for the password chosen at registration (QA 2026-10-03 T3-02). */
+    body: "Za aktivacijo računa kliknite spodnji gumb (povezava velja 24 ur). Na strani vnesite geslo, ki ste ga izbrali ob ustvarjanju računa.",
+    /** Only when the click also confirms the newsletter opt-in ticked at registration. */
+    newsletterNote: "S potrditvijo potrdite tudi prijavo na e-novice in ponudbe, ki ste jo izbrali.",
     cta: "Aktiviraj račun",
     ignore: "Če računa niste ustvarili, to sporočilo preprosto prezrite.",
-    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+    footer: "Nasmeh.si — transakcijska pošta.",
   },
   resetPassword: {
     subject: "Ponastavitev gesla — Nasmeh.si",
@@ -134,13 +146,13 @@ export const email = {
     body: "Prejeli smo zahtevo za ponastavitev gesla. Povezava velja 1 uro.",
     cta: "Nastavi novo geslo",
     ignore: "Če ponastavitve niste zahtevali, to sporočilo preprosto prezrite — geslo ostane nespremenjeno.",
-    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+    footer: "Nasmeh.si — transakcijska pošta.",
   },
   reviewRequest: {
     subjectPrefix: "Kako vam je ustrezal nakup",
     heading: "Kako ste zadovoljni z nakupom?",
     body: "Nekaj dni je od dostave — vaše mnenje pomaga drugim kupcem (in nam). Ocenite izdelke s klikom na zvezdice:",
     photosNote: "Za najlepše mnenje priložite tudi fotografijo ali dve.",
-    footer: "Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.",
+    footer: "Nasmeh.si — transakcijska pošta.",
   },
 } as const;

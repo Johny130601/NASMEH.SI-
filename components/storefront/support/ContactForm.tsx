@@ -6,6 +6,7 @@ import { lookupContactOrderAction, submitContactAction } from "@/app/(storefront
 import { contact } from "@/lib/copy/contact";
 import { TOPIC_CODES, topicReasons, type ReasonCode, type TopicCode } from "@/lib/support/topics";
 import { useAuthChallenge, type AuthChallengeProps } from "../auth/AuthChallenge";
+import { supportPhotosWithinLimits } from "../reviews/photo-downscale";
 import { UiButton } from "../ui/UiButton";
 import { UiFormField, UiInput } from "../ui/UiInput";
 import { ResultHeading } from "../ui/ResultHeading";
@@ -106,21 +107,23 @@ export function ContactForm({ settings, challenge, requestKey: initialRequestKey
     // An untouched file input creates an empty-filename multipart part, which
     // can decode as a string. Send only actual selections; named empty files
     // remain invalid instead of silently disappearing from the request.
-    const files = Array.from(photos.current?.files ?? []);
+    const selected = Array.from(photos.current?.files ?? []);
     data.delete("photos");
-    if (files.length > 4 || files.some(file => file.size === 0 || file.size > 2 * 1024 * 1024 || !["image/jpeg", "image/png", "image/webp"].includes(file.type))) {
-      setError(contact.errors.photos);
-      return;
-    }
-    for (const file of files) data.append("photos", file, file.name);
     submitting.current = true;
     startSubmit(async () => {
+      let sent = false;
       try {
+        // A phone photo over the cap is downscaled in the browser before it is
+        // refused, as on the review form (QA 2026-10-03 T3-06).
+        const files = await supportPhotosWithinLimits(selected);
+        if (!files) { setError(contact.errors.photos); return; }
+        for (const file of files) data.append("photos", file, file.name);
+        sent = true;
         const result = await submitContactAction(data);
         if (result.ok && result.reference) setReference(result.reference);
         else setError(result.error ?? contact.errors.failed);
       } catch { setError(contact.errors.failed); }
-      finally { submitting.current = false; finalHuman.reset(); }
+      finally { submitting.current = false; if (sent) finalHuman.reset(); }
     });
   }
 

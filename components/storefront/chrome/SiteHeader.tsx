@@ -2,7 +2,9 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getCartLines } from "@/lib/cart/server";
-import { getMenu, getSetting, SETTING_KEYS } from "@/lib/settings";
+import { getFreeThresholdCents, getMenu, getSetting, SETTING_KEYS } from "@/lib/settings";
+import { formatEUR } from "@/lib/pricing";
+import { CONTENT_TOKENS, fillToken } from "@/lib/content/tokens";
 import { utilityMenuItems } from "@/lib/menus";
 import { chrome as copy } from "@/lib/copy/chrome";
 import { home } from "@/lib/copy/home";
@@ -23,11 +25,12 @@ import { linkIsAvailable, menuHrefs, menuWithAvailableLinks, productSlugsIn } fr
  * link leads to a product page that answers 404 (QA v-a, lib/content-links).
  */
 export async function SiteHeader() {
-  const [marqueeText, marqueeHref, marqueeActive, headerMenu, mobileMenu, utilityMenu, session] =
+  const [marqueeText, marqueeHref, marqueeActive, freeThresholdCents, headerMenu, mobileMenu, utilityMenu, session] =
     await Promise.all([
       getSetting<string>(SETTING_KEYS.marqueeText),
       getSetting<string>(SETTING_KEYS.marqueeHref),
       getSetting<boolean>(SETTING_KEYS.marqueeActive),
+      getFreeThresholdCents(),
       getMenu("header"),
       getMenu("mobile"),
       getMenu("utility"),
@@ -82,7 +85,8 @@ export async function SiteHeader() {
     <header className="ui-header sticky top-0 z-40 bg-white">
       {marqueeActive !== false ? (
         <UiMarquee
-          text={marqueeText ?? home.marqueeFallback}
+          // {prag} is the threshold the cart applies, never a typed figure (QA 2026-10-03 T6-05)
+          text={fillToken(typeof marqueeText === "string" ? marqueeText : home.marqueeFallback, CONTENT_TOKENS.threshold, formatEUR(freeThresholdCents))}
           href={marqueeLink}
         />
       ) : null}

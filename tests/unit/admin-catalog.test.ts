@@ -27,7 +27,10 @@ describe("catalog schemas", () => {
     expect(variantSchema.parse({ ...variant, barcode: null, backorderNote: " rok 5 dni " }).backorderNote).toBe("rok 5 dni");
     expect(variantSchema.safeParse({ ...variant, compareAtPriceCents: 3499 }).success).toBe(false);
     expect(variantSchema.safeParse({ ...variant, compareAtPriceCents: 3999 }).success).toBe(true);
-    expect(variantSchema.safeParse({ ...variant, stock: -1 }).success).toBe(false);
+    // a backordered variant may stand below zero, so its other fields still save; a typed negative
+    // figure is refused by saveVariantAction ("stockNegative", QA 2026-10-03 T5-02)
+    expect(variantSchema.safeParse({ ...variant, stock: -1 }).success).toBe(true);
+    expect(variantSchema.safeParse({ ...variant, stock: 2.5 }).success).toBe(false);
     expect(variantSchema.safeParse({ ...variant, maxCartQuantity: 0 }).success).toBe(false);
     expect(variantSchema.safeParse({ ...variant, priceCents: 12.5 }).success).toBe(false);
   });

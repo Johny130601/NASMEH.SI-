@@ -23,7 +23,7 @@ vi.mock("@/lib/db", () => {
   return { db: client };
 });
 vi.mock("@/lib/price-history", () => ({ changeVariantPriceInTx: mocks.changePrice, recordInitialPriceInTx: mocks.recordInitial }));
-vi.mock("@/lib/inventory/stock", () => ({ setVariantStockInTx: mocks.setStock }));
+vi.mock("@/lib/inventory/stock", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/inventory/stock")>()), setVariantStockInTx: mocks.setStock }));
 vi.mock("@/lib/jobs/restock-alerts", () => ({ sendPendingRestockAlerts: mocks.sendAlerts }));
 vi.mock("@/lib/admin/media", () => ({
   InvalidMediaFile: class InvalidMediaFile extends Error {}, prepareMediaImage: vi.fn(), saveMediaImage: vi.fn(), removeMediaImage: vi.fn(),

@@ -23,9 +23,15 @@ export interface EmailTemplateDef {
   sample: Record<string, string>;
   defaultSubject: string;
   defaultBody: string;
+  /**
+   * The placeholders the mail cannot do without — its action link. An override that leaves one
+   * out is refused on save and never sent (the code template goes instead): a confirmation or
+   * reset mail without its link would strand the customer (QA 2026-10-03 T6-02).
+   */
+  requiredPlaceholders?: string[];
 }
 
-const FOOTER = `<p style="font-size:0.75rem;line-height:1.5;color:rgb(99,99,102);">Nasmeh.si — transakcijska pošta, ne odgovarjajte nanjo.</p>`;
+const FOOTER = `<p style="font-size:0.75rem;line-height:1.5;color:rgb(99,99,102);">Nasmeh.si — transakcijska pošta.</p>`;
 const H1 = `style="font-size:1.5rem;font-weight:300;"`;
 const P = `style="font-size:1rem;line-height:1.5;"`;
 const BUTTON = `style="display:inline-block;background-color:rgb(28,28,30);color:rgb(255,255,255);text-decoration:none;padding:0.9rem 2rem;border-radius:3rem;font-size:1rem;font-weight:500;"`;
@@ -92,8 +98,9 @@ ${FOOTER}`,
     "Začeli smo s pripravo vašega naročila. Ob odpremi prejmete sporočilo s številko sledenja. Številka naročila:"),
   orderDelivered: statusDef("Naročilo je dostavljeno", "Ko je pošiljka označena kot dostavljena.", "Naročilo je dostavljeno", "Vaše naročilo je dostavljeno",
     "Pošiljka je označena kot dostavljena. Upamo, da boste z izdelki zadovoljni. Številka naročila:"),
-  orderCancelled: statusDef("Naročilo je preklicano", "Ob preklicu naročila (s celotnim vračilom, če je bilo plačano).", "Naročilo je preklicano", "Vaše naročilo je preklicano",
-    "Naročilo smo preklicali. Če je bilo plačano, znesek vrnemo na isto plačilno sredstvo v nekaj delovnih dneh. Številka naročila:"),
+  orderCancelled: statusDef("Naročilo je preklicano", "Ob preklicu naročila (s celotnim vračilom, če je bilo plačano). {{amount}} je vrnjeni znesek preklica plačanega naročila, pri neplačanem prazen.", "Naročilo je preklicano", "Vaše naročilo je preklicano",
+    "Naročilo smo preklicali. Če je bilo plačano, znesek vrnemo na isto plačilno sredstvo v nekaj delovnih dneh. Številka naročila:",
+    [{ name: "amount", description: "Vrnjeni znesek (le ob preklicu plačanega naročila)" }], { amount: "49,99 €" }),
   orderRefunded: statusDef("Vračilo denarja", "Ob izvedenem (delnem) vračilu.", "Vračilo denarja", "Vračilo denarja je izvedeno",
     "Vračilo smo predali ponudniku plačil; znesek bo vrnjen na isto plačilno sredstvo v nekaj delovnih dneh. Številka naročila:",
     [{ name: "amount", description: "Vrnjeni znesek" }], { amount: "15,00 €" }, `<p ${P}>Vrnjeni znesek: <strong>{{amount}}</strong></p>\n`),
@@ -129,8 +136,9 @@ ${FOOTER}`,
   },
   backInStockConfirm: {
     label: "Potrditev obvestila o zalogi",
-    description: "Dvojna potrditev prijave na obvestilo o zalogi.",
+    description: "Dvojna potrditev prijave na obvestilo o zalogi. Povezavo za odjavo od obvestila sistem vedno doda na konec sporočila.",
     placeholders: [{ name: "productTitle", description: "Naziv izdelka" }, { name: "confirmUrl", description: "Potrditvena povezava" }],
+    requiredPlaceholders: ["confirmUrl"],
     sample: { productTitle: "Belilni trakci za zobe (14 uporab)", confirmUrl: "https://nasmeh.si/potrdi-zalogo/primer" },
     defaultSubject: "Potrdite obvestilo o zalogi — Nasmeh.si",
     defaultBody: `<h1 ${H1}>Potrdite obvestilo o zalogi</h1>
@@ -143,6 +151,7 @@ ${FOOTER}`,
     label: "Potrditev prijave na e-novice",
     description: "Dvojna potrditev prijave (tudi iz pozdravnega okna s kodo). Povezavo za odjavo od e-novic sistem vedno doda na konec sporočila.",
     placeholders: [{ name: "confirmUrl", description: "Potrditvena povezava" }],
+    requiredPlaceholders: ["confirmUrl"],
     sample: { confirmUrl: "https://nasmeh.si/potrdi/primer" },
     defaultSubject: "Potrdite prijavo na e-novice — Nasmeh.si",
     defaultBody: `<h1 ${H1}>Potrdite svojo prijavo</h1>
@@ -154,11 +163,15 @@ ${FOOTER}`,
   verifyAccount: {
     label: "Potrditev računa",
     description: "Aktivacija novega računa (povezava velja 24 ur).",
-    placeholders: [{ name: "confirmUrl", description: "Aktivacijska povezava" }],
-    sample: { confirmUrl: "https://nasmeh.si/potrdi-racun/primer" },
+    placeholders: [
+      { name: "confirmUrl", description: "Aktivacijska povezava" },
+      { name: "newsletterNote", description: "Stavek, da potrditev potrdi tudi prijavo na e-novice (prazen, če je ob registraciji ni bilo)" },
+    ],
+    requiredPlaceholders: ["confirmUrl"],
+    sample: { confirmUrl: "https://nasmeh.si/potrdi-racun/primer", newsletterNote: "S potrditvijo potrdite tudi prijavo na e-novice in ponudbe, ki ste jo izbrali." },
     defaultSubject: "Potrdite svoj račun — Nasmeh.si",
     defaultBody: `<h1 ${H1}>Dobrodošli na Nasmeh.si!</h1>
-<p ${P}>Za aktivacijo računa kliknite spodnji gumb (povezava velja 24 ur).</p>
+<p ${P}>Za aktivacijo računa kliknite spodnji gumb (povezava velja 24 ur). Na strani vnesite geslo, ki ste ga izbrali ob ustvarjanju računa. {{newsletterNote}}</p>
 <p style="margin:2rem 0;"><a href="{{confirmUrl}}" ${BUTTON}>Aktiviraj račun</a></p>
 <p style="font-size:0.75rem;line-height:1.5;color:rgb(99,99,102);">Če računa niste ustvarili, to sporočilo preprosto prezrite.</p>
 ${FOOTER}`,
@@ -167,6 +180,7 @@ ${FOOTER}`,
     label: "Ponastavitev gesla",
     description: "Povezava za novo geslo (velja 1 uro).",
     placeholders: [{ name: "resetUrl", description: "Povezava za ponastavitev" }],
+    requiredPlaceholders: ["resetUrl"],
     sample: { resetUrl: "https://nasmeh.si/ponastavi-geslo/primer" },
     defaultSubject: "Ponastavitev gesla — Nasmeh.si",
     defaultBody: `<h1 ${H1}>Ponastavitev gesla</h1>
@@ -202,6 +216,12 @@ const PLACEHOLDER = /\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*\}\}/g;
 /** Placeholder names used in a subject or body. */
 export function findPlaceholders(text: string): string[] {
   return [...new Set([...text.matchAll(PLACEHOLDER)].map((match) => match[1]))];
+}
+
+/** The key's required placeholders (its action link) that the body does not contain. */
+export function missingRequiredPlaceholders(key: EmailTemplateKey, body: string): string[] {
+  const present = new Set(findPlaceholders(body));
+  return (EMAIL_TEMPLATE_DEFS[key].requiredPlaceholders ?? []).filter((name) => !present.has(name));
 }
 
 /** Placeholders that the key does not provide (or block placeholders used in a subject). */

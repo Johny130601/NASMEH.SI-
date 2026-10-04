@@ -8,6 +8,8 @@ import { sellerBlockLines } from "@/lib/copy/legal";
 import { getCompany } from "@/lib/settings";
 import { companyPlaceholderFields } from "@/lib/settings-schemas";
 import { sanitizeContentHtml } from "@/lib/security/html-sanitizer";
+import { withHeadingIds } from "@/lib/content/toc";
+import { LegalToc, TOC_TARGET_CLASS } from "@/components/storefront/content/LegalToc";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +41,11 @@ export default async function ContentPageRoute({ params }: Params) {
   // The legal bodies name the seller "zgoraj" (terms §1/§2, privacy §1/§16), so
   // the block has to be here (ZVPot-1 pre-contract identity), server-rendered.
   const sellerLines = sellerBlockLines(company, companyPlaceholderFields(company));
+  // Operator HTML from the Phase 7 editor, sanitized again on render (AGENTS §8.24). A LEGAL
+  // body then gets its <h2> ids and table of contents — added after sanitizing, from the
+  // heading text only (QA 2026-10-03 T1-04).
+  const body = sanitizeContentHtml(page.body);
+  const { html, toc } = page.template === "LEGAL" ? withHeadingIds(body) : { html: body, toc: [] };
 
   return (
     <article className={`mx-auto ${landing ? "max-w-(--container-wide)" : "max-w-(--container-narrow)"} px-(--padding) py-16`} data-content-template={page.template}>
@@ -79,10 +86,11 @@ export default async function ContentPageRoute({ params }: Params) {
         </section>
       ) : null}
 
-      {/* Operator HTML from the Phase 7 editor, sanitized again on render (AGENTS §8.24) */}
+      <LegalToc entries={toc} />
+
       <div
-        className="content-prose mt-8"
-        dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(page.body) }}
+        className={`content-prose mt-8 ${toc.length > 0 ? TOC_TARGET_CLASS : ""}`}
+        dangerouslySetInnerHTML={{ __html: html }}
       />
       {page.template === "CONTACT" ? (
         <p className="mt-8">

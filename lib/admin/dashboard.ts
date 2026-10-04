@@ -18,14 +18,46 @@ export interface DashboardRange {
 
 export interface SeriesPoint { label: string; value: number }
 
+/**
+ * The KPI definitions (QA 2026-10-03 T4-02). Every money figure and count is
+ * over one cohort: the orders PAID in the range (by `paidAt`), whatever
+ * happened to them since. A paid order cancelled later (its money went back),
+ * one refunded in full or in part, and a captured payment the store could not
+ * fulfil all stay in; an order never paid is never in.
+ *
+ * - `orders` (Plačana naročila): how many orders were paid in the range.
+ * - `grossCents` (Plačano, in the revenue tile's hint): their totals as paid,
+ *   VAT and shipping included.
+ * - `refundedCents` (Vrnjeno): what has gone back on those orders since —
+ *   `Order.refundedCents`, so operator refunds, cancellations of paid orders,
+ *   settled stock-outs and refunds made in the provider's dashboard (which
+ *   have no Refund row) alike. A refund counts in the period its order was
+ *   paid in, not on the day it was made.
+ * - `revenueCents` (Prihodki): net, gross − refunded. The revenue series is
+ *   the same net per order by the day (week) of payment, so its bars add up
+ *   to the tile; the orders series counts the same orders.
+ * - `aovCents` and `itemsPerOrder`: per order as paid (gross), before refunds.
+ *   A captured payment still awaiting its refund counts in full until the
+ *   refund completes: it is money received and not yet returned.
+ */
+export interface DashboardKpis {
+  revenueCents: number;
+  grossCents: number;
+  refundedCents: number;
+  orders: number;
+  aovCents: number;
+  itemsPerOrder: number;
+}
+
 export interface DashboardData {
   range: DashboardRange;
-  kpis: { revenueCents: number; orders: number; aovCents: number; itemsPerOrder: number; refundedCents: number };
+  kpis: DashboardKpis;
   revenueSeries: SeriesPoint[];
   ordersSeries: SeriesPoint[];
   revenueByProduct: SeriesPoint[];
   ordersByStatus: Array<{ status: string; count: number }>;
-  recentOrders: Array<{ number: string; email: string; status: string; totalCents: number; createdAt: Date }>;
+  /** `anonymized`: the e-mail is an erasure placeholder, shown as a neutral label (QA 2026-10-03 T4-07). */
+  recentOrders: Array<{ number: string; email: string; anonymized: boolean; status: string; totalCents: number; createdAt: Date }>;
   lowStock: { threshold: number; variants: Array<{ sku: string; title: string; productTitle: string; stock: number; allowBackorder: boolean }> };
   pendingReviews: { count: number; items: Array<{ id: string; rating: number; productTitle: string; createdAt: Date }> };
   expiringCoupons: Array<{ code: string; endsAt: Date; usedCount: number; usageLimitTotal: number | null }>;
@@ -107,19 +139,108 @@ export function buildBuckets(range: DashboardRange): Array<{ key: number; label:
   return buckets;
 }
 
+/** One paid order as the KPIs read it; `refunds` are its COMPLETED refunds, whose `lines` name the units that went back. */
+export interface PaidOrderFacts {
+  paidAt: Date | null;
+  totalCents: number;
+  refundedCents: number;
+  items: Array<{ id: string; title: string; quantity: number; unitPriceCents: number }>;
+  refunds: Array<{ lines: unknown }>;
+}
+
+/**
+ * Units that went back per order line: every unit of an order refunded in
+ * full (a cancellation, a settled stock-out, a provider-side full refund that
+ * left no Refund row), otherwise the lines of its completed refunds. A
+ * money-only refund (an adjustment, shipping) names no unit.
+ */
+function refundedUnits(order: PaidOrderFacts): Map<string, number> {
+  const units = new Map<string, number>();
+  if (order.totalCents > 0 && order.refundedCents >= order.totalCents) {
+    for (const item of order.items) units.set(item.id, item.quantity);
+    return units;
+  }
+  for (const refund of order.refunds) {
+    if (!Array.isArray(refund.lines)) continue;
+    for (const line of refund.lines as Array<{ orderItemId?: unknown; quantity?: unknown }>) {
+      if (typeof line.orderItemId !== "string" || typeof line.quantity !== "number" || !(line.quantity > 0)) continue;
+      units.set(line.orderItemId, (units.get(line.orderItemId) ?? 0) + line.quantity);
+    }
+  }
+  return units;
+}
+
+/**
+ * The KPIs, both series and the product chart from the orders paid in the
+ * range (definitions at `DashboardKpis`). Pure, so the arithmetic is tested
+ * without a database.
+ *
+ * The product chart is the line value (unit price × quantity, VAT included)
+ * of the units kept: units refunded are taken out, so a cancelled or fully
+ * refunded order adds nothing. Shipping, order-level coupon discounts and
+ * money-only refund adjustments are not split by product, so its bars do not
+ * add up to the revenue tile; products whose every unit went back are left out.
+ */
+export function summarisePaidOrders(orders: PaidOrderFacts[], range: DashboardRange): Pick<DashboardData, "kpis" | "revenueSeries" | "ordersSeries" | "revenueByProduct"> {
+  const buckets = buildBuckets(range);
+  const revenueByBucket = new Map(buckets.map((bucket) => [bucket.key, 0]));
+  const ordersByBucket = new Map(buckets.map((bucket) => [bucket.key, 0]));
+  const revenueByProduct = new Map<string, number>();
+  let grossCents = 0;
+  let refundedCents = 0;
+  let itemCount = 0;
+  for (const order of orders) {
+    // Never more than was paid: the column is capped on write, the dashboard does not rely on it.
+    const refunded = Math.min(order.totalCents, Math.max(0, order.refundedCents));
+    const net = order.totalCents - refunded;
+    grossCents += order.totalCents;
+    refundedCents += refunded;
+    const key = bucketStart(order.paidAt ?? range.from, range.bucket).getTime();
+    if (revenueByBucket.has(key)) {
+      revenueByBucket.set(key, (revenueByBucket.get(key) ?? 0) + net);
+      ordersByBucket.set(key, (ordersByBucket.get(key) ?? 0) + 1);
+    }
+    const returned = refundedUnits(order);
+    for (const item of order.items) {
+      itemCount += item.quantity;
+      const kept = item.quantity - Math.min(item.quantity, returned.get(item.id) ?? 0);
+      if (kept > 0) revenueByProduct.set(item.title, (revenueByProduct.get(item.title) ?? 0) + item.unitPriceCents * kept);
+    }
+  }
+  const ranked = [...revenueByProduct].filter(([, value]) => value > 0).sort((a, b) => b[1] - a[1]);
+  const top = ranked.slice(0, 8).map(([label, value]) => ({ label, value }));
+  const rest = ranked.slice(8).reduce((sum, [, value]) => sum + value, 0);
+  const count = orders.length;
+  return {
+    kpis: {
+      revenueCents: grossCents - refundedCents,
+      grossCents,
+      refundedCents,
+      orders: count,
+      aovCents: count ? Math.round(grossCents / count) : 0,
+      itemsPerOrder: count ? Math.round((itemCount / count) * 10) / 10 : 0,
+    },
+    revenueSeries: buckets.map((bucket) => ({ label: bucket.label, value: revenueByBucket.get(bucket.key) ?? 0 })),
+    ordersSeries: buckets.map((bucket) => ({ label: bucket.label, value: ordersByBucket.get(bucket.key) ?? 0 })),
+    revenueByProduct: rest > 0 ? [...top, { label: "__other__", value: rest }] : top,
+  };
+}
+
 export async function loadDashboard(range: DashboardRange, now = new Date()): Promise<DashboardData> {
   const [orders, statusGroups, recentOrders, thresholdSetting, pendingCount, pendingItems, expiringCoupons] = await Promise.all([
+    // Every order paid in the range, whatever its status now (T4-02: a cancelled paid order is still a paid order whose money went back).
     db.order.findMany({
-      where: { paidAt: { gte: range.from, lte: range.to }, status: { not: "CANCELLED" } },
+      where: { paidAt: { gte: range.from, lte: range.to } },
       select: {
         paidAt: true, totalCents: true, refundedCents: true,
-        items: { select: { title: true, quantity: true, unitPriceCents: true } },
+        items: { select: { id: true, title: true, quantity: true, unitPriceCents: true } },
+        refunds: { where: { status: "COMPLETED" }, select: { lines: true } },
       },
     }),
     db.order.groupBy({ by: ["status"], _count: { _all: true } }),
     db.order.findMany({
       orderBy: { createdAt: "desc" }, take: 8,
-      select: { number: true, email: true, status: true, totalCents: true, createdAt: true },
+      select: { number: true, email: true, anonymizedAt: true, status: true, totalCents: true, createdAt: true },
     }),
     getSetting<unknown>("inventory.lowStockThreshold"),
     db.review.count({ where: { status: "PENDING" } }),
@@ -142,45 +263,11 @@ export async function loadDashboard(range: DashboardRange, now = new Date()): Pr
     select: { sku: true, title: true, stock: true, allowBackorder: true, product: { select: { title: true } } },
   });
 
-  const buckets = buildBuckets(range);
-  const revenueByBucket = new Map(buckets.map((bucket) => [bucket.key, 0]));
-  const ordersByBucket = new Map(buckets.map((bucket) => [bucket.key, 0]));
-  const revenueByProduct = new Map<string, number>();
-  let revenueCents = 0;
-  let refundedCents = 0;
-  let itemCount = 0;
-  for (const order of orders) {
-    const net = order.totalCents - order.refundedCents;
-    revenueCents += net;
-    refundedCents += order.refundedCents;
-    const key = bucketStart(order.paidAt ?? range.from, range.bucket).getTime();
-    if (revenueByBucket.has(key)) {
-      revenueByBucket.set(key, (revenueByBucket.get(key) ?? 0) + net);
-      ordersByBucket.set(key, (ordersByBucket.get(key) ?? 0) + 1);
-    }
-    for (const item of order.items) {
-      itemCount += item.quantity;
-      revenueByProduct.set(item.title, (revenueByProduct.get(item.title) ?? 0) + item.unitPriceCents * item.quantity);
-    }
-  }
-  const ranked = [...revenueByProduct].sort((a, b) => b[1] - a[1]);
-  const top = ranked.slice(0, 8).map(([label, value]) => ({ label, value }));
-  const rest = ranked.slice(8).reduce((sum, [, value]) => sum + value, 0);
-
   return {
     range,
-    kpis: {
-      revenueCents,
-      orders: orders.length,
-      aovCents: orders.length ? Math.round(revenueCents / orders.length) : 0,
-      itemsPerOrder: orders.length ? Math.round((itemCount / orders.length) * 10) / 10 : 0,
-      refundedCents,
-    },
-    revenueSeries: buckets.map((bucket) => ({ label: bucket.label, value: revenueByBucket.get(bucket.key) ?? 0 })),
-    ordersSeries: buckets.map((bucket) => ({ label: bucket.label, value: ordersByBucket.get(bucket.key) ?? 0 })),
-    revenueByProduct: rest > 0 ? [...top, { label: "__other__", value: rest }] : top,
+    ...summarisePaidOrders(orders, range),
     ordersByStatus: statusGroups.map((group) => ({ status: group.status, count: group._count._all })),
-    recentOrders,
+    recentOrders: recentOrders.map(({ anonymizedAt, ...order }) => ({ ...order, anonymized: anonymizedAt !== null })),
     lowStock: {
       threshold,
       variants: lowStockVariants.map((variant) => ({

@@ -10,9 +10,11 @@ import { kosForm } from "./catalog";
  *
  * Two things are deliberately absent. There is no subscription percentage,
  * because this store has no recurring-payment path and a saving nobody can
- * buy is a misleading claim; the row is interest capture only. And there is
- * no "free gift" or "extra unit" wording, because nothing in the data model
- * can prove such a claim (UCPD Annex I point 20).
+ * buy is a misleading claim; the row only says that monthly delivery is not
+ * available yet. It asks for nothing and stores nothing, so it confirms
+ * nothing either (AGENTS §8.23, QA 2026-10-03 T1-02). And there is no "free
+ * gift" or "extra unit" wording, because nothing in the data model can prove
+ * such a claim (UCPD Annex I point 20).
  */
 
 /**
@@ -108,13 +110,15 @@ export const bundle = {
     liveLabel: "Znesek izbrane ponudbe",
   },
 
+  /**
+   * Information only: no control, no e-mail asked for, nothing stored — so no
+   * thank-you either, which would confirm something that did not happen
+   * (AGENTS §8.23, QA 2026-10-03 T1-02).
+   */
   subscription: {
     title: "Mesečna dostava",
     note: "Redna dostava izdelka še ni na voljo.",
     soon: "Kmalu",
-    /** What ticking the box does — and, plainly, what it does not do. */
-    interest: "Obvestite me, ko bo mesečna dostava na voljo.",
-    acknowledged: "Hvala — sporočili vam bomo. Na ceno paketa to ne vpliva.",
   },
 
   addOns: {

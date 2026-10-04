@@ -49,6 +49,16 @@ export interface SeoInput {
   image?: string;
 }
 
+/**
+ * A product page's canonical path (one product per /izdelek/<slug>): its Open
+ * Graph type is "product", every other page's "website" (QA 2026-10-03).
+ * Next's `openGraph.type` has no "product" (an unknown type throws while the
+ * head renders), so a product page's og:type goes out through `other` — Next
+ * writes it as `<meta name="og:type">`, which Open Graph readers accept — and
+ * its openGraph block carries no type of its own, nor the layout's "website".
+ */
+const PRODUCT_PATH = /^\/izdelek\/[^/?#]+$/;
+
 /** Per-page metadata: canonical, OG, Twitter, noindex (spec §3.3). */
 export function buildMetadata({
   title,
@@ -59,9 +69,18 @@ export function buildMetadata({
 }: SeoInput): Metadata {
   const url = `${siteUrl()}${path}`;
   const ogImage = image ?? DEFAULT_OG_IMAGE;
+  const product = PRODUCT_PATH.test(path);
   // A page without its own description must not override the root layout's default with
   // `undefined` (Next merges the key, and the page then has no meta description — QA T7-F7).
   const described = description ? { description } : {};
+  const openGraph = {
+    title,
+    ...described,
+    url,
+    siteName: common.siteName,
+    locale: "sl_SI",
+    images: [{ url: ogImage, width: 1200, height: 628 }],
+  };
   return {
     title,
     ...described,
@@ -69,15 +88,8 @@ export function buildMetadata({
     ...(noindex
       ? { robots: { index: false, follow: false } }
       : {}),
-    openGraph: {
-      title,
-      ...described,
-      url,
-      siteName: common.siteName,
-      locale: "sl_SI",
-      type: "website",
-      images: [{ url: ogImage, width: 1200, height: 628 }],
-    },
+    ...(product ? { other: { "og:type": "product" } } : {}),
+    openGraph: product ? openGraph : { ...openGraph, type: "website" as const },
     twitter: {
       card: "summary_large_image",
       title,

@@ -1,5 +1,6 @@
 import type { EmailTemplateKey } from "@/lib/email/template-defs";
 import { orderConfirmationRequiredHtml, type OrderConfirmationLegal } from "./order-confirmation";
+import { renderBackInStockUnsubscribeBlock } from "./back-in-stock";
 import { renderSubscriptionUnsubscribeBlock } from "./verify-subscription";
 import type { RequiredHtml } from "./render";
 
@@ -27,6 +28,8 @@ export function sampleRequiredHtml(key: EmailTemplateKey, sample: Record<string,
       return orderConfirmationRequiredHtml({ estimate: sample.estimate || null, legal: SAMPLE_LEGAL });
     case "verifySubscription":
       return renderSubscriptionUnsubscribeBlock("https://nasmeh.si/odjava-novice/primer");
+    case "backInStockConfirm":
+      return renderBackInStockUnsubscribeBlock("https://nasmeh.si/odjava-zaloga/primer");
     default:
       return "";
   }

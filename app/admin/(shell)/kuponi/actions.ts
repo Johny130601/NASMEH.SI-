@@ -8,7 +8,7 @@ import { requirePermission } from "@/lib/admin/access";
 import { couponIsUnused, couponSchema, toCouponData, type CouponInput } from "@/lib/admin/coupons";
 import { couponInvalidReason } from "@/lib/admin/coupons-schema";
 
-export type CouponActionResult = { ok: true; id?: string } | { ok: false; error: "invalid" | "codeInvalid" | "not_found" | "codeTaken" | "used" };
+export type CouponActionResult = { ok: true; id?: string } | { ok: false; error: "invalid" | "codeInvalid" | "emailsInvalid" | "not_found" | "codeTaken" | "used" };
 
 const idSchema = z.string().min(1).max(64);
 

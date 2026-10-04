@@ -11,6 +11,8 @@ import { UiFormField, UiInput } from "@/components/storefront/ui/UiInput";
 const c = copy.catalog.editor.media;
 const selectClass = "min-h-[2.75rem] rounded-input border border-light-1 bg-white px-3 text-sm outline-none focus:border-brand";
 const smallButton = "rounded-btn border border-light-1 px-3 py-1.5 text-xs";
+/** Files one upload takes; the server refuses more in one request too (izdelki/actions.ts). */
+const MAX_FILES = 4;
 
 export interface MediaRow { id: string; url: string; alt: string; kind: "GALLERY" | "CARD" | "HERO"; sortOrder: number }
 
@@ -40,8 +42,43 @@ export function MediaManager({ productId, media }: { productId: string; media: M
           event.preventDefault();
           const form = event.currentTarget;
           const data = new FormData(form);
-          data.set("productId", productId);
-          run(async () => { const result = await uploadProductMediaAction(data); if (result.ok) form.reset(); return result; }, c.uploaded);
+          // One file per request, as the media library does: four large photos in one request met the
+          // 10 MB Server Action limit and failed with a bare error (QA 2026-10-03 T5-05).
+          const picked = data.getAll("files").filter((entry): entry is File => entry instanceof File && entry.size > 0);
+          const files = picked.slice(0, MAX_FILES);
+          // Every file's outcome is reported: a refused one no longer hides the ones already stored,
+          // and the selection is cleared once any landed, so a retry cannot store them twice (QA 2026-10-03 V5-02/V5-03).
+          setMessage(null);
+          startTransition(async () => {
+            const refused: string[] = [];
+            let stored = 0;
+            try {
+              for (const file of files) {
+                const one = new FormData();
+                one.set("productId", productId);
+                one.set("kind", String(data.get("kind") ?? ""));
+                one.set("alt", String(data.get("alt") ?? ""));
+                one.append("files", file, file.name);
+                const result = await uploadProductMediaAction(one);
+                if (result.ok) stored += 1;
+                else refused.push(file.name);
+              }
+            } catch {
+              refused.push(...files.slice(stored + refused.length).map((file) => file.name));
+            }
+            // only the files are cleared: the kind and the alt stay for a retry of the refused ones (QA 2026-10-03 W2-01)
+            if (stored > 0) { const input = form.elements.namedItem("files"); if (input instanceof HTMLInputElement) input.value = ""; }
+            const parts = [
+              refused.length === 0
+                ? (stored === 1 ? c.uploaded : c.uploadedMany.replace("{count}", String(stored)))
+                : stored === 0
+                  ? c.refusedAll.replace("{files}", refused.join(", "))
+                  : c.uploadedPartly.replace("{ok}", String(stored)).replace("{total}", String(files.length)).replace("{files}", refused.join(", ")),
+              picked.length > MAX_FILES ? c.tooMany.replace("{max}", String(MAX_FILES)) : "",
+            ].filter(Boolean);
+            setMessage({ ok: refused.length === 0 && picked.length <= MAX_FILES, text: parts.join(" ") });
+            if (stored > 0) router.refresh();
+          });
         }}
       >
         <UiFormField label={c.file} htmlFor="media-files">

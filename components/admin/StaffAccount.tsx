@@ -22,7 +22,7 @@ export function StaffAccount() {
           try {
             const result = await regenerateRecoveryCodesAction({ code });
             if (result.ok) setCodes(result.recoveryCodes);
-            else setError(copy.mfa.invalid);
+            else setError(result.reason === "rate_limited" ? copy.mfa.rateLimited : copy.mfa.invalid);
           } catch {
             setError(copy.common.error);
           }

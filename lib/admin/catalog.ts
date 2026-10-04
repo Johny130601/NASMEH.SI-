@@ -69,7 +69,9 @@ export const variantSchema = z.object({
   costCents: z.number().int().min(0).max(10_000_000).nullable(),
   barcode: optionalText(40),
   weightGrams: z.number().int().min(0).max(100_000).nullable(),
-  stock: z.number().int().min(0).max(1_000_000),
+  // A backordered variant's stock may stand below zero; the save writes stock only when the
+  // operator changed the figure, and a new figure must be ≥ 0 (QA 2026-10-03 T5-02).
+  stock: z.number().int().min(-1_000_000).max(1_000_000),
   maxCartQuantity: z.number().int().min(1).max(20),
   allowBackorder: z.boolean(),
   backorderNote: optionalText(160),
@@ -243,7 +245,7 @@ export async function loadProductEditor(id: string) {
     include: {
       variants: {
         orderBy: { createdAt: "asc" },
-        include: { priceHistory: { orderBy: { createdAt: "desc" }, take: 8 }, _count: { select: { orderItems: true, bundleItems: true } } },
+        include: { priceHistory: { orderBy: { createdAt: "desc" }, take: 8 }, _count: { select: { orderItems: true, bundleItems: true, priceHistory: true } } },
       },
       media: { orderBy: [{ kind: "asc" }, { sortOrder: "asc" }] },
       collections: { select: { collectionId: true, position: true } },
@@ -314,7 +316,7 @@ export async function loadBundle(productId: string) {
     where: { id: productId },
     select: {
       id: true, title: true, slug: true, status: true,
-      variants: { select: { id: true, sku: true, priceCents: true, maxCartQuantity: true }, orderBy: { createdAt: "asc" } },
+      variants: { select: { id: true, sku: true, priceCents: true, maxCartQuantity: true, stock: true }, orderBy: { createdAt: "asc" } },
       bundle: { include: { items: { include: { variant: { select: { id: true, sku: true, title: true, priceCents: true, product: { select: { title: true } } } } }, orderBy: { id: "asc" } } } },
     },
   });

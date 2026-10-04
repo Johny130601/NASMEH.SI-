@@ -23,18 +23,21 @@ export function ReviewForm({
   alreadySubmitted = false,
 }: {
   orderItemId: string;
-  defaultRating: number;
+  /** The star clicked in the review mail; null when the shopper has not chosen one. */
+  defaultRating: number | null;
   ratingToken: string;
   productTitle: string;
   alreadySubmitted?: boolean;
 }) {
-  const [rating, setRating] = useState(defaultRating);
+  const [rating, setRating] = useState<number | null>(defaultRating);
   const [result, setResult] = useState<{ ok: boolean; error?: string; auto?: boolean } | null>(null);
   const [pending, startTransition] = useTransition();
   const photosRef = useRef<HTMLInputElement>(null);
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    // no star is chosen for the shopper: the rating is theirs to give
+    if (rating === null) { setResult({ ok: false, error: copy.form.ratingRequired }); return; }
     const form = new FormData(event.currentTarget);
     form.set("rating", String(rating));
     form.set("orderItemId", orderItemId);
@@ -81,9 +84,9 @@ export function ReviewForm({
           {[1, 2, 3, 4, 5].map((value) => (
             <label key={value} className="cursor-pointer p-1">
               <input type="radio" name="rating" value={value} checked={rating === value}
-                onChange={() => setRating(value)} aria-label={`${value} ${copy.display.starsLabel}`}
+                onChange={() => { setRating(value); setResult(null); }} aria-label={`${value} ${copy.display.starsLabel}`}
                 className="peer sr-only" data-star={value} />
-              <UiIcon name="star" className={`h-8 w-8 rounded-input peer-focus-visible:outline-2 peer-focus-visible:outline-brand ${value <= rating ? "fill-brand text-brand" : "text-light-1"}`} />
+              <UiIcon name="star" className={`h-8 w-8 rounded-input peer-focus-visible:outline-2 peer-focus-visible:outline-brand ${rating !== null && value <= rating ? "fill-brand text-brand" : "text-light-1"}`} />
             </label>
           ))}
         </div>

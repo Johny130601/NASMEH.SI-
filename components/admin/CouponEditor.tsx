@@ -19,6 +19,7 @@ export function errorText(result: Extract<CouponActionResult, { ok: false }>, co
   switch (result.error) {
     case "codeTaken": return c.editor.codeTaken;
     case "codeInvalid": return c.editor.codeInvalid.replace("{code}", code.trim().toUpperCase());
+    case "emailsInvalid": return c.editor.emailsInvalid;
     case "used": return c.editor.used;
     case "not_found": return copy.common.error;
     default: return c.editor.invalid;

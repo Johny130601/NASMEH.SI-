@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { isStaffRole } from "@/lib/admin/permissions";
+import { signInForThisRequest } from "@/lib/auth-redirect";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function AdminRootLayout({ children }: { children: ReactNode }) {
   const session = await auth();
-  if (!session?.user) redirect("/prijava");
+  if (!session?.user) redirect(await signInForThisRequest());
   if (!isStaffRole(session.user.role)) redirect("/racun");
   return <div className="min-h-screen bg-light-4 text-dark-1">{children}</div>;
 }

@@ -433,7 +433,8 @@ async function seedSettings() {
       key: "marquee.text",
       // "od", not "nad": the cart grants free shipping AT the threshold (>=),
       // and this is a price claim — see lib/copy/pdp `trust.freeShipping`.
-      value: "Brezplačna dostava pri naročilih od 45 €",
+      // {prag} is filled from shipping.freeThresholdCents (lib/content/tokens, QA 2026-10-03 T6-05).
+      value: "Brezplačna dostava pri naročilih od {prag}",
     },
     // 20260930100000_qa_storefront_links moves unedited rows here too: an empty checkout is no landing page (QA T1-19).
     { key: "marquee.href", value: "/trgovina" },
@@ -532,8 +533,9 @@ async function seedSettings() {
         body: "Prijavite se na e-novice in prejmite kodo za 10 % popusta na vaše prvo naročilo — plus možnost testiranja novih izdelkov.",
         cta: "Pošlji kodo",
         thankYouTitle: "Koda je vaša! 🎉",
+        // {koda} is filled with couponCode (lib/content/tokens, QA 2026-10-03 T6-04)
         thankYouBody:
-          "Preverite nabiralnik in potrdite prijavo. Koda WELCOME10 je že shranjena za blagajno.",
+          "Preverite nabiralnik in potrdite prijavo. Koda {koda} je že shranjena za blagajno.",
       },
     },
     {

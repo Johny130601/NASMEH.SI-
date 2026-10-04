@@ -5,6 +5,7 @@ import { requirePagePermission } from "@/lib/admin/access";
 import { CUSTOMER_SCAN_LIMIT, listCustomers, parseCustomerFilters } from "@/lib/admin/customers";
 import { formatEUR } from "@/lib/pricing";
 import { admin as copy } from "@/lib/copy";
+import { AdminTableScroll } from "@/components/admin/AdminTableScroll";
 
 export const metadata: Metadata = { title: copy.customers.title, robots: { index: false, follow: false } };
 
@@ -70,7 +71,8 @@ export default async function AdminCustomersPage({ searchParams }: { searchParam
       {result.truncated ? <p role="status" className="mt-3 text-sm text-warning" data-list-truncated>{copy.common.truncated.replace("{n}", String(CUSTOMER_SCAN_LIMIT))}</p> : null}
       <p className="mt-2 text-xs text-mid-2">{copy.customers.total.replace("{total}", String(result.total))}</p>
 
-      <div className="mt-3 overflow-x-auto rounded-card border border-light-2 bg-white">
+      {/* Seven columns are wider than the card at tablet widths: the wrapper shows that it scrolls (QA 2026-10-03 T4-10). */}
+      <AdminTableScroll label={copy.customers.title} className="mt-3">
         <table className="w-full min-w-[56rem] text-sm">
           <thead className="text-left text-xs text-mid-2">
             <tr>
@@ -94,7 +96,7 @@ export default async function AdminCustomersPage({ searchParams }: { searchParam
             ))}
           </tbody>
         </table>
-      </div>
+      </AdminTableScroll>
 
       {result.pages > 1 ? (
         <nav className="mt-4 flex items-center gap-3 text-sm">

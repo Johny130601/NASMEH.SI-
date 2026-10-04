@@ -118,6 +118,12 @@ test("a locked store refuses Server Actions on every gated path: the gate keeps 
       maxRedirects: 0,
     });
     expect(action.status()).toBe(503);
+    // The crawler files do not list a locked catalog: "temporarily unavailable" (QA 2026-10-03 T6-09).
+    for (const file of ["/sitemap.xml", "/robots.txt"]) {
+      const locked = await request.get(file, { maxRedirects: 0 });
+      expect(locked.status(), file).toBe(503);
+      expect(await locked.text(), file).not.toContain("/izdelek/");
+    }
     // …while the gate's own unlock posts to /vzdrzevanje, which the allow-list lets through.
     await page.goto("/trgovina");
     await expect(page).toHaveURL(/\/vzdrzevanje\?od=/);

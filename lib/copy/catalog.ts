@@ -46,6 +46,9 @@ export const catalog = {
     atCap: "V košarici je že največja dovoljena količina.",
     /** The add did not go through: sold out meanwhile, refused, or the request failed. */
     addFailed: "Dodajanje ni uspelo. Poskusite znova.",
+    /** The product sold out (or was withdrawn) since the page was opened (QA 2026-10-03 T5-07). */
+    soldOutNow: "Izdelek je medtem razprodan.",
+    unavailableNow: "Izdelek trenutno ni na voljo.",
     buildBundle: "Sestavi paket",
     notifyMe: "Obvestite me",
     soldOut: "Razprodano",

@@ -3,6 +3,7 @@ import { formatDdvLine, formatEUR } from "@/lib/pricing";
 import { email as copy } from "@/lib/copy/email";
 import { returns } from "@/lib/copy/returns";
 import type { CompanySetting } from "@/lib/settings";
+import { companyPlaceholderFields } from "@/lib/settings-schemas";
 import { telHref } from "@/lib/phone";
 import { sanitizedText } from "@/lib/email/sanitize";
 import { emailLayout, emailStyles, escapeHtml } from "./layout";
@@ -54,10 +55,17 @@ export function renderOrderConfirmationLegalBlock(legal: OrderConfirmationLegal,
   const { seller, links, accepted } = legal;
   const phone = seller.phone?.trim();
   const phoneHref = phone ? telHref(phone) : null;
+  // A seed placeholder is never stated as the seller's identity (gate G4): its line is left
+  // out, as the footer and the legal pages leave the block out (QA 2026-10-03 F-SHOP).
+  const placeholders = new Set<string>(companyPlaceholderFields(seller));
+  const registry = [
+    placeholders.has("registrationNumber") ? null : `${legalCopy.registration}: ${escapeHtml(seller.registrationNumber)}`,
+    placeholders.has("vatId") ? null : `${legalCopy.vatId}: ${escapeHtml(seller.vatId)}`,
+  ].filter((part): part is string => part !== null);
   const sellerLines = [
     `<strong>${escapeHtml(seller.name)}</strong>`,
-    escapeHtml(seller.address),
-    `${legalCopy.registration}: ${escapeHtml(seller.registrationNumber)} · ${legalCopy.vatId}: ${escapeHtml(seller.vatId)}`,
+    ...(placeholders.has("address") ? [] : [escapeHtml(seller.address)]),
+    ...(registry.length > 0 ? [registry.join(" · ")] : []),
     `${legalCopy.email}: ${link(`mailto:${seller.email}`, seller.email)}`,
     ...(phone ? [`${legalCopy.phone}: ${phoneHref ? link(phoneHref, phone) : escapeHtml(phone)}`] : []),
   ];
@@ -113,7 +121,7 @@ export function renderOrderItemsTable(order: Order & { items: OrderItem[] }): st
   const discount = order.discountCents > 0
     ? row(escapeHtml(order.couponCode ? text.discountWithCode(order.couponCode) : text.discountLabel), `−${formatEUR(order.discountCents)}`)
     : "";
-  const shipping = row(`${text.shippingLabel} (${escapeHtml(order.shippingMethod ?? "")})`, formatEUR(order.shippingCents), `${ROW}${RULE}`);
+  const shipping = row(`${text.shippingLabel} (${escapeHtml(order.shippingMethod ?? "")})`, order.shippingCents === 0 ? text.shippingFree : formatEUR(order.shippingCents), `${ROW}${RULE}`);
   const total = row(text.totalLabel, formatEUR(order.totalCents), "padding:0.4rem 0;font-size:1rem;font-weight:500;");
   const vat = `<tr><td colspan="2" style="padding:0 0 0.4rem;font-size:0.8rem;color:rgb(99,99,102);text-align:right;">${escapeHtml(formatDdvLine(order.totalCents, order.vatRatePercent))}</td></tr>`;
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:1rem 0;${RULE}">${lines}${discount}${shipping}${total}${vat}</table>`;

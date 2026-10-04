@@ -21,6 +21,7 @@ import { KodaNotice, type KodaRefusal } from "@/components/storefront/cart/KodaN
 import { CatalogCard } from "@/components/storefront/catalog/CatalogCard";
 import { PAYMENT_METHODS, PaymentIcons } from "@/components/storefront/ui/PaymentIcons";
 import { UiButton } from "@/components/storefront/ui/UiButton";
+import { UiPill } from "@/components/storefront/ui/UiPill";
 
 export const dynamic = "force-dynamic";
 
@@ -219,6 +220,14 @@ export default async function CartPage({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-3">
                         <div>
+                          {/* Offer label pill (spec §7.1): a bundle line says it is one */}
+                          {line.isBundle ? (
+                            <p className="mb-1.5">
+                              <UiPill variant="brand" className="uppercase" data-line-pill="bundle">
+                                {cart.line.bundlePill}
+                              </UiPill>
+                            </p>
+                          ) : null}
                           <Link
                             href={`/izdelek/${hydratedLine.productSlug}`}
                             className="text-sm font-medium text-dark-1"

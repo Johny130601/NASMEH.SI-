@@ -81,8 +81,10 @@ export type CouponValues = z.output<typeof couponSchema>;
 
 /**
  * Which refusal a failed coupon validation reports (QA T6-11): a bad code gets
- * the code's own message, anything else the general one.
+ * the code's own message, a bad address list names that field (QA 2026-10-03
+ * T5-11), anything else the general one.
  */
-export function couponInvalidReason(issues: ReadonlyArray<{ path: ReadonlyArray<PropertyKey> }>): "codeInvalid" | "invalid" {
-  return issues.some((issue) => issue.path[issue.path.length - 1] === "code") ? "codeInvalid" : "invalid";
+export function couponInvalidReason(issues: ReadonlyArray<{ path: ReadonlyArray<PropertyKey> }>): "codeInvalid" | "emailsInvalid" | "invalid" {
+  if (issues.some((issue) => issue.path[issue.path.length - 1] === "code")) return "codeInvalid";
+  return issues.some((issue) => issue.path.includes("eligibleEmails")) ? "emailsInvalid" : "invalid";
 }

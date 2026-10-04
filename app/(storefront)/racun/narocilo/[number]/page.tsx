@@ -2,12 +2,13 @@ import { isStaffRole } from "@/lib/admin/permissions";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { signInPath } from "@/lib/auth-callback";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { formatEUR } from "@/lib/pricing";
 import { buildMetadata } from "@/lib/seo";
 import { trackingUrl } from "@/lib/tracking";
-import { account as copy } from "@/lib/copy";
+import { account as copy, checkout } from "@/lib/copy";
 import { OrderStatusPill } from "@/components/storefront/account/OrderStatusPill";
 import { uiButtonClasses } from "@/components/storefront/ui/UiButton";
 import { hasIssuedInvoice, snapshotAddressLines } from "@/lib/account/order-view";
@@ -26,10 +27,10 @@ export default async function OrderDetailPage({
 }: {
   params: Promise<{ number: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user) redirect("/prijava");
-
   const { number } = await params;
+  const session = await auth();
+  if (!session?.user) redirect(signInPath(`/racun/narocilo/${number}`));
+
   const order = await db.order.findUnique({
     where: { number },
     include: {
@@ -129,7 +130,7 @@ export default async function OrderDetailPage({
             ) : null}
             <div className="flex justify-between">
               <dt className="text-mid-1">{copy.detail.shipping}</dt>
-              <dd className="text-dark-1" data-order-shipping>{formatEUR(order.shippingCents)}</dd>
+              <dd className="text-dark-1" data-order-shipping>{order.shippingCents === 0 ? checkout.shipping.free : formatEUR(order.shippingCents)}</dd>
             </div>
             <div className="flex justify-between border-t border-light-3 pt-2 text-base font-medium">
               <dt className="text-dark-1">{copy.detail.total}</dt>

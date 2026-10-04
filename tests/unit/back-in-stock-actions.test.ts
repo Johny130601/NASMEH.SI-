@@ -70,7 +70,7 @@ describe("subscribeBackInStockAction", () => {
       select: { id: true },
     });
     const created = mocks.dbSubscription.createManyAndReturn.mock.calls[0][0].data[0].confirmToken;
-    expect(mocks.sendMail).toHaveBeenCalledWith("ana@test.si", created, PRODUCT.title);
+    expect(mocks.sendMail).toHaveBeenCalledWith("ana@test.si", created, PRODUCT.title, ID);
   });
 
   it("answers the same for an address that already holds a confirmed alert, and mails nothing (finding A1)", async () => {
@@ -100,7 +100,7 @@ describe("subscribeBackInStockAction", () => {
     expect(mocks.dbSubscription.updateMany).toHaveBeenCalledWith({
       where: { id: ID, status: "PENDING", confirmToken: TOKEN }, data: { variantId: PRODUCT.variants[0].id },
     });
-    expect(mocks.sendMail).toHaveBeenCalledWith("ana@test.si", TOKEN, PRODUCT.title);
+    expect(mocks.sendMail).toHaveBeenCalledWith("ana@test.si", TOKEN, PRODUCT.title, ID);
   });
 
   it("does not write or re-mail a pending row whose mail just went out", async () => {
@@ -136,7 +136,7 @@ describe("subscribeBackInStockAction", () => {
       },
     });
     expect(call.data.confirmToken).not.toBe(TOKEN);
-    expect(mocks.sendMail).toHaveBeenCalledWith("ana@test.si", call.data.confirmToken, PRODUCT.title);
+    expect(mocks.sendMail).toHaveBeenCalledWith("ana@test.si", call.data.confirmToken, PRODUCT.title, ID);
   });
 
   it("bounds the verification mails per address and still answers uniformly (finding A4)", async () => {

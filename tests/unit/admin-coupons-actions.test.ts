@@ -64,6 +64,8 @@ describe("coupon actions (direct calls)", () => {
     expect(await createCouponAction({ ...input, code: "Q6" })).toEqual({ ok: false, error: "codeInvalid" });
     expect(await createCouponAction({ ...input, code: "QA6 BAD!" })).toEqual({ ok: false, error: "codeInvalid" });
     expect(await saveCouponAction({ couponId, coupon: { ...input, code: "-X1" } })).toEqual({ ok: false, error: "codeInvalid" });
+    // a bad address names its field, not the percent/amount/date rules (QA 2026-10-03 T5-11)
+    expect(await saveCouponAction({ couponId, coupon: { ...input, eligibleEmails: ["ana@test.si", "ni-naslov"] } })).toEqual({ ok: false, error: "emailsInvalid" });
     mocks.couponCreate.mockRejectedValueOnce(p2002);
     expect(await createCouponAction(input)).toEqual({ ok: false, error: "codeTaken" });
     mocks.couponUpdate.mockRejectedValueOnce(new Prisma.PrismaClientKnownRequestError("missing", { code: "P2025", clientVersion: "6" }));

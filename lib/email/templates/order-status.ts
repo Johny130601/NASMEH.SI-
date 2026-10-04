@@ -19,12 +19,15 @@ function escapeHtml(value: string): string {
 /** Transition notifications (§14.7): one short message per status change. */
 export function renderOrderStatusEmail(kind: OrderStatusMailKind, order: Pick<Order, "number">, details: OrderStatusMailDetails): string {
   const text = copy.orderStatus[kind];
-  const amount = kind === "refunded" && details.amountCents !== undefined
+  // a paid order cancelled by staff names the refund that went with it (QA 2026-10-03 T4-05)
+  const cancelledWithRefund = kind === "cancelled" && details.amountCents !== undefined && details.amountCents > 0;
+  const body = cancelledWithRefund ? copy.orderStatus.cancelledRefunded.body : text.body;
+  const amount = (kind === "refunded" || cancelledWithRefund) && details.amountCents !== undefined
     ? `<p style="${emailStyles.p}">${copy.orderStatus.refundedAmountLabel}: <strong>${formatEUR(details.amountCents)}</strong></p>`
     : "";
   return emailLayout(`
     <h1 style="${emailStyles.h1}">${text.heading}</h1>
-    <p style="${emailStyles.p}">${text.body}<br /><strong>${escapeHtml(order.number)}</strong></p>
+    <p style="${emailStyles.p}">${body}<br /><strong>${escapeHtml(order.number)}</strong></p>
     ${amount}
     <p style="margin:2rem 0;">
       <a href="${details.accountUrl.replace(/"/g, "%22")}" style="${emailStyles.button}">${copy.orderStatus.cta}</a>

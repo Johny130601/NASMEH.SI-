@@ -3,6 +3,12 @@ export const common = {
   siteName: "Nasmeh.si",
   siteTagline: "Svetel nasmeh, naravno.",
   currencyNote: "Vse cene vključujejo DDV.",
+  /** The storefront's first Tab stop: jumps past the header to <main> (WCAG 2.4.1). */
+  skipToContent: "Preskoči na vsebino",
+  /** Table of contents above a legal page body (spec §12.5 "legal w/ TOC"). */
+  toc: {
+    title: "Kazalo vsebine",
+  },
   nav: {
     shop: "TRGOVINA",
     explore: "RAZIŠČI",

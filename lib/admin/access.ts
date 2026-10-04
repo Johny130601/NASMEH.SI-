@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { signInForThisRequest } from "@/lib/auth-redirect";
 import { auth } from "@/lib/auth";
 import { can, isStaffRole, type Permission, type StaffRole } from "./permissions";
 
@@ -54,7 +55,7 @@ export async function requirePagePermission(permission: Permission, options: Acc
     staff = await requirePermission(permission, options);
   } catch (error) {
     if (!(error instanceof AdminAccessError)) throw error;
-    if (error.reason === "unauthenticated") redirect("/prijava");
+    if (error.reason === "unauthenticated") redirect(await signInForThisRequest());
     if (error.reason === "not_staff") redirect("/racun");
     if (error.reason === "mfa_required") redirect("/admin/2fa");
     redirect("/admin?dostop=zavrnjen");

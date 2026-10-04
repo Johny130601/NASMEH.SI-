@@ -28,10 +28,11 @@ const inputSchema = z.object({
 /**
  * Generous on purpose: one save per visitor is normal, but carrier-grade NAT
  * (and the e2e suite, one address for every spec) puts many visitors behind
- * one address. It bounds anonymous ConsentLog inserts per client.
+ * one address. It bounds anonymous ConsentLog inserts per client. 240: the
+ * suite of 2026-10-03 (~215 browser tests in five minutes) saved past 120.
  * (Not exported: a "use server" module may only export async functions.)
  */
-const CONSENT_SAVE_LIMIT = { limit: 120, windowMs: 10 * 60_000 } as const;
+const CONSENT_SAVE_LIMIT = { limit: 240, windowMs: 10 * 60_000 } as const;
 
 export type SaveConsentResult =
   /** `clearCookies`: names and prefix patterns the browser expires for the denied categories (static list + live cookie table). */

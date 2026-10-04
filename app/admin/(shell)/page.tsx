@@ -82,14 +82,20 @@ export default async function AdminDashboardPage({
         </p>
       ) : null}
 
+      {/* One cohort, the orders paid in the range: net = gross − refunded on the tile itself (definitions: lib/admin/dashboard.ts, QA 2026-10-03 T4-02). */}
       <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <StatTile label={copy.dashboard.kpis.revenue} value={formatEUR(data.kpis.revenueCents)} hint={`${copy.dashboard.kpis.refunded}: ${formatEUR(data.kpis.refundedCents)}`} />
-        <StatTile label={copy.dashboard.kpis.orders} value={count(data.kpis.orders)} />
-        <StatTile label={copy.dashboard.kpis.aov} value={formatEUR(data.kpis.aovCents)} />
+        <StatTile
+          label={copy.dashboard.kpis.revenue}
+          value={formatEUR(data.kpis.revenueCents)}
+          hint={`${copy.dashboard.kpis.gross}: ${formatEUR(data.kpis.grossCents)} · ${copy.dashboard.kpis.refunded}: ${formatEUR(data.kpis.refundedCents)}`}
+        />
+        <StatTile label={copy.dashboard.kpis.orders} value={count(data.kpis.orders)} hint={copy.dashboard.kpis.ordersHint} />
+        <StatTile label={copy.dashboard.kpis.aov} value={formatEUR(data.kpis.aovCents)} hint={copy.dashboard.kpis.aovHint} />
         <StatTile label={copy.dashboard.kpis.itemsPerOrder} value={data.kpis.itemsPerOrder.toLocaleString("sl-SI")} />
         <StatTile label={copy.dashboard.kpis.sessions} value={copy.common.none} hint={copy.dashboard.kpis.unavailable} />
         <StatTile label={copy.dashboard.kpis.conversion} value={copy.common.none} hint={copy.dashboard.kpis.unavailable} />
       </div>
+      <p className="mt-2 text-xs text-mid-2" data-kpi-scope>{copy.dashboard.kpis.scope}</p>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <BarChart
@@ -140,7 +146,8 @@ export default async function AdminDashboardPage({
                   <tr key={order.number} className="border-t border-light-2">
                     {/* The number, status and total never break; the e-mail takes the squeeze. */}
                     <td className="whitespace-nowrap py-2 pr-3 font-medium" style={{ fontVariantNumeric: "tabular-nums" }}>{order.number}</td>
-                    <td className="break-all py-2 pr-3 text-mid-1">{order.email}</td>
+                    {/* An erased buyer reads as a neutral label, never the placeholder address (QA 2026-10-03 T4-07). */}
+                    <td className="break-all py-2 pr-3 text-mid-1">{order.anonymized ? copy.common.anonymised : order.email}</td>
                     <td className="whitespace-nowrap py-2 pr-3">{statusLabel(order.status)}</td>
                     <td className="whitespace-nowrap py-2 text-right" style={{ fontVariantNumeric: "tabular-nums" }}>{formatEUR(order.totalCents)}</td>
                   </tr>

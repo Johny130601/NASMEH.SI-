@@ -3,7 +3,8 @@ import Link from "next/link";
 import { requirePagePermission } from "@/lib/admin/access";
 import { listReviews, parseReviewFilters, REVIEW_STATUSES, reviewCounts, reviewedProducts } from "@/lib/admin/reviews";
 import { reviewPhotoPaths } from "@/lib/reviews/photos";
-import { reviews as copy } from "@/lib/copy";
+import { admin, reviews as copy } from "@/lib/copy";
+import { isAnonymisedEmail } from "@/lib/admin/customers";
 import { ReviewSettings } from "@/components/admin/ReviewSettings";
 import { getSetting } from "@/lib/settings";
 import type { ReviewSettings as ReviewSettingsValues } from "@/lib/reviews/settings";
@@ -86,7 +87,8 @@ export default async function AdminReviewsPage({ searchParams }: { searchParams:
                   merchantReply: review.merchantReply,
                   status: review.status,
                   createdAt: review.createdAt.toLocaleDateString("sl-SI"),
-                  email: review.orderItem?.order.email ?? review.user?.email ?? null,
+                  // an erased buyer's placeholder reads as the neutral label, as on every staff screen (QA 2026-10-03 V4-01)
+                  email: ((email) => (email && isAnonymisedEmail(email) ? admin.common.anonymised : email))(review.orderItem?.order.email ?? review.user?.email ?? null),
                   customerName: review.user?.name ?? null,
                   orderNumber: review.orderItem?.order.number ?? null,
                   productTitle: review.product.title,

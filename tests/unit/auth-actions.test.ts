@@ -1,14 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
-  human: vi.fn(), hash: vi.fn(), find: vi.fn(), transaction: vi.fn(), create: vi.fn(), consent: vi.fn(),
-  issue: vi.fn(), apply: vi.fn(), verifyMail: vi.fn(), resetMail: vi.fn(), update: vi.fn(),
-  txUser: vi.fn(), subscriber: vi.fn(),
+  human: vi.fn(), hash: vi.fn(), compare: vi.fn(), find: vi.fn(), transaction: vi.fn(), create: vi.fn(), consent: vi.fn(),
+  issue: vi.fn(), apply: vi.fn(), read: vi.fn(), allowMail: vi.fn(), allowAttempt: vi.fn(),
+  verifyMail: vi.fn(), resetMail: vi.fn(), update: vi.fn(), txUser: vi.fn(), subscriber: vi.fn(),
 }));
 // A re-issued activation records its own marketing-register row, so the client itself writes consent.
 vi.mock("@/lib/db", () => ({ db: { user: { findUnique: mocks.find }, $transaction: mocks.transaction, consentLog: { create: mocks.consent } } }));
 vi.mock("@/lib/turnstile", () => ({ verifyTurnstile: mocks.human }));
-vi.mock("bcryptjs", () => ({ default: { hash: mocks.hash } }));
-vi.mock("@/lib/auth-tokens", () => ({ issueAuthToken: mocks.issue, applyAuthToken: mocks.apply }));
+vi.mock("bcryptjs", () => ({ default: { hash: mocks.hash, compare: mocks.compare } }));
+vi.mock("@/lib/auth-tokens", () => ({
+  issueAuthToken: mocks.issue, applyAuthToken: mocks.apply, readActivationLink: mocks.read,
+  allowAccountMail: mocks.allowMail, allowActivationAttempt: mocks.allowAttempt,
+}));
 vi.mock("@/lib/email/mailer", () => ({ sendVerifyAccountEmail: mocks.verifyMail, sendResetPasswordEmail: mocks.resetMail }));
 import { registerAction, forgotPasswordAction, verifyEmailAction, resetPasswordAction } from "@/app/(storefront)/actions/auth";
 import { auth as copy } from "@/lib/copy";
@@ -17,6 +20,7 @@ const passwordHash = "$2b$10$" + "a".repeat(53);
 const activation = { passwordHash, name: "Own Name", marketingOptIn: false };
 const input = { firstName: "Own", lastName: "Name", email: " Owner@TEST.SI ", password: "StrongPassword!", turnstileToken: "human" };
 const raw = "a".repeat(64);
+const confirm = { token: raw, password: input.password, turnstileToken: "human" };
 const tx = {
   user: { create: mocks.create, updateMany: mocks.update, findUnique: mocks.txUser },
   subscriber: { findUnique: mocks.subscriber }, consentLog: { create: mocks.consent },
@@ -27,6 +31,8 @@ beforeEach(() => {
   mocks.find.mockResolvedValue(null); mocks.create.mockResolvedValue({ id: "u", email: "owner@test.si", emailVerified: null });
   mocks.transaction.mockImplementation(async fn => fn(tx)); mocks.issue.mockResolvedValue(raw);
   mocks.update.mockResolvedValue({ count: 1 }); mocks.apply.mockImplementation(async (_raw, _kind, change) => { await change(tx, "u", activation, issuedAt); return true; });
+  mocks.read.mockResolvedValue({ userId: "u", snapshot: activation, issuedAt }); mocks.compare.mockResolvedValue(true);
+  mocks.allowMail.mockReturnValue(true); mocks.allowAttempt.mockReturnValue(true);
   mocks.txUser.mockResolvedValue({ email: "owner@test.si" }); mocks.subscriber.mockResolvedValue(null);
 });
 describe("auth actions", () => {
@@ -39,31 +45,49 @@ describe("auth actions", () => {
       choices: { marketing: false, pendingVerification: true, source: "register" },
     }) });
     expect(mocks.issue).toHaveBeenCalledWith("u", "VERIFY_EMAIL", activation);
+    expect(mocks.allowMail).toHaveBeenCalledWith("VERIFY_EMAIL", "owner@test.si");
   });
   it("keeps opted-in marketing pending until email proof", async () => {
     expect(await registerAction({ ...input, marketingOptIn: true })).toEqual({ ok: true });
     expect(mocks.create).toHaveBeenCalledWith({ data: expect.objectContaining({ marketingOptIn: false }) });
     expect(mocks.issue).toHaveBeenCalledWith("u", "VERIFY_EMAIL", { ...activation, marketingOptIn: true });
   });
-  it("binds a repeated unverified registration to the shopper's current data, preventing pre-hijack", async () => {
+  it("gives a repeated unverified registration its own link, bound to that submission's snapshot (QA 2026-10-03 T3-02)", async () => {
     mocks.find.mockResolvedValue({ id: "u", emailVerified: null, name: "Attacker", marketingOptIn: true, passwordHash: "old" });
     expect(await registerAction(input)).toEqual({ ok: true });
     expect(mocks.create).not.toHaveBeenCalled();
+    // The account row is not touched; the snapshot travels with this submission's link only.
+    expect(mocks.update).not.toHaveBeenCalled();
     expect(mocks.issue).toHaveBeenCalledWith("u", "VERIFY_EMAIL", activation);
-    // The re-issue changes the opt-in activation will apply, so it leaves its own row:
+    // The link applies this submitter's opt-in, so it leaves its own row:
     // without it the log could read register:false then activation:true with nothing between.
     expect(mocks.consent).toHaveBeenCalledWith({ data: expect.objectContaining({
       userId: "u", kind: "marketing-register", version: marketingVersion("marketing-register"),
       choices: { marketing: false, pendingVerification: true, source: "register" },
     }) });
   });
-  it("does not alter or resend activation for an existing verified account", async () => {
+  it("does not alter or resend activation for an existing verified account, nor spend the address's mail budget", async () => {
     mocks.find.mockResolvedValue({ id: "u", emailVerified: new Date() });
     expect(await registerAction(input)).toEqual({ ok: true });
     expect(mocks.transaction).not.toHaveBeenCalled(); expect(mocks.issue).not.toHaveBeenCalled();
+    expect(mocks.allowMail).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["a new address", null],
+    ["an unverified address", { id: "u", emailVerified: null }],
+  ])("throttles activation mails for %s with the same answer, storing and sending nothing (QA 2026-10-03 t3 N2)", async (_label, existing) => {
+    mocks.find.mockResolvedValue(existing);
+    mocks.allowMail.mockReturnValue(false);
+    expect(await registerAction(input)).toEqual({ ok: true });
+    expect(mocks.allowMail).toHaveBeenCalledWith("VERIFY_EMAIL", "owner@test.si");
+    expect(mocks.hash).not.toHaveBeenCalled(); expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(mocks.consent).not.toHaveBeenCalled(); expect(mocks.issue).not.toHaveBeenCalled(); expect(mocks.verifyMail).not.toHaveBeenCalled();
   });
   it("applies the token's credentials, name and verified consent in the activation transaction", async () => {
-    expect(await verifyEmailAction({ token: raw, turnstileToken: "human" })).toEqual({ ok: true });
+    expect(await verifyEmailAction(confirm)).toEqual({ ok: true, newsletter: false });
+    expect(mocks.read).toHaveBeenCalledWith(raw);
+    expect(mocks.compare).toHaveBeenCalledWith(input.password, passwordHash);
+    expect(mocks.allowAttempt).toHaveBeenCalledWith("u");
     expect(mocks.apply).toHaveBeenCalledWith(raw, "VERIFY_EMAIL", expect.any(Function));
     expect(mocks.update).toHaveBeenCalledWith({ where: { id: "u", emailVerified: null }, data: { ...activation, emailVerified: expect.any(Date), sessionVersion: { increment: 1 } } });
     expect(mocks.consent).toHaveBeenCalledWith({ data: {
@@ -71,15 +95,52 @@ describe("auth actions", () => {
       choices: { marketing: false, verified: true, source: "register" }, visitorId: null,
     } });
   });
+  describe("activation is bound to the password chosen with the link (QA 2026-10-03 T3-02)", () => {
+    it("refuses another password without consuming the link or touching the account", async () => {
+      mocks.compare.mockResolvedValue(false);
+      expect(await verifyEmailAction({ ...confirm, password: "SomeoneElse123!" })).toEqual({ ok: false, error: copy.verify.passwordMismatch });
+      expect(mocks.compare).toHaveBeenCalledWith("SomeoneElse123!", passwordHash);
+      expect(mocks.apply).not.toHaveBeenCalled(); expect(mocks.update).not.toHaveBeenCalled(); expect(mocks.consent).not.toHaveBeenCalled();
+    });
+    it.each([
+      ["missing", undefined],
+      ["empty", ""],
+      ["longer than bcrypt reads (73 bytes)", "ž".repeat(36) + "x"],
+    ])("never matches a %s password", async (_label, password) => {
+      expect(await verifyEmailAction({ ...confirm, password })).toEqual({ ok: false, error: copy.verify.passwordMismatch });
+      expect(mocks.compare).not.toHaveBeenCalled(); expect(mocks.apply).not.toHaveBeenCalled();
+    });
+    it("an unusable link is refused before any password check", async () => {
+      mocks.read.mockResolvedValue(null);
+      expect(await verifyEmailAction(confirm)).toEqual({ ok: false, error: copy.verify.bodyInvalid });
+      expect(mocks.allowAttempt).not.toHaveBeenCalled(); expect(mocks.compare).not.toHaveBeenCalled(); expect(mocks.apply).not.toHaveBeenCalled();
+    });
+    it("bounds password attempts per account", async () => {
+      mocks.allowAttempt.mockReturnValue(false);
+      expect(await verifyEmailAction(confirm)).toEqual({ ok: false, error: copy.verify.rateLimited });
+      expect(mocks.compare).not.toHaveBeenCalled(); expect(mocks.apply).not.toHaveBeenCalled();
+    });
+    it("applies only the snapshot the password was checked against", async () => {
+      const other = { ...activation, passwordHash: "$2b$10$" + "b".repeat(53) };
+      mocks.apply.mockImplementation(async (_raw, _kind, change) => { await change(tx, "u", other, issuedAt); return true; });
+      expect(await verifyEmailAction(confirm)).toEqual({ ok: false, error: copy.verify.genericError });
+      expect(mocks.update).not.toHaveBeenCalled(); expect(mocks.consent).not.toHaveBeenCalled();
+    });
+    it("a link consumed between the check and the claim reads as invalid", async () => {
+      mocks.apply.mockResolvedValue(false);
+      expect(await verifyEmailAction(confirm)).toEqual({ ok: false, error: copy.verify.bodyInvalid });
+    });
+  });
   describe("a newsletter withdrawal after the link was issued wins over the snapshot's opt-in (S4)", () => {
     const optedIn = { ...activation, marketingOptIn: true };
     const activate = () => {
+      mocks.read.mockResolvedValue({ userId: "u", snapshot: optedIn, issuedAt });
       mocks.apply.mockImplementation(async (_raw, _kind, change) => { await change(tx, "u", optedIn, issuedAt); return true; });
-      return verifyEmailAction({ token: raw, turnstileToken: "human" });
+      return verifyEmailAction(confirm);
     };
     it("unsubscribed after issue: activates with marketing off and logs why", async () => {
       mocks.subscriber.mockResolvedValue({ id: "sub-1", status: "UNSUBSCRIBED", updatedAt: new Date(issuedAt.getTime() + 60_000) });
-      expect(await activate()).toEqual({ ok: true });
+      expect(await activate()).toEqual({ ok: true, newsletter: false });
       expect(mocks.subscriber).toHaveBeenCalledWith({ where: { email: "owner@test.si" }, select: { id: true, status: true, updatedAt: true } });
       expect(mocks.update).toHaveBeenCalledWith({ where: { id: "u", emailVerified: null }, data: { ...optedIn, marketingOptIn: false, emailVerified: expect.any(Date), sessionVersion: { increment: 1 } } });
       expect(mocks.consent).toHaveBeenCalledWith({ data: expect.objectContaining({
@@ -92,20 +153,20 @@ describe("auth actions", () => {
       ["unsubscribed before the link (a fresh registration consent)", { id: "sub-1", status: "UNSUBSCRIBED", updatedAt: new Date(issuedAt.getTime() - 60_000) }],
       ["still confirmed", { id: "sub-1", status: "CONFIRMED", updatedAt: new Date(issuedAt.getTime() + 60_000) }],
       ["pending", { id: "sub-1", status: "PENDING", updatedAt: new Date(issuedAt.getTime() + 60_000) }],
-    ])("keeps the snapshot's opt-in: %s", async (_label, subscriber) => {
+    ])("keeps the snapshot's opt-in and says so: %s", async (_label, subscriber) => {
       mocks.subscriber.mockResolvedValue(subscriber);
-      expect(await activate()).toEqual({ ok: true });
+      expect(await activate()).toEqual({ ok: true, newsletter: true });
       expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ marketingOptIn: true }) }));
       expect(mocks.consent).toHaveBeenCalledWith({ data: expect.objectContaining({ choices: { marketing: true, verified: true, source: "register" } }) });
     });
     it("an opted-out snapshot needs no subscriber lookup", async () => {
-      expect(await verifyEmailAction({ token: raw, turnstileToken: "human" })).toEqual({ ok: true });
+      expect(await verifyEmailAction(confirm)).toEqual({ ok: true, newsletter: false });
       expect(mocks.subscriber).not.toHaveBeenCalled();
     });
   });
   it("cannot use activation to change an already verified account", async () => {
     mocks.update.mockResolvedValue({ count: 0 });
-    expect(await verifyEmailAction({ token: raw, turnstileToken: "human" })).toEqual({ ok: false, error: copy.verify.genericError });
+    expect(await verifyEmailAction(confirm)).toEqual({ ok: false, error: copy.verify.genericError });
     expect(mocks.consent).not.toHaveBeenCalled();
   });
   it("atomically updates a reset password and revokes earlier sessions", async () => {
@@ -138,8 +199,18 @@ describe("auth actions", () => {
     const missing = await forgotPasswordAction(input);
     mocks.find.mockResolvedValueOnce({ id: "u", emailVerified: null });
     expect(await forgotPasswordAction(input)).toEqual(missing); expect(mocks.issue).not.toHaveBeenCalled();
+    // Only a mail that would really be sent spends the address's budget.
+    expect(mocks.allowMail).not.toHaveBeenCalled();
     mocks.find.mockResolvedValueOnce({ id: "u", email: "owner@test.si", emailVerified: new Date() });
     expect(await forgotPasswordAction(input)).toEqual(missing); expect(mocks.resetMail).toHaveBeenCalledWith("owner@test.si", raw);
+    expect(mocks.allowMail).toHaveBeenCalledWith("RESET_PASSWORD", "owner@test.si");
+  });
+  it("throttles reset mails per address behind the identical answer (QA 2026-10-03 t3 N2)", async () => {
+    const missing = await forgotPasswordAction(input);
+    mocks.find.mockResolvedValue({ id: "u", email: "owner@test.si", emailVerified: new Date() });
+    mocks.allowMail.mockReturnValue(false);
+    expect(await forgotPasswordAction(input)).toEqual(missing);
+    expect(mocks.issue).not.toHaveBeenCalled(); expect(mocks.resetMail).not.toHaveBeenCalled();
   });
   it("does not burn a valid token when a new password exceeds bcrypt's UTF-8 limit", async () => {
     expect((await resetPasswordAction({ token: raw, password: "💚".repeat(19), turnstileToken: "human" })).ok).toBe(false);
@@ -147,11 +218,13 @@ describe("auth actions", () => {
   });
   it.each([
     [registerAction, input], [forgotPasswordAction, input],
-    [verifyEmailAction, { token: raw, turnstileToken: "human" }],
+    [verifyEmailAction, confirm],
     [resetPasswordAction, { token: raw, password: input.password, turnstileToken: "human" }],
   ])("enforces a challenge before side effects for %s", async (action, payload) => {
     mocks.human.mockResolvedValue(false);
     expect(await action(payload)).toEqual({ ok: false, error: copy.botCheck });
     expect(mocks.find).not.toHaveBeenCalled(); expect(mocks.apply).not.toHaveBeenCalled(); expect(mocks.hash).not.toHaveBeenCalled();
+    expect(mocks.read).not.toHaveBeenCalled(); expect(mocks.compare).not.toHaveBeenCalled();
+    expect(mocks.allowMail).not.toHaveBeenCalled(); expect(mocks.allowAttempt).not.toHaveBeenCalled();
   });
 });

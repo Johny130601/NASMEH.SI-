@@ -1,6 +1,6 @@
 import type { Prisma, TicketStatus } from "@prisma/client";
 import { db } from "@/lib/db";
-import { STAFF_ROLES } from "@/lib/admin/permissions";
+import { rolesWith } from "@/lib/admin/permissions";
 import { TOPIC_CODES, type TopicCode } from "@/lib/support/topics";
 
 /** Support inbox: the Ticket rows of Phase 6 with status, assignee and an internal note. */
@@ -38,7 +38,7 @@ export async function listTickets(filters: TicketFilters) {
     where, orderBy: [{ status: "asc" }, { createdAt: "desc" }], skip: (page - 1) * TICKET_PAGE_SIZE, take: TICKET_PAGE_SIZE,
     select: {
       id: true, reference: true, createdAt: true, topic: true, reason: true, name: true, email: true, orderNumber: true, status: true,
-      assignee: { select: { name: true, email: true } },
+      assignee: { select: { name: true, email: true, role: true } },
     },
   });
   return { tickets, total, page, pages };
@@ -57,10 +57,13 @@ export async function loadTicket(id: string) {
   });
 }
 
-/** Staff members an operator can assign a ticket to. */
+/**
+ * Staff members an operator can assign a ticket to: those who can open one
+ * (`tickets:view`), not every staff role (QA 2026-10-03 T4-08).
+ */
 export async function listAssignees() {
   return db.user.findMany({
-    where: { role: { in: [...STAFF_ROLES] } },
+    where: { role: { in: rolesWith("tickets:view") } },
     select: { id: true, name: true, email: true },
     orderBy: [{ name: "asc" }, { email: "asc" }],
   });

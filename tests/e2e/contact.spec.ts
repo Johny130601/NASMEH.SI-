@@ -1,4 +1,4 @@
-import { randomInt, randomUUID } from "node:crypto";
+import { randomBytes, randomInt, randomUUID } from "node:crypto";
 import { unlink } from "node:fs/promises";
 import path from "node:path";
 import bcrypt from "bcryptjs";
@@ -267,6 +267,34 @@ test("photo guidance enforces count, size and image content; accepted evidence r
     expect((await page.request.get(`/uploads/support/${attachment.filename}`)).status()).toBe(404);
     expect((await page.request.get(`/support-uploads/${attachment.filename}`)).status()).toBe(404);
   }
+});
+
+/** A real, decodable PNG over the 2 MB cap: a gradient with noise PNG cannot compress, as a phone photo would be. */
+async function phonePhotoPng(width = 1300, height = 1000): Promise<Buffer> {
+  const raw = Buffer.alloc(width * height * 3);
+  const noise = randomBytes(raw.length);
+  for (let index = 0; index < raw.length; index += 1) {
+    const pixel = Math.floor(index / 3);
+    const channel = index % 3;
+    const base = channel === 0 ? (255 * (pixel % width)) / width : channel === 1 ? (255 * Math.floor(pixel / width)) / height : 128;
+    raw[index] = Math.min(255, Math.max(0, Math.round(base) + (noise[index] % 24) - 12));
+  }
+  return sharp(raw, { raw: { width, height, channels: 3 } }).png().toBuffer();
+}
+
+test("a phone photo over 2 MB is downscaled in the browser and sent, not refused (QA 2026-10-03 T3-06)", async ({ page, contactFixture: fixture }) => {
+  const large = await phonePhotoPng();
+  expect(large.byteLength, "the fixture must be over the per-photo cap").toBeGreaterThan(2 * 1024 * 1024);
+  await openContact(page);
+  await chooseTopic(page, "DAMAGED");
+  const email = fixture.email("large-photo");
+  await fillMessage(page, email, `Poškodovan izdelek, fotografija iz telefona. ${fixture.id}`);
+  await page.getByLabel(contact.message.photos, { exact: true }).setInputFiles({ name: "telefon.png", mimeType: "image/png", buffer: large });
+  // the server refuses anything over 2 MB, so an accepted ticket proves the browser brought it under the cap
+  const reference = await submit(page);
+  const ticket = await prisma.ticket.findUniqueOrThrow({ where: { reference }, include: { attachments: true } });
+  expect(ticket.attachments).toHaveLength(1);
+  expect(ticket.attachments[0].filename).toMatch(/^[a-f0-9]{24}\.webp$/);
 });
 
 test("retrying after a lost response reuses the same request and reference", async ({ page, contactFixture: fixture }) => {

@@ -16,7 +16,9 @@ const c = copy.settings;
 export const textareaClass = "w-full resize-y rounded-input border border-light-1 bg-white p-4 text-base outline-none focus:border-brand";
 
 /** Save helper shared by every settings form: one status line per form, refresh after success. */
-export function useSettingsSave(invalidText: string = c.common.invalid) {
+export function useSettingsSave(
+  invalidText: string | ((result: Extract<SettingsActionResult, { ok: false }>) => string) = c.common.invalid,
+) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -25,7 +27,7 @@ export function useSettingsSave(invalidText: string = c.common.invalid) {
     startTransition(async () => {
       try {
         const result = await task();
-        setMessage(result.ok ? { ok: true, text: okText } : { ok: false, text: invalidText });
+        setMessage(result.ok ? { ok: true, text: okText } : { ok: false, text: typeof invalidText === "function" ? invalidText(result) : invalidText });
         if (result.ok) router.refresh();
       } catch {
         setMessage({ ok: false, text: copy.common.error });
@@ -116,7 +118,10 @@ const ANALYTICS_KEYS = ["gtmId", "ga4Id", "metaPixelId", "tiktokPixelId"] as con
 
 export function AnalyticsForm({ initial }: { initial: AnalyticsInput }) {
   const [ids, setIds] = useState(initial);
-  const { pending, run, status } = useSettingsSave(c.marketing.analytics.invalid);
+  const { pending, run, status } = useSettingsSave((result) => {
+    const labels = (result.fields ?? []).map((field) => c.marketing.analytics.fields[field as keyof typeof c.marketing.analytics.fields]).filter(Boolean);
+    return labels.length > 0 ? `${c.marketing.analytics.invalidFields} ${labels.join(", ")}. ${c.marketing.analytics.invalid}` : c.marketing.analytics.invalid;
+  });
   return (
     <form data-settings-form="analytics" onSubmit={(event) => { event.preventDefault(); run(() => saveAnalyticsAction(ids)); }}>
       <SettingsSection id="analytics" title={c.marketing.analytics.title} hint={c.marketing.analytics.hint}>
@@ -169,7 +174,10 @@ export function SeoDefaultsForm({ initial }: { initial: SeoDefaultsInput }) {
 
 export function LegalLinksForm({ initial }: { initial: LegalLinksInput }) {
   const [links, setLinks] = useState(initial);
-  const { pending, run, status } = useSettingsSave(c.marketing.legal.invalid);
+  // a link that does not open a published page is named (QA 2026-10-03 T6-03)
+  const { pending, run, status } = useSettingsSave((result) => result.error === "legalPage"
+    ? c.marketing.legal.unpublished.replace("{fields}", (result.fields ?? []).map((key) => c.marketing.legal.fields[key as keyof typeof c.marketing.legal.fields] ?? key).join(", "))
+    : c.marketing.legal.invalid);
   return (
     <form data-settings-form="legal" onSubmit={(event) => { event.preventDefault(); run(() => saveLegalLinksAction(links)); }}>
       <SettingsSection id="legal" title={c.marketing.legal.title} hint={c.marketing.legal.hint}>

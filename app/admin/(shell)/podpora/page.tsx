@@ -2,9 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePagePermission } from "@/lib/admin/access";
 import { listTickets, parseTicketFilters, TICKET_STATUSES } from "@/lib/admin/tickets";
+import { can } from "@/lib/admin/permissions";
+import { isAnonymisedEmail } from "@/lib/admin/customers";
 import { admin as copy } from "@/lib/copy";
 import { contact } from "@/lib/copy/contact";
 import { TOPIC_CODES, type ReasonCode } from "@/lib/support/topics";
+import { AdminTableScroll } from "@/components/admin/AdminTableScroll";
 
 export const metadata: Metadata = { title: copy.tickets.title, robots: { index: false, follow: false } };
 
@@ -48,7 +51,8 @@ export default async function AdminTicketsPage({ searchParams }: { searchParams:
         <span className="ml-auto text-xs text-mid-2">{copy.tickets.total.replace("{total}", String(result.total))}</span>
       </form>
 
-      <div className="mt-4 overflow-x-auto rounded-card border border-light-2 bg-white">
+      {/* Eight columns are wider than the card below about 1300 px: the wrapper shows that it scrolls (QA 2026-10-03 T4-10). */}
+      <AdminTableScroll label={copy.tickets.title} className="mt-4">
         <table className="w-full min-w-[64rem] text-sm">
           <thead className="text-left text-xs text-mid-2">
             <tr>
@@ -65,15 +69,19 @@ export default async function AdminTicketsPage({ searchParams }: { searchParams:
                 <td className="whitespace-nowrap px-4 py-3 text-mid-1" style={{ fontVariantNumeric: "tabular-nums" }}>{ticket.createdAt.toLocaleDateString("sl-SI")}</td>
                 <td className="px-4 py-3">{contact.topics[ticket.topic].label}</td>
                 <td className="px-4 py-3 text-mid-1">{ticket.reason && Object.hasOwn(contact.reasons, ticket.reason) ? contact.reasons[ticket.reason as ReasonCode] : ticket.reason ?? copy.common.none}</td>
-                <td className="px-4 py-3">{ticket.name}<br /><span className="text-xs text-mid-1">{ticket.email}</span></td>
+                <td className="px-4 py-3">{ticket.name}<br /><span className="text-xs text-mid-1">{isAnonymisedEmail(ticket.email) ? copy.common.anonymised : ticket.email}</span></td>
                 <td className="whitespace-nowrap px-4 py-3">{ticket.orderNumber ? <Link href={`/admin/narocila/${ticket.orderNumber}`} className="underline underline-offset-4">{ticket.orderNumber}</Link> : copy.common.none}</td>
                 <td className="px-4 py-3">{copy.tickets.statuses[ticket.status]}</td>
-                <td className="px-4 py-3 text-mid-1">{ticket.assignee?.name ?? ticket.assignee?.email ?? copy.tickets.detail.unassigned}</td>
+                <td className="px-4 py-3 text-mid-1">
+                  {ticket.assignee?.name ?? ticket.assignee?.email ?? copy.tickets.detail.unassigned}
+                  {/* the ticket page's marker, so the list does not suggest the ticket is looked after (QA 2026-10-03 w2) */}
+                  {ticket.assignee && !can(ticket.assignee.role, "tickets:view") ? <span className="block text-xs" data-assignee-no-access>{copy.tickets.detail.assigneeNoAccess}</span> : null}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
+      </AdminTableScroll>
 
       {result.pages > 1 ? (
         <nav className="mt-4 flex items-center gap-3 text-sm">

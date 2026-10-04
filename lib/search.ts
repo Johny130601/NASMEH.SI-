@@ -1,8 +1,13 @@
 import { z } from "zod";
 import { getSearchCatalog, type CatalogProduct, type ProductSearchText } from "@/lib/catalog";
+import { clampSearchQuery } from "@/lib/search-limits";
 
-/** /api/search + /iskanje input contract (AGENTS §8.2). */
-export const searchQuerySchema = z.string().trim().min(1).max(80);
+/**
+ * /api/search + /iskanje input contract (AGENTS §8.2): trimmed and never
+ * empty; an over-long query is cut to SEARCH_MAX_CHARS characters rather than
+ * dropped, so the shopper keeps what they typed (QA 2026-10-03 T1-06).
+ */
+export const searchQuerySchema = z.string().transform(clampSearchQuery).pipe(z.string().min(1));
 
 /** Parse a raw ?q value; returns "" for anything unusable (never throws). */
 export function parseSearchQuery(raw: string | null | undefined): string {

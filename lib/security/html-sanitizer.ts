@@ -11,7 +11,10 @@
  * - comments, doctypes and processing instructions are removed; an unclosed
  *   `<!--` drops the rest of the input instead of swallowing what follows;
  * - elements in `droppedWithContent` are removed together with their content
- *   (unclosed: the rest of the input);
+ *   (unclosed: the rest of the input) — a void element there (`<meta>`, `<input>`,
+ *   `<link>`, `<embed>`, `<base>`) has no content and is removed alone;
+ * - an element missing an attribute the policy requires (`<img>` without an
+ *   accepted `src`) is removed rather than kept empty;
  * - any other element that is not allow-listed is removed but its text kept;
  * - only allow-listed attributes survive, URLs only when the policy's pattern
  *   accepts them (after entity decoding and control-character stripping);
@@ -31,7 +34,19 @@ export interface HtmlSanitizerPolicy {
   sanitizeStyle?: (style: string) => string;
   /** Rewrites the kept attributes of one element (e.g. forcing rel on target=_blank links). */
   finishAttributes?: (tag: string, attributes: Array<[string, string]>) => Array<[string, string]>;
+  /** An element whose named attribute did not survive is dropped (an `<img>` without an accepted `src`). */
+  requiredAttributes?: Readonly<Record<string, string>>;
 }
+
+/**
+ * HTML void elements: no content, no closing tag. Dropping one "with its content" must
+ * remove the tag alone — searching for a closing tag that never comes used to swallow
+ * the rest of the document, so pasting Word/Docs HTML that starts with `<meta charset>`
+ * blanked the whole page (QA 2026-10-03 T6-01).
+ */
+const VOID_ELEMENTS: ReadonlySet<string> = new Set([
+  "area", "base", "br", "col", "embed", "frame", "hr", "img", "input", "keygen", "link", "meta", "param", "source", "track", "wbr",
+]);
 
 const BASIC_ENTITIES: Readonly<Record<string, string>> = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'" };
 
@@ -102,7 +117,7 @@ function parseTag(html: string, start: number): ParsedTag | null {
 
 const URL_ATTRIBUTES: ReadonlySet<string> = new Set(["href", "src"]);
 
-function serializeAttributes(tag: string, raw: Array<[string, string]>, policy: HtmlSanitizerPolicy): string {
+function keptAttributes(tag: string, raw: Array<[string, string]>, policy: HtmlSanitizerPolicy): Array<[string, string]> {
   const seen = new Set<string>();
   let kept: Array<[string, string]> = [];
   for (const [name, rawValue] of raw) {
@@ -119,6 +134,10 @@ function serializeAttributes(tag: string, raw: Array<[string, string]>, policy: 
     kept.push([name, value]);
   }
   if (policy.finishAttributes) kept = policy.finishAttributes(tag, kept);
+  return kept;
+}
+
+function serializeAttributes(kept: Array<[string, string]>): string {
   return kept.map(([name, value]) => ` ${name}="${escapeKeepingEntities(value, true)}"`).join("");
 }
 
@@ -181,11 +200,15 @@ export function sanitizeHtml(input: string, policy: HtmlSanitizerPolicy): string
       continue;
     }
     if (policy.droppedWithContent.has(tag.name)) {
-      index = skipElementContent(html, index, tag.name);
+      if (!VOID_ELEMENTS.has(tag.name)) index = skipElementContent(html, index, tag.name);
       continue;
     }
     if (!policy.allowedTags.has(tag.name)) continue;
-    const attributes = serializeAttributes(tag.name, tag.attributes, policy);
+    const kept = keptAttributes(tag.name, tag.attributes, policy);
+    const required = policy.requiredAttributes?.[tag.name];
+    // dropped like an unknown tag: a void element has nothing to close, a container keeps its text
+    if (required && !kept.some(([name]) => name === required)) continue;
+    const attributes = serializeAttributes(kept);
     if (policy.voidTags.has(tag.name)) {
       output += `<${tag.name}${attributes} />`;
     } else {
@@ -227,6 +250,8 @@ const CONTENT_POLICY: HtmlSanitizerPolicy = {
   safeHref: /^(https?:|mailto:|tel:|#|\/(?![/\\]))/i,
   // Images from this site or https only.
   safeSrc: /^(https:|\/(?![/\\]))/i,
+  // an image whose source was refused is removed, not kept as an empty <img> (QA 2026-10-03 T6-11)
+  requiredAttributes: { img: "src" },
   finishAttributes(tag, attributes) {
     if (tag === "a") {
       const target = attributes.find(([name]) => name === "target")?.[1];

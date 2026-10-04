@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { backInStock } from "@/lib/copy/backInStock";
 import { catalog } from "@/lib/copy/catalog";
 import { search } from "@/lib/copy/search";
+import { searchHints } from "@/lib/copy/search-hints";
+import { SEARCH_MAX_CHARS, SEARCH_MIN_CHARS } from "@/lib/search-limits";
 import { prisma, waitForMailTo } from "./helpers";
 
 /** Search + back-in-stock double opt-in e2e. */
@@ -70,6 +73,41 @@ test("search /iskanje SSR + GET form works", async ({ request }) => {
   expect(zero).toContain("Ni zadetkov");
 });
 
+test("a query too short to search says why, and an over-long one is cut, not dropped (QA 2026-10-03 T1-06)", async ({ page, request }) => {
+  const hint = searchHints.minChars(SEARCH_MIN_CHARS);
+  // the results page, in its initial HTML
+  for (const query of ["a", "Č", "%"]) {
+    const html = await (await request.get(`/iskanje?q=${encodeURIComponent(query)}`)).text();
+    expect(html, query).toContain(hint);
+    expect(html, query).not.toContain("data-search-count");
+  }
+  expect(await (await request.get("/iskanje")).text()).not.toContain(hint);
+
+  const long = `trak ${"x".repeat(100)}`;
+  await page.goto(`/iskanje?q=${encodeURIComponent(long)}`);
+  const pageInput = page.locator("#search-page-input");
+  await expect(pageInput).toHaveValue(long.slice(0, SEARCH_MAX_CHARS));
+  await expect(pageInput).toHaveAttribute("maxlength", String(SEARCH_MAX_CHARS));
+  await expect(page.locator("[data-search-count]")).toBeVisible();
+
+  // the overlay says the same while one character is typed, and searches from two
+  await page.goto("/");
+  const banner = page.getByRole("dialog", { name: /piškotki/i });
+  if (await banner.isVisible().catch(() => false)) {
+    await banner.getByRole("button", { name: "Zavrni" }).click();
+    await banner.waitFor({ state: "hidden" });
+  }
+  await page.getByRole("button", { name: "Iskanje", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: search.title, exact: true });
+  const input = dialog.getByPlaceholder(search.placeholder);
+  await expect(input).toHaveAttribute("maxlength", String(SEARCH_MAX_CHARS));
+  await input.fill("t");
+  await expect(dialog.locator("[data-search-hint]")).toHaveText(hint);
+  await input.fill("trak");
+  await expect(dialog.locator("[data-search-hint]")).toHaveCount(0);
+  await expect(dialog.locator("[data-search-result='belilni-trakci-za-zobe']")).toBeVisible({ timeout: 10_000 });
+});
+
 test("sold-out capture: submit → Mailpit → confirm → CONFIRMED + ConsentLog", async ({
   page,
 }) => {
@@ -109,6 +147,9 @@ test("sold-out capture: submit → Mailpit → confirm → CONFIRMED + ConsentLo
   const body = await waitForMailTo(address);
   const tokenMatch = body.match(/\/potrdi-zalogo\/([a-f0-9]{48})/);
   expect(tokenMatch).toBeTruthy();
+  // the confirmation mail already carries the signed withdrawal link (QA 2026-10-03 BIS-UNSUB)
+  const mailUnsubscribe = body.match(/\/odjava-zaloga\/[A-Za-z0-9_-]+/)?.[0];
+  expect(mailUnsubscribe).toMatch(new RegExp(`^/odjava-zaloga/${subscription!.id}-[A-Za-z0-9_-]{43}$`));
 
   // The link is read-only (mail scanners): only the button confirms (Phase 9 step 4).
   await page.goto(`/potrdi-zalogo/${tokenMatch![1]}`);
@@ -121,6 +162,16 @@ test("sold-out capture: submit → Mailpit → confirm → CONFIRMED + ConsentLo
   }
   await page.getByRole("button", { name: "Aktiviraj obvestilo" }).click();
   await expect(page.getByText("Obvestilo je aktivno")).toBeVisible();
+  // The active alert can be withdrawn before it fires, not only from the restock
+  // mail (legal checklist MK-7, QA 2026-10-03 BIS-UNSUB): the done state links the
+  // signed unsubscribe page, and so does a later visit to the same link.
+  const withdraw = page.locator("[data-bis-unsubscribe]");
+  await expect(withdraw).toHaveText(backInStock.unsubscribe.title);
+  const unsubscribeHref = await withdraw.getAttribute("href");
+  expect(unsubscribeHref).toMatch(new RegExp(`^/odjava-zaloga/${subscription!.id}-[A-Za-z0-9_-]{43}$`));
+  expect(unsubscribeHref).toBe(mailUnsubscribe);
+  await page.reload();
+  await expect(page.locator("[data-bis-unsubscribe]")).toHaveAttribute("href", unsubscribeHref!);
 
   const confirmed = await prisma.backInStockSubscription.findUnique({
     where: { id: subscription!.id },
@@ -140,4 +191,15 @@ test("sold-out capture: submit → Mailpit → confirm → CONFIRMED + ConsentLo
   expect(JSON.stringify(consentRow!.choices)).toContain(
     "belilni-trakci-potovalni-7",
   );
+
+  // Following the link withdraws nothing by itself; its button does, and logs it once.
+  await page.goto(unsubscribeHref!);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(backInStock.unsubscribe.title);
+  expect((await prisma.backInStockSubscription.findUniqueOrThrow({ where: { id: subscription!.id } })).status).toBe("CONFIRMED");
+  await page.getByRole("button", { name: backInStock.unsubscribe.submit }).click();
+  await expect(page.getByText(backInStock.unsubscribe.titleOk)).toBeVisible();
+  expect((await prisma.backInStockSubscription.findUniqueOrThrow({ where: { id: subscription!.id } })).status).toBe("UNSUBSCRIBED");
+  expect(await prisma.consentLog.count({
+    where: { kind: "back-in-stock", choices: { path: ["subscriptionId"], equals: subscription!.id } },
+  })).toBe(2);
 });

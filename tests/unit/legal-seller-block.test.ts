@@ -70,6 +70,17 @@ describe("the block is server-rendered above the body", () => {
     expect(source.indexOf("dangerouslySetInnerHTML")).toBeGreaterThan(block);
   });
 
+  it("the footer applies the same placeholder rule and prints the same missing line (AGENTS §22, QA 2026-10-03 T1-03)", () => {
+    const source = read("components", "storefront", "chrome", "SiteFooter.tsx");
+    expect(source).toContain("getCompany()");
+    expect(source).toContain("companyPlaceholderFields(company).length === 0");
+    expect(source).toContain("legal.seller.missing");
+    // every printed field comes from the gated identity, never from the raw Setting
+    // (copy.company.* are the labels, not the Setting)
+    expect(source).not.toMatch(/(?<!copy\.)\bcompany\??\.(name|address|registrationNumber|vatId|email|phone)\b/);
+    expect(source).toContain("identity.registrationNumber");
+  });
+
   it("the legal-texts PDF prints the block before the texts it belongs to", () => {
     const source = read("lib", "invoice", "legal-texts-pdf.ts");
     const block = source.indexOf("sellerBlockLines(input.seller)");

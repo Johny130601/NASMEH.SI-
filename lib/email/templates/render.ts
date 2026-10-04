@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { EMAIL_TEMPLATE_DEFS, substitutePlaceholders, type EmailTemplateKey } from "@/lib/email/template-defs";
+import { EMAIL_TEMPLATE_DEFS, missingRequiredPlaceholders, substitutePlaceholders, type EmailTemplateKey } from "@/lib/email/template-defs";
 import { sanitizeEmailHtml } from "@/lib/email/sanitize";
 import { emailLayout } from "./layout";
 import { sampleRequiredHtml } from "./required-samples";
@@ -32,6 +32,12 @@ export function renderTemplate(key: EmailTemplateKey, subject: string, bodyHtml:
 export async function renderEmailOverride(key: EmailTemplateKey, values: Record<string, string>, requiredHtml: RequiredHtml = ""): Promise<RenderedMail | null> {
   const override = await db.emailTemplate.findUnique({ where: { key } });
   if (!override) return null;
+  // An override stored without the mail's action link (before the save check, or written
+  // directly) is never sent: the code template goes instead (QA 2026-10-03 T6-02).
+  if (missingRequiredPlaceholders(key, override.bodyHtml).length) {
+    console.error(`E-mail override ${key} lacks its required link; the code template is sent`);
+    return null;
+  }
   return renderTemplate(key, override.subject, override.bodyHtml, values, requiredHtml);
 }
 

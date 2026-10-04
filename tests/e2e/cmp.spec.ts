@@ -77,6 +77,44 @@ test("first visit shows banner; Zavrni stores cookie + ConsentLog, no gtm script
   expect(row!.choices).toMatchObject({ analytics: false, marketing: false, ts: parsed.ts });
 });
 
+test("the banner keeps Tab inside until a choice is made, then hands focus back to the page (QA 2026-10-03 T1-05)", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const banner = page.getByRole("dialog", { name: /piškotki/i });
+  await expect(banner).toBeVisible();
+  const focusInside = () => banner.evaluate((element) => element.contains(document.activeElement));
+  await expect.poll(focusInside).toBe(true);
+  for (const key of [...Array<string>(8).fill("Tab"), ...Array<string>(8).fill("Shift+Tab")]) {
+    await page.keyboard.press(key);
+    expect(await focusInside(), key).toBe(true);
+  }
+  // accepting and refusing look the same: neither answer is the easier one to see
+  const accept = banner.getByRole("button", { name: "Sprejmi vse" });
+  const reject = banner.getByRole("button", { name: "Zavrni" });
+  expect(await reject.getAttribute("class")).toBe(await accept.getAttribute("class"));
+  // the whole banner fits the phone screen (it scrolls inside itself when it must)
+  const box = await banner.boundingBox();
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(844 + 1);
+
+  // a choice made on the banner that opened with the page: focus goes to the
+  // start of the page (the skip link), not to <body>
+  await reject.focus();
+  await page.keyboard.press("Enter");
+  await expect(banner).toBeHidden();
+  await expect(page.locator("[data-skip-link]")).toBeFocused();
+
+  // reopened from the footer: focus returns to the control that opened it
+  const reopen = page.getByRole("button", { name: "Nastavitve piškotkov" });
+  await reopen.focus();
+  await page.keyboard.press("Enter");
+  await expect(banner).toBeVisible();
+  await expect.poll(focusInside).toBe(true);
+  await banner.getByRole("button", { name: "Zavrni" }).click();
+  await expect(banner).toBeHidden();
+  await expect(reopen).toBeFocused();
+});
+
 test("footer 'Nastavitve piškotkov' reopens the banner", async ({ page }) => {
   await page.goto("/");
   const banner = page.getByRole("dialog", { name: /piškotki/i });
@@ -258,6 +296,8 @@ test("cookie policy table lists the app's cookies with their consent category", 
     ["__Host-authjs.csrf-token", "necessary"],
     ["__Secure-authjs.callback-url", "necessary"],
     ["nasmeh_preauth", "necessary"],
+    // the address typed into a failed sign-in (QA 2026-10-03 T1-10)
+    ["nasmeh_login_email", "necessary"],
     ["nasmeh_cart", "necessary"],
     ["nasmeh_koda", "necessary"],
     ["nasmeh_order_*", "necessary"],

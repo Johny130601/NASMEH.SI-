@@ -418,7 +418,8 @@ describe("menu, media and e-mail template actions", () => {
     expect(mocks.templateDeleteMany).toHaveBeenCalledWith({ where: { key: "resetPassword" } });
     expect(await resetEmailTemplateAction({ key: "nope" })).toEqual({ ok: false, error: "invalid" });
 
-    expect(await sendTestEmailAction({ ...template, to: "ni-naslov" })).toEqual({ ok: false, error: "invalid" });
+    // the refusal names the address (QA 2026-10-03 V6-02)
+    expect(await sendTestEmailAction({ ...template, to: "ni-naslov" })).toEqual({ ok: false, error: "invalidAddress" });
     expect(await sendTestEmailAction({ key: "supportReceipt", subject: "Prejeto {{reference}}", bodyHtml: "<p>{{note}}</p>", to: "Test@Nasmeh.si" })).toEqual({ ok: true });
     expect(mocks.sendMail).toHaveBeenCalledTimes(1);
     expect(mocks.sendMail.mock.calls[0][0]).toMatchObject({ to: "test@nasmeh.si", subject: "[TEST] Prejeto POD-2026-00042" });

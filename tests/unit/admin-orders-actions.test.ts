@@ -145,3 +145,37 @@ describe("order action validation and resend", () => {
     expect(mocks.deliverShipped).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * QA 2026-10-03 T4-04: only an account holder ever reads a customer-visible note (on the
+ * account's order page); a guest order and an erased buyer's order have no reader, so the
+ * action refuses the flag instead of promising what never happens.
+ */
+describe("customer-visible order notes", () => {
+  it("are saved for an order placed from an account", async () => {
+    mocks.findUnique.mockResolvedValue({ id: orderId, userId: "cmf0user0000000000000001", anonymizedAt: null });
+    expect(await addOrderNoteAction({ orderId, body: "Paket je pri sosedu.", visibleToCustomer: true })).toEqual({ ok: true, message: "noteSaved" });
+    expect(mocks.findUnique.mock.calls[0][0]).toEqual({ where: { id: orderId }, select: { id: true, userId: true, anonymizedAt: true } });
+    expect(mocks.noteCreate.mock.calls[0][0].data).toMatchObject({ orderId, visibleToCustomer: true });
+  });
+
+  it("are refused for a guest order and an anonymised order, while internal notes still save", async () => {
+    for (const order of [
+      { id: orderId, userId: null, anonymizedAt: null },
+      { id: orderId, userId: "cmf0user0000000000000001", anonymizedAt: new Date("2026-10-03T11:30:00Z") },
+      { id: orderId, userId: null, anonymizedAt: new Date("2026-10-03T11:30:00Z") },
+    ]) {
+      mocks.findUnique.mockResolvedValue(order);
+      expect(await addOrderNoteAction({ orderId, body: "Vidna opomba", visibleToCustomer: true })).toEqual({ ok: false, message: "note_not_visible" });
+    }
+    expect(mocks.noteCreate).not.toHaveBeenCalled();
+    expect(mocks.executeRaw).not.toHaveBeenCalled();
+    expect(await addOrderNoteAction({ orderId, body: "Interna opomba", visibleToCustomer: false })).toEqual({ ok: true, message: "noteSaved" });
+    expect(mocks.noteCreate.mock.calls[0][0].data).toMatchObject({ visibleToCustomer: false });
+  });
+
+  it("names the refusal in words", async () => {
+    const { admin } = await import("@/lib/copy/admin");
+    expect(admin.orders.actions.results.note_not_visible.length).toBeGreaterThan(0);
+  });
+});

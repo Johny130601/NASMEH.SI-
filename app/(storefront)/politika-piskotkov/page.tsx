@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { sanitizeContentHtml } from "@/lib/security/html-sanitizer";
+import { withHeadingIds } from "@/lib/content/toc";
+import { LegalToc, TOC_TARGET_CLASS } from "@/components/storefront/content/LegalToc";
 import { buildMetadata } from "@/lib/seo";
 import { cmp as copy, legal } from "@/lib/copy";
 import { sellerBlockLines } from "@/lib/copy/legal";
@@ -30,6 +32,8 @@ export default async function CookiePolicyPage() {
   const [{ cookies: cookieRows }, company] = await Promise.all([getConsentConfig(), getCompany()]);
   // The controller of the cookies described below is the seller (GDPR Art. 13(1)(a)).
   const sellerLines = sellerBlockLines(company, companyPlaceholderFields(company));
+  // the body's <h2>s get ids and a table of contents (spec §12.5 "legal w/ TOC")
+  const { html, toc } = withHeadingIds(sanitizeContentHtml(page.body));
 
   return (
     <article className="mx-auto max-w-(--container-narrow) px-(--padding) py-16">
@@ -57,10 +61,13 @@ export default async function CookiePolicyPage() {
         )}
       </section>
 
+      <LegalToc entries={toc} />
+
       <div
-        className="content-prose mt-8"
-        // Operator HTML is sanitised on save and again here (AGENTS §8.24).
-        dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(page.body) }}
+        className={`content-prose mt-8 ${toc.length > 0 ? TOC_TARGET_CLASS : ""}`}
+        // Operator HTML is sanitised on save and again here (AGENTS §8.24); the
+        // heading ids and the contents are added after that (QA 2026-10-03 T1-04).
+        dangerouslySetInnerHTML={{ __html: html }}
       />
 
       <h2 className="mt-12 text-2xl">{copy.policy.tableTitle}</h2>

@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/db", () => ({ db: {} }));
 
 import { parseSearchQuery, rankSearchResults, searchQuerySchema, searchWords, type SearchEntry } from "@/lib/search";
+import { clampSearchQuery, SEARCH_MAX_CHARS, SEARCH_MIN_CHARS } from "@/lib/search-limits";
 import { productSearchText } from "@/lib/catalog";
 import { search } from "@/lib/copy/search";
+import { searchHints, znakForm } from "@/lib/copy/search-hints";
 
 describe("searchQuerySchema / parseSearchQuery (AGENTS §8.2)", () => {
   it("trims whitespace", () => {
@@ -22,10 +24,32 @@ describe("searchQuerySchema / parseSearchQuery (AGENTS §8.2)", () => {
     expect(parseSearchQuery("   ")).toBe("");
   });
 
-  it("rejects over-length input (max 80) → ''", () => {
-    expect(parseSearchQuery("x".repeat(81))).toBe("");
-    expect(searchQuerySchema.safeParse("x".repeat(81)).success).toBe(false);
-    expect(searchQuerySchema.safeParse("x".repeat(80)).success).toBe(true);
+  it("cuts over-length input to its first 80 characters instead of dropping it (QA 2026-10-03 T1-06)", () => {
+    expect(SEARCH_MAX_CHARS).toBe(80);
+    expect(parseSearchQuery("x".repeat(81))).toBe("x".repeat(80));
+    expect(searchQuerySchema.safeParse("x".repeat(500))).toEqual({ success: true, data: "x".repeat(80) });
+    expect(searchQuerySchema.safeParse("x".repeat(80))).toEqual({ success: true, data: "x".repeat(80) });
+    // the cut never ends on a space, and never splits a character outside the BMP
+    expect(parseSearchQuery(`${"a".repeat(79)} trakci`)).toBe("a".repeat(79));
+    expect(Array.from(clampSearchQuery("😀".repeat(100)))).toHaveLength(80);
+    expect(clampSearchQuery("😀".repeat(100))).toBe("😀".repeat(80));
+  });
+});
+
+describe("the too-short hint (QA 2026-10-03 T1-06)", () => {
+  it("names the minimum length the page and the overlay search from, in Slovenian agreement", () => {
+    expect(SEARCH_MIN_CHARS).toBe(2);
+    expect(searchHints.minChars(SEARCH_MIN_CHARS)).toBe("Vnesite vsaj 2 znaka.");
+    expect(searchHints.maxChars(80)).toBe("Iskanje upošteva prvih 80 znakov.");
+    expect([1, 2, 3, 4, 5, 101, 102].map(znakForm)).toEqual(["znak", "znaka", "znaki", "znaki", "znakov", "znak", "znaka"]);
+  });
+
+  it("a one-character query is kept for the form, but below the length that searches", () => {
+    for (const query of ["a", "Č", "%", " a "]) {
+      const parsed = parseSearchQuery(query);
+      expect(parsed.length, query).toBeGreaterThan(0);
+      expect(parsed.length, query).toBeLessThan(SEARCH_MIN_CHARS);
+    }
   });
 });
 

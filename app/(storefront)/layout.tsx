@@ -17,10 +17,12 @@ import {
 import { siteUrl } from "@/lib/seo";
 import { SiteHeader } from "@/components/storefront/chrome/SiteHeader";
 import { SiteFooter } from "@/components/storefront/chrome/SiteFooter";
+import { MAIN_CONTENT_ID, SkipLink } from "@/components/storefront/chrome/SkipLink";
 import { ConsentProvider } from "@/components/storefront/cmp/ConsentProvider";
 import { CmpBanner } from "@/components/storefront/cmp/CmpBanner";
 import { GatedScripts } from "@/components/storefront/cmp/GatedScripts";
 import { WelcomePopup } from "@/components/storefront/WelcomePopup";
+import { CONTENT_TOKENS, fillToken } from "@/lib/content/tokens";
 import { CartToast } from "@/components/storefront/cart/CartToast";
 import { JsonLd } from "@/components/storefront/seo/JsonLd";
 import { auth } from "@/lib/auth";
@@ -69,6 +71,18 @@ export default async function StorefrontLayout({
     : Boolean(welcomePopup?.couponCode) && jar.get(KODA_COOKIE)?.value === welcomePopup?.couponCode;
   const env = getEnv();
   const testToken = isTestMode() ? (env.TURNSTILE_TEST_TOKEN ?? null) : null;
+  // {koda} names the code the popup applies, so no text in it can name another (QA 2026-10-03 T6-04).
+  // A malformed row renders as empty text, never as a crash of every page.
+  const popupText = (value: unknown) => fillToken(typeof value === "string" ? value : "", CONTENT_TOKENS.code, typeof welcomePopup?.couponCode === "string" ? welcomePopup.couponCode : "");
+  const popupSetting = welcomePopup
+    ? {
+        ...welcomePopup,
+        title: popupText(welcomePopup.title),
+        body: popupText(welcomePopup.body),
+        thankYouTitle: popupText(welcomePopup.thankYouTitle),
+        thankYouBody: popupText(welcomePopup.thankYouBody),
+      }
+    : null;
 
   const base = siteUrl();
   const organizationLd = {
@@ -97,6 +111,8 @@ export default async function StorefrontLayout({
 
   return (
     <ConsentProvider initialConsent={consent} gtmId={gtm} consentVersion={consentConfig.version} banner={consentConfig.banner} policyHref={legalLinks.cookies}>
+      {/* The first Tab stop: past the marquee and the header to <main> (WCAG 2.4.1). */}
+      <SkipLink />
       {/* Google Consent Mode v2 — all denied by default, then the stored
           choice (booleans only), before any other script (spec §3.4). Not a tracker. */}
       <script
@@ -107,15 +123,17 @@ export default async function StorefrontLayout({
       <JsonLd data={organizationLd} />
       <JsonLd data={websiteLd} />
       <SiteHeader />
-      <main id="content">{children}</main>
+      {/* focusable by script only, so the skip link moves focus into the content, not just the scroll (QA 2026-10-03 v1);
+          its ring and its scroll margin under the sticky header are set in globals.css */}
+      <main id={MAIN_CONTENT_ID} tabIndex={-1}>{children}</main>
       <SiteFooter />
       {/* one confirmation card for every add-to-cart button on the page */}
       <CartToast />
       <CmpBanner />
       <GatedScripts />
-      {welcomePopup ? (
+      {popupSetting ? (
         <WelcomePopup
-          setting={welcomePopup}
+          setting={popupSetting}
           testToken={testToken}
           siteKey={env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? null}
           privacyHref={legalLinks.privacy}

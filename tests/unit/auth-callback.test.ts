@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { customerLanding, safeCallbackPath, staffLanding } from "@/lib/auth-callback";
+import { customerLanding, safeCallbackPath, signInPath, staffLanding } from "@/lib/auth-callback";
 
 /** QA T3-F1: sign-in returns to the requested page, but only to a same-origin relative path. */
 describe("safeCallbackPath", () => {
@@ -63,5 +63,14 @@ describe("landing after sign-in", () => {
     expect(staffLanding("/admin/narocila?stanje=placano")).toBe("/admin/narocila?stanje=placano");
     expect(staffLanding("/checkout")).toBe("/admin");
     expect(staffLanding(null)).toBe("/admin");
+  });
+});
+
+/** QA 2026-10-03 V2-02: a guard that refuses a session (revoked at sign-out elsewhere) returns the visitor where they were. */
+describe("signInPath", () => {
+  it("carries a same-site path and nothing else", () => {
+    expect(signInPath("/racun")).toBe("/prijava?callbackUrl=%2Fracun");
+    expect(signInPath("/admin/narocila?stanje=placano")).toBe("/prijava?callbackUrl=%2Fadmin%2Fnarocila%3Fstanje%3Dplacano");
+    for (const unsafe of ["//evil.example", "https://evil.example/x", "/prijava", "", null, undefined]) expect(signInPath(unsafe)).toBe("/prijava");
   });
 });

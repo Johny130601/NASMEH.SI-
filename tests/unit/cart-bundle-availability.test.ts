@@ -64,13 +64,13 @@ describe("addToCartAction with a fixed bundle", () => {
 
   it("refuses a bundle whose Aktiven switch is off (QA M5)", async () => {
     mocks.findUnique.mockResolvedValue(bundleVariant({ active: false }));
-    expect(await addToCartAction({ variantId, quantity: 1 })).toEqual({ ok: false, count: 0 });
+    expect(await addToCartAction({ variantId, quantity: 1 })).toEqual({ ok: false, count: 0, unavailable: true });
     expect(mocks.addToCart).not.toHaveBeenCalled();
   });
 
   it("refuses a bundle one of whose components is sold out, though its own row says 100 (QA M6)", async () => {
     mocks.findUnique.mockResolvedValue(bundleVariant({ items: [component(40), component(0)] }));
-    expect(await addToCartAction({ variantId, quantity: 1 })).toEqual({ ok: false, count: 0 });
+    expect(await addToCartAction({ variantId, quantity: 1 })).toEqual({ ok: false, count: 0, soldOut: true });
     expect(mocks.addToCart).not.toHaveBeenCalled();
   });
 

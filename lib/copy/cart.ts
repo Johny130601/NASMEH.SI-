@@ -23,6 +23,8 @@ export const cart = {
     /** The line sold out while it sat in the cart: it keeps its quantity, but cannot be ordered (QA 2026-09-30). */
     soldOut: "Ni več na zalogi — odstranite izdelek, da nadaljujete z nakupom.",
     bundleContents: "Vsebina paketa",
+    /** Offer label pill on a bundle line (spec §7.1 "PAKET"); shown in capitals by the pill, read as a word. */
+    bundlePill: "Paket",
     omnibusPrefix: "Najnižja cena v 30 dneh pred znižanjem",
     perUnit: "na kos",
   },

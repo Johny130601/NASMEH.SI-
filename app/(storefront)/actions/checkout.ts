@@ -30,9 +30,11 @@ export async function checkEmailExistsAction(input: {
   if (!parsed.success) return { exists: false };
   const user = await db.user.findUnique({
     where: { email: parsed.data },
-    select: { id: true },
+    select: { role: true },
   });
-  return { exists: user !== null };
+  // Only a shopper's account is worth the hint; a staff address is never
+  // confirmed to the public checkout (QA 2026-10-03 T2-10).
+  return { exists: user?.role === "CUSTOMER" };
 }
 
 /** Abandoned-checkout capture (§8.4): email + cart snapshot + recovery token. */

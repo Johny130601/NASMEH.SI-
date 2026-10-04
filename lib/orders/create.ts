@@ -120,7 +120,11 @@ export async function placeOrder(rawInput: unknown): Promise<PlaceOrderResult> {
         email: input.email.toLowerCase(), phone: input.phone || null,
         subtotalCents: quote.subtotalCents, discountCents: quote.discountCents, shippingCents: quote.shippingCents,
         shippingMethod: method.label, totalCents: quote.totalCents, vatCents: quote.vatCents, vatRatePercent: settings.vatRatePercent,
-        shippingAddress: { fullName: input.fullName, street: input.street, streetNumber: input.streetNumber, city: input.city, postalCode: input.postalCode, country: input.country },
+        shippingAddress: {
+          fullName: input.fullName, street: input.street, streetNumber: input.streetNumber,
+          ...(input.streetSupplement ? { streetSupplement: input.streetSupplement } : {}),
+          city: input.city, postalCode: input.postalCode, country: input.country,
+        },
         paymentProvider: input.provider, marketingOptIn: input.marketingOptIn,
         couponCode: coupon?.code ?? null,
         ...(coupon ? { couponSnapshot: { code: coupon.code, type: coupon.type, percentOff: coupon.percentOff, amountOffCents: coupon.amountOffCents, discountCents: quote.discountCents } } : {}),

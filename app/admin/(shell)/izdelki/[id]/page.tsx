@@ -60,7 +60,7 @@ export default async function AdminProductEditorPage({ params }: { params: Promi
               id: variant.id, title: variant.title, sku: variant.sku, priceCents: variant.priceCents, compareAtPriceCents: variant.compareAtPriceCents,
               costCents: variant.costCents, barcode: variant.barcode, weightGrams: variant.weightGrams, stock: variant.stock,
               maxCartQuantity: variant.maxCartQuantity, allowBackorder: variant.allowBackorder, backorderNote: variant.backorderNote,
-              orderItems: variant._count.orderItems, bundleItems: variant._count.bundleItems,
+              orderItems: variant._count.orderItems, bundleItems: variant._count.bundleItems, priceRows: variant._count.priceHistory,
             }))}
           />
         </div>

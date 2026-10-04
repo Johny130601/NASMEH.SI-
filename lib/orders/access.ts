@@ -80,3 +80,53 @@ export async function grantOrderAccess(
   });
   return true;
 }
+
+/** How far back /checkout looks for an order this browser left unpaid. */
+export const UNPAID_ORDER_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+const RECEIPT_SCAN_LIMIT = 12;
+
+/** The order number a receipt cookie names; the caller verifies it against the order itself. */
+function receiptOrderNumber(raw: string): string | null {
+  try {
+    const parsed = z.object({ orderNumber: z.string().min(1).max(80) })
+      .safeParse(JSON.parse(Buffer.from(raw.split(".")[0] ?? "", "base64url").toString("utf8")));
+    return parsed.success ? parsed.data.orderNumber : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The most recent order this browser (its signed receipts) or the signed-in shopper placed and
+ * has not paid, within the last day. /checkout offers it back: a reload or Back during payment
+ * used to lose the way to it, so shoppers placed a duplicate — and a once-per-customer code was
+ * already spent on the first (QA 2026-10-03 T2-02).
+ */
+export async function findUnpaidOrderToResume(now = new Date()): Promise<{ number: string; totalCents: number } | null> {
+  const since = new Date(now.getTime() - UNPAID_ORDER_LOOKBACK_MS);
+  const jar = await cookies();
+  const receipts = jar.getAll().filter((cookie) => cookie.name.startsWith("nasmeh_order_")).slice(0, RECEIPT_SCAN_LIMIT);
+  const numbers = new Map<string, string>();
+  for (const cookie of receipts) {
+    const number = receiptOrderNumber(cookie.value);
+    if (number && orderAccessCookieName(number) === cookie.name) numbers.set(number, cookie.value);
+  }
+  const userId = (await auth())?.user?.id ?? null;
+  const candidates = await db.order.findMany({
+    where: {
+      status: "PENDING", paidAt: null, createdAt: { gte: since },
+      OR: [{ number: { in: [...numbers.keys()] } }, ...(userId ? [{ userId }] : [])],
+    },
+    select: { number: true, checkoutKey: true, userId: true, totalCents: true },
+    orderBy: { createdAt: "desc" },
+    take: RECEIPT_SCAN_LIMIT,
+  });
+  const secret = getEnv().AUTH_SECRET;
+  for (const order of candidates) {
+    const owned = userId !== null && order.userId === userId;
+    if (owned || verifyOrderReceipt(numbers.get(order.number), order, secret, now)) {
+      return { number: order.number, totalCents: order.totalCents };
+    }
+  }
+  return null;
+}

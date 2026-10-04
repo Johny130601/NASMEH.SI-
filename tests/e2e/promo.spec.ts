@@ -271,7 +271,7 @@ test("welcome popup: delay → suppressions → dismiss session → thank-you st
     await expect(page.locator("[data-welcome-popup]")).toHaveCount(0);
 
     // thank-you state: code shown + auto-stored for checkout + DOI email
-    // (fresh context — sessionStorage dismissal flag must not carry over)
+    // (fresh context — the session-cookie dismissal flag must not carry over)
     const fresh = await page.context().browser()!.newContext();
     const page2 = await fresh.newPage();
     await page2.goto("/");
@@ -394,8 +394,10 @@ test("welcome popup: the tab a confirmation link opens does not ask for the e-ma
     const token = (await waitForMailTo(email)).match(/\/potrdi\/([a-f0-9]{48})/)?.[1];
     expect(token).toBeTruthy();
 
-    // The mail link opens a new tab: same cookies, empty sessionStorage.
+    // The mail link opens a new tab of the same browser session. The footer sign-up already set
+    // the session-cookie flag (QA 2026-10-03 T1-07); it is cleared, so the confirmation page must set it itself.
     const openHomeFromConfirmation = async (confirm: boolean) => {
+      await page.context().clearCookies({ name: "nasmeh_welcome_seen" });
       const tab = await page.context().newPage();
       await tab.goto(`/potrdi/${token}`);
       if (confirm) await tab.getByRole("button", { name: "Potrdi prijavo" }).click();
@@ -409,7 +411,8 @@ test("welcome popup: the tab a confirmation link opens does not ask for the e-ma
     await openHomeFromConfirmation(true); // the confirm button's done state
     await openHomeFromConfirmation(false); // a revisit: the server-rendered done state
 
-    // Control: another tab of the same guest without the confirmation still gets the popup.
+    // Control: without the flag, a tab of the same guest still gets the popup.
+    await page.context().clearCookies({ name: "nasmeh_welcome_seen" });
     const control = await page.context().newPage();
     await control.goto("/");
     await expect(control.locator("[data-welcome-popup]")).toBeVisible({ timeout: 10_000 });

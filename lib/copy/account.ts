@@ -75,6 +75,8 @@ export const account = {
     invalid: "Preverite naslov in obliko poštne številke za izbrano državo.",
     invalidPhone: "Vnesite veljavno telefonsko številko — samo številke, presledki in znak +.",
     invalidPostalCode: "Preverite obliko poštne številke za izbrano državo.",
+    /** The checkout reads the address through the same rule, so a street without a number is refused here too (QA 2026-10-03 T3-03). */
+    invalidLine1: "Vnesite ulico in hišno številko, npr. Slovenska cesta 12.",
     failed: "Spremembe ni bilo mogoče shraniti. Poskusite znova.",
     changed: "Adresar posodobljen.",
     deleteConfirm: "Želite izbrisati ta naslov?",

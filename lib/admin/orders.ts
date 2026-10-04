@@ -3,6 +3,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { refundedQuantities } from "@/lib/orders/refunds";
 import { likeEscaped } from "./like";
+import { isAnonymisedEmail } from "./customers";
+import { admin as adminCopy } from "@/lib/copy/admin";
 
 /** Order list, filters, detail and CSV export for /admin/narocila (§14.7). */
 
@@ -203,7 +205,8 @@ export async function ordersCsv(filters: OrderFilters): Promise<string> {
     },
   });
   const rows = orders.map((order) => [
-    order.number, csvDateTime(order.createdAt), order.status, order.email, addressField(order.shippingAddress, "fullName"),
+    // an erasure placeholder reads as the label the list shows (QA 2026-10-03 V4-03)
+    order.number, csvDateTime(order.createdAt), order.status, isAnonymisedEmail(order.email) ? adminCopy.common.anonymised : order.email, addressField(order.shippingAddress, "fullName"),
     addressField(order.shippingAddress, "country"), order.items.reduce((sum, item) => sum + item.quantity, 0),
     csvEur(order.totalCents), csvEur(order.refundedCents), order.paymentProvider ?? "", order.trackingNumber ?? "", order.carrier ?? "",
   ].map(csvCell).join(";"));

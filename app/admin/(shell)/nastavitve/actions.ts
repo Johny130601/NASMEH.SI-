@@ -4,6 +4,8 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/admin/access";
+import { db } from "@/lib/db";
+import { legalLinkPath, legalLinkSlug } from "@/lib/orders/legal-acceptance";
 import { saveSettingValue } from "@/lib/admin/cms";
 import { getConsentConfig, getMaintenance, SETTING_KEYS } from "@/lib/settings";
 import {
@@ -16,7 +18,7 @@ import type { ContactSettingsInput } from "@/lib/support/settings-schema";
 
 /** Settings mutations (§14.12–§14.14): OWNER only; every value is validated by the schema the storefront reads. */
 
-export type SettingsActionResult = { ok: true } | { ok: false; error: "invalid" };
+export type SettingsActionResult = { ok: true } | { ok: false; error: "invalid" | "legalPage"; fields?: string[] };
 
 function refreshStorefront(...paths: string[]) {
   revalidatePath("/", "layout");
@@ -86,7 +88,8 @@ export async function saveInvoiceFooterAction(input: { footer: string }): Promis
 export async function saveAnalyticsAction(input: AnalyticsInput): Promise<SettingsActionResult> {
   await requirePermission("settings:manage");
   const parsed = analyticsSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "invalid" };
+  // the message names the field, not every rule (QA 2026-10-03 T6-10)
+  if (!parsed.success) return { ok: false, error: "invalid", fields: [...new Set(parsed.error.issues.map((issue) => String(issue.path[0])))] };
   await Promise.all([
     saveSettingValue(SETTING_KEYS.gtmId, parsed.data.gtmId),
     saveSettingValue(SETTING_KEYS.ga4Id, parsed.data.ga4Id),
@@ -141,6 +144,16 @@ export async function saveLegalLinksAction(input: LegalLinksInput): Promise<Sett
   await requirePermission("settings:manage");
   const parsed = legalLinksSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid" };
+  // Each link must open a page a shopper can read: a published page (the cookie policy and the withdrawal
+  // route render one too). A typo or an unpublished page used to send checkout's terms link to a 404, and
+  // orders then recorded no terms text (QA 2026-10-03 T6-03).
+  const entries = Object.entries(parsed.data);
+  const slugs = entries.map(([, href]) => legalLinkSlug(legalLinkPath(href)));
+  const published = new Set((await db.contentPage.findMany({
+    where: { slug: { in: slugs.filter((slug): slug is string => slug !== null) }, published: true }, select: { slug: true },
+  })).map((page) => page.slug));
+  const missing = entries.filter((_, index) => { const slug = slugs[index]; return !slug || !published.has(slug); }).map(([key]) => key);
+  if (missing.length) return { ok: false, error: "legalPage", fields: missing };
   await saveSettingValue(SETTING_KEYS.legalLinks, parsed.data);
   refreshStorefront("/checkout", "/admin/nastavitve/trzenje");
   return { ok: true };

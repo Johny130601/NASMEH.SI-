@@ -5,10 +5,12 @@ import {
   getCompany,
   getLegalLinks,
 } from "@/lib/settings";
+import { companyPlaceholderFields } from "@/lib/settings-schemas";
 import { footerColumnTitle, getMenuWithTitle, withLegalLinks } from "@/lib/menus";
 import { menuHrefs, menuWithAvailableLinks, productSlugsIn, purchasableSlugs } from "@/lib/content-links";
 import { admin } from "@/lib/copy/admin";
 import { footer as copy } from "@/lib/copy/footer";
+import { legal } from "@/lib/copy/legal";
 import { telHref } from "@/lib/phone";
 import { NewsletterForm } from "./NewsletterForm";
 import { CmpOpenButton } from "../cmp/CmpOpenButton";
@@ -28,7 +30,7 @@ const COLUMNS = [
  *  404 is left out (QA v-a, lib/content-links). */
 export async function SiteFooter() {
   const [company, legalLinks, legalMenu, ...columnMenus] = await Promise.all([
-    // Validated reader: a malformed row shows no block rather than a partial identity.
+    // Validated reader: a malformed row is no identity at all (the "not available" line), never a partial one.
     getCompany(),
     getLegalLinks(),
     getMenuWithTitle("footer-pravno"),
@@ -44,7 +46,12 @@ export async function SiteFooter() {
     items: columnItems[index] ?? [],
   }));
 
-  const phoneHref = company?.phone ? telHref(company.phone) : null;
+  // One rule for the seller identity (AGENTS §22, QA 2026-10-03 T1-03): the
+  // legal pages' rule — no block while the Setting is absent or still holds the
+  // seed placeholders, only the same "not available" line — so the footer never
+  // prints an identity the store does not have.
+  const identity = company && companyPlaceholderFields(company).length === 0 ? company : null;
+  const phoneHref = identity?.phone ? telHref(identity.phone) : null;
   const env = getEnv();
   const siteKey = env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? null;
   const testToken = isTestMode() ? (env.TURNSTILE_TEST_TOKEN ?? null) : null;
@@ -114,23 +121,23 @@ export async function SiteFooter() {
       {/* Company identification + legal */}
       <div className="border-t border-light-3 bg-light-4">
         <div className="mx-auto max-w-(--container-wide) px-(--padding) py-8">
-          {company ? (
-            <address className="text-xs not-italic leading-6 text-mid-2">
-              <span className="font-medium text-dark-1">{company.name}</span>
+          {identity ? (
+            <address className="text-xs not-italic leading-6 text-mid-2" data-company-block>
+              <span className="font-medium text-dark-1">{identity.name}</span>
               <br />
-              {company.address}
+              {identity.address}
               <br />
-              {copy.company.registration}: {company.registrationNumber} ·{" "}
-              {copy.company.vat}: {company.vatId}
+              {copy.company.registration}: {identity.registrationNumber} ·{" "}
+              {copy.company.vat}: {identity.vatId}
               <br />
               {copy.company.email}:{" "}
               <a
-                href={`mailto:${company.email}`}
+                href={`mailto:${identity.email}`}
                 className="underline underline-offset-2 transition-colors hover:text-dark-1"
               >
-                {company.email}
+                {identity.email}
               </a>
-              {phoneHref && company.phone ? (
+              {phoneHref && identity.phone ? (
                 <>
                   {" · "}
                   {copy.company.phone}:{" "}
@@ -139,12 +146,16 @@ export async function SiteFooter() {
                     className="underline underline-offset-2 transition-colors hover:text-dark-1"
                     data-company-phone
                   >
-                    {company.phone.trim()}
+                    {identity.phone.trim()}
                   </a>
                 </>
               ) : null}
             </address>
-          ) : null}
+          ) : (
+            <p className="text-xs text-mid-2" data-company-missing>
+              {legal.seller.missing}
+            </p>
+          )}
 
           <nav aria-label={copy.columns.legal} className="mt-6">
             <ul className="flex flex-wrap items-center gap-x-5 gap-y-2">

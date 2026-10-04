@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { buyNowAction } from "@/app/(storefront)/actions/cart";
 import { buildAddToCartEvent } from "@/lib/analytics";
-import { dispatchCartAdded } from "@/lib/cart/added-event";
+import { dispatchCartAdded, SOLD_OUT_REFRESH_MS } from "@/lib/cart/added-event";
 import { pushEvent } from "@/components/storefront/analytics/TrackViewItem";
 import { catalog } from "@/lib/copy/catalog";
 import { pdp as copy } from "@/lib/copy/pdp";
@@ -67,6 +67,13 @@ export function BuyNowButton({
           // short of the ask, but these units are in the cart: confirm them like any add
           dispatchCartAdded({ title, priceCents, quantity: added, imageUrl });
           router.refresh();
+          return;
+        }
+        if (result.soldOut || result.unavailable) {
+          // sold out (or withdrawn) since the page was opened: say so, then let the page show it —
+          // after a pause, since the refreshed page replaces this button and its notice (QA 2026-10-03 T5-07)
+          setNotice({ capped: true, text: result.soldOut ? catalog.card.soldOutNow : catalog.card.unavailableNow });
+          if (result.soldOut) setTimeout(() => router.refresh(), SOLD_OUT_REFRESH_MS);
           return;
         }
         const capped = result.capped === true;

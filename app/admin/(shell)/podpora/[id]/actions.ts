@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/admin/access";
-import { isStaffRole } from "@/lib/admin/permissions";
+import { can } from "@/lib/admin/permissions";
 import { TICKET_STATUSES } from "@/lib/admin/tickets";
 
 export type TicketActionResult = { ok: true } | { ok: false; error: "invalid" | "not_found" };
@@ -21,9 +21,17 @@ export async function updateTicketAction(input: { ticketId: string; status: stri
   if (!parsed.success) return { ok: false, error: "invalid" };
   let assigneeId: string | null = null;
   if (parsed.data.assigneeId) {
-    const assignee = await db.user.findUnique({ where: { id: parsed.data.assigneeId }, select: { id: true, role: true } });
-    if (!assignee || !isStaffRole(assignee.role)) return { ok: false, error: "invalid" };
-    assigneeId = assignee.id;
+    const current = await db.ticket.findUnique({ where: { id: parsed.data.ticketId }, select: { assigneeId: true } });
+    if (!current) return { ok: false, error: "not_found" };
+    if (current.assigneeId === parsed.data.assigneeId) {
+      // unchanged: saving the status or the note keeps an assignee whose role changed since (QA 2026-10-03 V4-02)
+      assigneeId = current.assigneeId;
+    } else {
+      const assignee = await db.user.findUnique({ where: { id: parsed.data.assigneeId }, select: { id: true, role: true } });
+      // only someone who can open the ticket can be made responsible for it
+      if (!assignee || !can(assignee.role, "tickets:view")) return { ok: false, error: "invalid" };
+      assigneeId = assignee.id;
+    }
   }
   const updated = await db.ticket.updateMany({
     where: { id: parsed.data.ticketId },

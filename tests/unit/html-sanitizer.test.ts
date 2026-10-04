@@ -33,8 +33,20 @@ describe("sanitizeContentHtml", () => {
 
   it("refuses protocol-relative and unknown-scheme URLs but keeps https images", () => {
     expect(sanitizeContentHtml(`<a href="//evil.example/x">a</a><a href="ftp://x">b</a><a href="data:text/html,x">c</a>`)).toBe(`<a>a</a><a>b</a><a>c</a>`);
-    expect(sanitizeContentHtml(`<img src="https://cdn.example/a.png" alt=""><img src="http://insecure/a.png" alt=""><img src="//evil/a.png" alt="">`))
-      .toBe(`<img src="https://cdn.example/a.png" alt="" loading="lazy" /><img alt="" loading="lazy" /><img alt="" loading="lazy" />`);
+    // an image whose source is refused goes, rather than staying as an empty <img> (QA 2026-10-03 T6-11)
+    expect(sanitizeContentHtml(`<img src="https://cdn.example/a.png" alt=""><img src="http://insecure/a.png" alt=""><img src="//evil/a.png" alt=""><img alt="brez vira">`))
+      .toBe(`<img src="https://cdn.example/a.png" alt="" loading="lazy" />`);
+  });
+
+  it("drops a void element alone and keeps everything after it (QA 2026-10-03 T6-01)", () => {
+    for (const tag of [`<input name="q">`, `<meta charset="utf-8">`, `<link rel="stylesheet" href="x.css">`, `<embed src="x.swf">`, `<base href="https://evil/">`, `<input name="q" />`]) {
+      expect(sanitizeContentHtml(`<p>A1</p>${tag}<p>B1</p>`), tag).toBe(`<p>A1</p><p>B1</p>`);
+    }
+    // a Word/Docs export starts with document metadata; the text after it survives
+    expect(sanitizeContentHtml(`<meta charset="utf-8"><meta name="generator" content="Word"><h2>Pogoji</h2><p>Besedilo.</p>`))
+      .toBe(`<h2>Pogoji</h2><p>Besedilo.</p>`);
+    // an element with content still takes its content with it, and an unclosed one the rest
+    expect(sanitizeContentHtml(`<p>a</p><style>p{display:none}</style><p>b</p><script>x`)).toBe(`<p>a</p><p>b</p>`);
   });
 
   it("forces an opener-safe rel on new-tab links and ignores other targets", () => {

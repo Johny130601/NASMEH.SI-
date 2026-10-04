@@ -69,7 +69,10 @@ describe("markOrderPaid issues the invoice", () => {
       buyer: { name: "Živa Kupec", email: "kupec@test.si", address: pendingOrder().shippingAddress },
       footer: "Hvala za zaupanje.",
     });
-    expect(mocks.tx.abandonedCheckout.deleteMany).toHaveBeenCalledWith({ where: { recoveryToken: "checkout-key-123" } });
+    // this session's capture and the buyer's captures from earlier sessions (QA 2026-10-03 T2-13)
+    expect(mocks.tx.abandonedCheckout.deleteMany).toHaveBeenCalledWith({
+      where: { OR: [{ email: "kupec@test.si" }, { recoveryToken: "checkout-key-123" }] },
+    });
     expect(mocks.deliver).toHaveBeenCalledWith("order-1");
   });
 
@@ -87,7 +90,7 @@ describe("markOrderPaid issues the invoice", () => {
     }
   });
 
-  it("does not touch abandoned checkouts or the snapshot when stock ran out, and skips orders without a checkout key", async () => {
+  it("does not touch abandoned checkouts or the snapshot when stock ran out; without a checkout key it clears by e-mail", async () => {
     mocks.inventory.mockResolvedValueOnce({ ok: false, reason: "insufficient_stock" });
     expect((await markOrderPaid("stripe", "evt_3", "pi_1", { amountCents: 3989, currency: "EUR" })).outcome).toBe("stockout");
     expect(mocks.tx.order.update.mock.calls[0][0].data).not.toHaveProperty("invoiceSnapshot");
@@ -95,7 +98,7 @@ describe("markOrderPaid issues the invoice", () => {
 
     mocks.tx.order.findFirst.mockResolvedValue({ ...pendingOrder(), checkoutKey: null });
     expect((await markOrderPaid("stripe", "evt_4", "pi_1", { amountCents: 3989, currency: "EUR" })).outcome).toBe("paid");
-    expect(mocks.tx.abandonedCheckout.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.tx.abandonedCheckout.deleteMany).toHaveBeenCalledWith({ where: { OR: [{ email: "kupec@test.si" }] } });
   });
 
   it("logs only the error type when the post-commit confirmation attempt throws", async () => {

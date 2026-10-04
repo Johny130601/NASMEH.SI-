@@ -41,6 +41,7 @@ describe("refusal messages", () => {
   it("names the coupon code and the product field that failed", () => {
     expect(errorText({ ok: false, error: "codeInvalid" }, " qa6 bad! ")).toBe(copy.coupons.editor.codeInvalid.replace("{code}", "QA6 BAD!"));
     expect(errorText({ ok: false, error: "invalid" }, "Q6")).toBe(copy.coupons.editor.invalid);
+    expect(errorText({ ok: false, error: "emailsInvalid" }, "Q6")).toBe(copy.coupons.editor.emailsInvalid);
     expect(productSaveError({ ok: false, error: "invalid", field: "slug" })).toBe("Preverite polje »Slug (URL)«.");
     expect(productSaveError({ ok: false, error: "invalid", field: "uspChips" })).toBe("Preverite polje »USP oznake«.");
     expect(productSaveError({ ok: false, error: "invalid" })).toBe(copy.catalog.editor.invalid);

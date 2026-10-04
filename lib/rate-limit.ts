@@ -42,6 +42,15 @@ export function checkRateLimit(
   return { allowed: true, retryAfterMs: 0 };
 }
 
+/**
+ * Forget a key's window — for limits that count failures only: the caller
+ * checks before the attempt and clears once it succeeded, so a member's own
+ * successful sign-ins never use up the budget meant for wrong guesses.
+ */
+export function clearRateLimit(key: string): void {
+  buckets.delete(key);
+}
+
 /** Test-only: reset all buckets. */
 export function __resetRateLimits(): void {
   buckets.clear();

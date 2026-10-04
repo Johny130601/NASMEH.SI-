@@ -74,7 +74,11 @@ export function PageEditor({ pageId, initial, locked = false }: { pageId: string
       data-page-locked={locked || undefined}
       onSubmit={(event) => {
         event.preventDefault();
-        if (locked && initial.published && !page.published && !window.confirm(c.editor.confirmUnpublishLegal)) return;
+        if (locked && initial.published && !page.published && !window.confirm(c.editor.confirmUnpublishLegal)) {
+          // dismissed: the page stays published, and so does the form (QA 2026-10-03 w2)
+          setPage((current) => ({ ...current, published: true }));
+          return;
+        }
         setMessage(null);
         startTransition(async () => {
           try {

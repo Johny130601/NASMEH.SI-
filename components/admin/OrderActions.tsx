@@ -39,6 +39,11 @@ export interface OrderActionsProps {
   shippingRefunded: boolean;
   remainingCents: number;
   permissions: { fulfil: boolean; refund: boolean; notes: boolean };
+  /**
+   * Who could read a customer-visible note: only an account holder, on the account's order page.
+   * A guest order and an erased buyer's order get internal notes only (QA 2026-10-03 T4-04).
+   */
+  notesAudience: "account" | "guest" | "anonymised";
 }
 
 const selectClass = "min-h-[3.25rem] w-full rounded-input border border-light-1 bg-white px-4 text-base outline-none focus:border-brand";
@@ -210,11 +215,14 @@ export function OrderActions(props: OrderActionsProps) {
           onSubmit={(event) => {
             event.preventDefault();
             const reason = String(new FormData(event.currentTarget).get("cancelReason") ?? "");
-            if (!window.confirm(copy.orders.actions.confirmCancel)) return;
+            const question = props.status === "PENDING"
+              ? copy.orders.actions.confirmCancelUnpaid
+              : copy.orders.actions.confirmCancel.replace("{amount}", formatEUR(props.remainingCents));
+            if (!window.confirm(question)) return;
             run(() => cancelOrderAction({ orderId: props.orderId, reason }));
           }}
         >
-          <p className="text-sm text-mid-1 md:col-span-2">{copy.orders.actions.cancelHint}</p>
+          <p className="text-sm text-mid-1 md:col-span-2">{props.status === "PENDING" ? copy.orders.actions.cancelHintUnpaid : copy.orders.actions.cancelHint}</p>
           <UiInput label={copy.orders.actions.cancelReason} name="cancelReason" required maxLength={500} />
           <UiButton type="submit" variant="outline" disabled={pending} className="border-error text-error" data-action="cancel">{copy.orders.actions.cancel}</UiButton>
         </form>
@@ -229,7 +237,8 @@ export function OrderActions(props: OrderActionsProps) {
             const form = event.currentTarget;
             const data = new FormData(form);
             run(async () => {
-              const result = await addOrderNoteAction({ orderId: props.orderId, body: String(data.get("body") ?? ""), visibleToCustomer: data.get("visible") === "on" });
+              const visibleToCustomer = props.notesAudience === "account" && data.get("visible") === "on";
+              const result = await addOrderNoteAction({ orderId: props.orderId, body: String(data.get("body") ?? ""), visibleToCustomer });
               if (result.ok) form.reset();
               return result;
             });
@@ -240,10 +249,16 @@ export function OrderActions(props: OrderActionsProps) {
             {copy.orders.notes.body}
             <textarea name="body" required rows={3} maxLength={4000} className={textareaClass} />
           </label>
-          <label className="mt-3 flex items-center gap-3 text-sm">
-            <input type="checkbox" name="visible" className="size-4 accent-brand" data-note-visible />
-            {copy.orders.notes.visible}
-          </label>
+          {props.notesAudience === "account" ? (
+            <label className="mt-3 flex items-center gap-3 text-sm">
+              <input type="checkbox" name="visible" className="size-4 accent-brand" data-note-visible />
+              {copy.orders.notes.visible}
+            </label>
+          ) : (
+            <p className="mt-3 text-sm text-mid-1" data-note-internal-only={props.notesAudience}>
+              {props.notesAudience === "guest" ? copy.orders.notes.guestHint : copy.orders.notes.anonymisedHint}
+            </p>
+          )}
           <div className="mt-3">
             <UiButton type="submit" variant="outline" disabled={pending} data-action="note">{copy.orders.notes.submit}</UiButton>
           </div>

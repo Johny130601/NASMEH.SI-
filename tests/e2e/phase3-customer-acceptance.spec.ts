@@ -251,6 +251,8 @@ test("guest purchaser receives private confirmation, can verify an account, and 
     const token = `${mail.Text ?? ""}\n${mail.HTML ?? ""}`.match(/\/potrdi-racun\/([a-f0-9]{64})/)?.[1];
     expect(token).toBeTruthy();
     await page.goto(`/potrdi-racun/${token}`);
+    // activation asks for the password chosen with "Ustvari račun" (QA 2026-10-03 T3-02)
+    await page.locator("[data-verify-form]").getByLabel(/Geslo/).fill("Acceptance123!");
     await page.getByRole("button", { name: "Potrdi e-pošto", exact: true }).click();
     await expect(page.getByText("Račun je aktiven 🎉")).toBeVisible();
     await page.goto("/prijava");

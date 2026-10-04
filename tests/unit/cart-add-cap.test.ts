@@ -96,7 +96,10 @@ describe("addToCartAction confirms only a real add", () => {
       product: { status: "ACTIVE", hiddenDeal: false },
     });
     const result = await addToCartAction({ variantId, quantity: 1 });
-    expect(result).toEqual({ ok: false, count: 0 });
+    // sold out since the page was rendered: named, so the button says so (QA 2026-10-03 T5-07)
+    expect(result).toEqual({ ok: false, count: 0, soldOut: true });
     expect(result.capped).toBeUndefined();
+    mocks.findUnique.mockResolvedValue(null);
+    expect(await addToCartAction({ variantId, quantity: 1 })).toEqual({ ok: false, count: 0, unavailable: true });
   });
 });

@@ -23,6 +23,8 @@ declare module "@auth/core/jwt" {
     sessionVersion?: number;
     /** Staff sign-in time (ms); staff tokens expire 12 h after it. */
     staffIssuedAt?: number;
+    /** Random id of this session from its sign-in; refused once signed out (RevokedSession). */
+    sid?: string;
     mfaEnrolled?: boolean;
   }
 }

@@ -1,10 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ products: vi.fn(), pages: vi.fn() }));
+const mocks = vi.hoisted(() => ({ products: vi.fn(), pages: vi.fn(), collections: vi.fn() }));
 vi.mock("@/lib/db", () => ({ db: { product: { findMany: mocks.products }, contentPage: { findMany: mocks.pages } } }));
 vi.mock("@/lib/seo", () => ({ siteUrl: () => "https://nasmeh.example" }));
+// The /trgovina tabs: collections with a product someone can buy (lib/catalog).
+vi.mock("@/lib/catalog", () => ({ getCatalogCollections: mocks.collections }));
 
 import sitemap from "@/app/sitemap";
+
+const collection = (slug: string, noindex = false) => ({
+  slug, title: slug, bannerImage: null, bannerImageMobile: null, hideBannerText: false, seoTitle: null, seoDescription: null, noindex,
+});
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -13,14 +19,17 @@ beforeEach(() => {
     { slug: "belilni-trakci-potovalni-7", updatedAt: new Date("2026-09-05T00:00:00Z") },
   ]);
   mocks.pages.mockResolvedValue([{ slug: "pogoji-poslovanja", updatedAt: new Date("2026-08-01T00:00:00Z") }]);
+  mocks.collections.mockResolvedValue([collection("beljenje"), collection("paketi")]);
 });
 
 describe("sitemap (backlog B1)", () => {
-  it("lists the homepage, catalog, visible products, indexable routes and published pages", async () => {
+  it("lists the homepage, catalog, its collections, visible products, indexable routes and published pages", async () => {
     const urls = (await sitemap()).map((entry) => entry.url);
     expect(urls).toEqual([
       "https://nasmeh.example",
       "https://nasmeh.example/trgovina",
+      "https://nasmeh.example/trgovina?kolekcija=beljenje",
+      "https://nasmeh.example/trgovina?kolekcija=paketi",
       "https://nasmeh.example/izdelek/belilni-trakci-za-zobe",
       "https://nasmeh.example/izdelek/belilni-trakci-potovalni-7",
       "https://nasmeh.example/prijava-nezelenega-ucinka",
@@ -68,6 +77,20 @@ describe("sitemap (backlog B1)", () => {
     expect(urls).toContain("https://nasmeh.example/izdelek/hide-bundle-stocked");
     expect(urls).not.toContain("https://nasmeh.example/izdelek/hide-sold-out");
     expect(urls).not.toContain("https://nasmeh.example/izdelek/hide-bundle-component-out");
+  });
+
+  it("lists a collection at the canonical /trgovina gives it, and never a noindex one (QA 2026-10-03)", async () => {
+    mocks.collections.mockResolvedValue([collection("beljenje"), collection("skrita akcija", true), collection("darila & paketi")]);
+    const entries = await sitemap();
+    const listed = entries.filter((entry) => entry.url.includes("?kolekcija="));
+    expect(listed.map((entry) => entry.url)).toEqual([
+      "https://nasmeh.example/trgovina?kolekcija=beljenje",
+      "https://nasmeh.example/trgovina?kolekcija=darila%20%26%20paketi",
+    ]);
+    // dated like the catalog page they filter: by its newest product
+    for (const entry of listed) expect(entry.lastModified).toEqual(new Date("2026-09-05T00:00:00Z"));
+    // the tabs are the source: a collection with nothing to buy has no tab, so no entry
+    expect(mocks.collections).toHaveBeenCalledTimes(1);
   });
 
   it("never lists noindex route families and dates the catalog by its newest product", async () => {

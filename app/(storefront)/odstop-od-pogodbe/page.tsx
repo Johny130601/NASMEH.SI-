@@ -6,6 +6,8 @@ import { auth } from "@/lib/auth";
 import { getAuthChallengeProps } from "@/lib/auth-challenge";
 import { db } from "@/lib/db";
 import { sanitizeContentHtml } from "@/lib/security/html-sanitizer";
+import { withHeadingIds } from "@/lib/content/toc";
+import { LegalToc, TOC_TARGET_CLASS } from "@/components/storefront/content/LegalToc";
 import { buildMetadata } from "@/lib/seo";
 import { legal } from "@/lib/copy";
 import { sellerBlockLines } from "@/lib/copy/legal";
@@ -40,6 +42,8 @@ export default async function WithdrawalPage() {
   const copy = returns.withdrawal;
   // The body's §1 tells the consumer whom to notify "zgoraj" (CRD Annex I(A)).
   const sellerLines = sellerBlockLines(company, companyPlaceholderFields(company));
+  // the body's <h2>s get ids and a table of contents (spec §12.5 "legal w/ TOC")
+  const { html, toc } = withHeadingIds(sanitizeContentHtml(page.body));
 
   return (
     <article className="mx-auto max-w-(--container-narrow) px-(--padding) py-16">
@@ -63,8 +67,10 @@ export default async function WithdrawalPage() {
         )}
       </section>
 
-      {/* Operator HTML is sanitised on save and again here (AGENTS §8.24). */}
-      <div className="content-prose mt-8" dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(page.body) }} />
+      <LegalToc entries={toc} />
+
+      {/* Operator HTML is sanitised on save and again here (AGENTS §8.24); the heading ids and the contents are added after that (QA 2026-10-03 T1-04). */}
+      <div className={`content-prose mt-8 ${toc.length > 0 ? TOC_TARGET_CLASS : ""}`} dangerouslySetInnerHTML={{ __html: html }} />
 
       <section aria-labelledby="withdrawal-form-title" className="mt-12 border-t border-light-2 pt-10" data-withdrawal-section>
         <h2 id="withdrawal-form-title" className="text-2xl">{copy.formTitle}</h2>

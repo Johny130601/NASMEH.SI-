@@ -111,6 +111,10 @@ test("owner edits shipping, tax, marketing, consent, legal, maintenance and supp
       await expect(page.locator("[data-company-placeholders]")).toContainText("začasne vrednosti");
     }
     await page.getByLabel("Naziv", { exact: true }).fill(`E2E podjetje ${key} d.o.o.`);
+    // The footer states only an identity without seed placeholders (QA 2026-10-03 T1-03), so the e2e company replaces them.
+    await page.getByLabel("Naslov", { exact: true }).fill("Čopova 1, 1000 Ljubljana");
+    await page.getByLabel("Matična številka", { exact: true }).fill("1234567000");
+    await page.getByLabel("ID za DDV", { exact: true }).fill("SI12345678");
     await page.getByLabel("Telefon (neobvezno)", { exact: true }).fill("telefon");
     await saved(page, "company", "Preverite vnesene podatke.");
     await page.getByLabel("Telefon (neobvezno)", { exact: true }).fill("+386 1 234 56 78");
@@ -154,7 +158,15 @@ test("owner edits shipping, tax, marketing, consent, legal, maintenance and supp
     await expect(front.locator("meta[name='google-site-verification']")).toHaveAttribute("content", `e2e-${key}-verification`);
     await page.getByLabel("Google Tag Manager (GTM-…)").fill("UA-123");
     await page.locator("[data-settings-form='analytics'] [data-settings-save]").click();
-    await expect(page.locator("[data-settings-form='analytics'] [data-settings-message]")).toHaveText("Preverite obliko ID-jev (GTM-XXXX, G-XXXX, Meta samo številke).");
+    // the refusal names the field (QA 2026-10-03 T6-10)
+    await expect(page.locator("[data-settings-form='analytics'] [data-settings-message]")).toHaveText("Napačna oblika: Google Tag Manager (GTM-…). Preverite obliko ID-jev (GTM-XXXX, G-XXXX, Meta samo številke).");
+    // a pasted lower-case id is stored upper case, not refused
+    await page.getByLabel("Google Tag Manager (GTM-…)").fill(`gtm-e2e${key.slice(0, 4)}`);
+    await saved(page, "analytics");
+    expect(await prisma.setting.findUniqueOrThrow({ where: { key: "analytics.gtmId" } }).then((row) => row.value)).toBe(`GTM-E2E${key.slice(0, 4).toUpperCase()}`);
+    // cleared again, so the consent steps below load no container
+    await page.getByLabel("Google Tag Manager (GTM-…)").fill("");
+    await saved(page, "analytics");
 
     // Consent: banner copy override and a new cookie row are live; a version bump re-asks a visitor who already chose.
     await page.getByLabel("Naslov pasice (prazno = privzeto besedilo)").fill(`Piškotki E2E ${key}`);

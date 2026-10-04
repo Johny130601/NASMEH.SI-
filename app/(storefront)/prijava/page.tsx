@@ -31,7 +31,7 @@ export default async function LoginPage({
   const defaultEmail = error ? (await cookies()).get(LOGIN_EMAIL_COOKIE)?.value ?? "" : "";
 
   return (
-    <AuthShell title={copy.login.title} subtitle={copy.login.subtitle} social>
+    <AuthShell title={copy.login.title} subtitle={copy.login.subtitle}>
       {error === "unverified" ? (
         <p role="alert" className="mb-4 rounded-card border border-error bg-white p-4 text-sm text-error">
           {copy.login.unverified}

@@ -176,10 +176,12 @@ export async function markOrderPaid(
         timeline: timelinePush(order, "paid", `provider:${order.paymentProvider ?? provider}`),
       },
     });
-    // The checkout became a paid order: its abandoned-checkout capture has no purpose left (GDPR Art. 5(1)(c), (e)).
-    if (order.checkoutKey) {
-      await tx.abandonedCheckout.deleteMany({ where: { recoveryToken: order.checkoutKey } });
-    }
+    // The checkout became a paid order: its abandoned-checkout capture has no purpose left (GDPR Art. 5(1)(c), (e)),
+    // and neither have the buyer's captures from earlier sessions — a recovery mail would chase a purchase
+    // already made (QA 2026-10-03 T2-13). Captures and orders both store the address lowercased.
+    await tx.abandonedCheckout.deleteMany({
+      where: { OR: [{ email: order.email }, ...(order.checkoutKey ? [{ recoveryToken: order.checkoutKey }] : [])] },
+    });
     return { outcome: "paid", orderNumber: order.number };
   });
 

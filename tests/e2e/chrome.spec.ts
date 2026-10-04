@@ -193,6 +193,30 @@ test("search overlay keeps focus inside and returns it to the header button (QA 
   await expect(open).toBeFocused();
 });
 
+test("the first Tab reaches a skip link that jumps past the header to <main> (WCAG 2.4.1, QA 2026-10-03)", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const banner = page.getByRole("dialog", { name: /piškotki/i });
+  if (await banner.isVisible()) {
+    await banner.getByRole("button", { name: "Zavrni" }).click();
+    await banner.waitFor({ state: "hidden" });
+  }
+  // a fresh load with the choice stored: nothing has focus yet
+  await page.reload();
+  const skip = page.locator("[data-skip-link]");
+  await expect(skip).toHaveAttribute("href", "#content");
+  await expect(skip).not.toBeInViewport();
+  await page.keyboard.press("Tab");
+  await expect(skip).toBeFocused();
+  await expect(skip).toBeInViewport();
+  await expect(skip).toHaveText("Preskoči na vsebino");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/#content$/);
+  // the next Tab continues inside <main>, not in the marquee or the header
+  await page.keyboard.press("Tab");
+  expect(await page.evaluate(() => document.querySelector("main#content")?.contains(document.activeElement) ?? false)).toBe(true);
+});
+
 test("maintenance mode: gate → password → site → off", async ({ page }) => {
   await setMaintenanceEnabled(true);
   try {

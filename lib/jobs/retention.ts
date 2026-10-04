@@ -38,6 +38,8 @@ export interface RetentionCounts {
   abandonedCheckoutsDeleted: number;
   rejectedReviewPhotosRemoved: number;
   unownedSupportPhotosRemoved: number;
+  /** Sign-out records past the expiry of the token they refuse (QA 2026-10-03 T3-01). */
+  revokedSessionsDeleted: number;
   failed: number;
 }
 
@@ -50,7 +52,10 @@ export interface RetentionCounts {
  * records, tickets and accounts are out of scope: their periods are D4 decisions.
  */
 export async function runRetention(now = new Date()): Promise<RetentionCounts> {
-  const counts: RetentionCounts = { authTokensDeleted: 0, activationDataCleared: 0, abandonedCheckoutsDeleted: 0, rejectedReviewPhotosRemoved: 0, unownedSupportPhotosRemoved: 0, failed: 0 };
+  const counts: RetentionCounts = { authTokensDeleted: 0, activationDataCleared: 0, abandonedCheckoutsDeleted: 0, rejectedReviewPhotosRemoved: 0, unownedSupportPhotosRemoved: 0, revokedSessionsDeleted: 0, failed: 0 };
+
+  // A signed-out session's record is needed only while its token could still be presented.
+  counts.revokedSessionsDeleted = (await db.revokedSession.deleteMany({ where: { expiresAt: { lt: now } } })).count;
 
   const tokenCutoff = new Date(now.getTime() - AUTH_TOKEN_RETENTION_DAYS * DAY_MS);
   counts.authTokensDeleted = (await db.authToken.deleteMany({

@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth", () => ({ auth: mocks.auth }));
 vi.mock("@/lib/orders/access", () => ({ getOrderReceipt: mocks.receipt, currentCartVersion: mocks.cartVersion }));
 vi.mock("@/lib/cart/server", () => ({ getCartLines: mocks.cartLines, clearGuestCart: mocks.clearGuest }));
-vi.mock("@/lib/auth-tokens", () => ({ issueAuthToken: mocks.issueToken }));
+vi.mock("@/lib/auth-tokens", () => ({ issueAuthToken: mocks.issueToken, allowAccountMail: () => true }));
 vi.mock("@/lib/email/mailer", () => ({ sendVerifyAccountEmail: mocks.mail }));
 vi.mock("@/lib/db", () => ({ db: {
   order: { findUnique: mocks.findOrder, updateMany: mocks.claimOrder },
@@ -60,7 +60,8 @@ describe("post-purchase account ownership", () => {
     expect(mocks.claimOrder).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: order.id, userId: null }), data: { userId: "new-user" } }));
     expect(mocks.consent).toHaveBeenCalledWith({ data: expect.objectContaining({ userId: "new-user", choices: expect.objectContaining({ marketing: false }) }) });
     expect(mocks.issueToken).toHaveBeenCalledWith("new-user", "VERIFY_EMAIL");
-    expect(mocks.mail).toHaveBeenCalledWith(order.email, "verification-token");
+    // no newsletter note: this activation confirms no marketing, the checkout box has its own double opt-in (QA 2026-10-03)
+    expect(mocks.mail).toHaveBeenCalledWith(order.email, "verification-token", { newsletter: false });
   });
   it("never links or overwrites an existing account with the same email", async () => {
     mocks.findUser.mockResolvedValue({ id: "existing", email: order.email });
@@ -126,5 +127,23 @@ describe("paid-order cart cleanup", () => {
     expect(await clearPurchasedCart({ orderNumber: order.number })).toEqual({ ok: true, cleared: false });
     expect(mocks.deleteCart).toHaveBeenCalledOnce();
     expect(mocks.clearGuest).not.toHaveBeenCalled();
+  });
+  it("lets the account's owner who paid on another device clear the account cart holding exactly the purchase (QA 2026-10-03 T3-05)", async () => {
+    mocks.receipt.mockResolvedValue(null);
+    mocks.auth.mockResolvedValue({ user: { id: "owner", role: "CUSTOMER" } });
+    mocks.findOrder.mockResolvedValue({ ...order, userId: "owner" });
+    mocks.findCart.mockResolvedValue({ id: "c1", updatedAt: new Date(), items: lines });
+    expect(await clearPurchasedCart({ orderNumber: order.number })).toEqual({ ok: true, cleared: true });
+    expect(mocks.deleteCart).toHaveBeenCalledWith({ where: { cartId: "c1" } });
+  });
+  it("leaves the account cart alone on another device when it holds more than the purchase, and never for someone else's order", async () => {
+    mocks.receipt.mockResolvedValue(null);
+    mocks.auth.mockResolvedValue({ user: { id: "owner", role: "CUSTOMER" } });
+    mocks.findOrder.mockResolvedValue({ ...order, userId: "owner" });
+    mocks.findCart.mockResolvedValue({ id: "c1", updatedAt: new Date(), items: [...lines, { variantId: "v2", quantity: 1 }] });
+    expect(await clearPurchasedCart({ orderNumber: order.number })).toEqual({ ok: true, cleared: false });
+    mocks.findOrder.mockResolvedValue({ ...order, userId: "someone-else" });
+    expect(await clearPurchasedCart({ orderNumber: order.number })).toEqual({ ok: false });
+    expect(mocks.deleteCart).not.toHaveBeenCalled();
   });
 });

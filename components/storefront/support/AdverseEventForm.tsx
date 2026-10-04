@@ -6,6 +6,7 @@ import { submitAdverseEventAction } from "@/app/(storefront)/actions/adverse";
 import { adverse as copy } from "@/lib/copy/adverse";
 import { ADVERSE_REPORTER_TYPES } from "@/lib/support/topics";
 import { useAuthChallenge, type AuthChallengeProps } from "../auth/AuthChallenge";
+import { supportPhotosWithinLimits } from "../reviews/photo-downscale";
 import { UiButton } from "../ui/UiButton";
 import { UiFormField, UiInput } from "../ui/UiInput";
 import { ResultHeading } from "../ui/ResultHeading";
@@ -56,21 +57,23 @@ export function AdverseEventForm({
     setError(null);
     const data = new FormData(event.currentTarget);
     // Send only actual selections (the untouched input yields an empty part).
-    const files = Array.from(photos.current?.files ?? []);
+    const selected = Array.from(photos.current?.files ?? []);
     data.delete("photos");
-    if (files.length > 4 || files.some(file => file.size === 0 || file.size > 2 * 1024 * 1024 || !["image/jpeg", "image/png", "image/webp"].includes(file.type))) {
-      setError(copy.errors.photos);
-      return;
-    }
-    for (const file of files) data.append("photos", file, file.name);
     submitting.current = true;
     startSubmit(async () => {
+      let sent = false;
       try {
+        // A phone photo over the cap is downscaled in the browser before it is
+        // refused, as on the review form (QA 2026-10-03 T3-06).
+        const files = await supportPhotosWithinLimits(selected);
+        if (!files) { setError(copy.errors.photos); return; }
+        for (const file of files) data.append("photos", file, file.name);
+        sent = true;
         const result = await submitAdverseEventAction(data);
         if (result.ok && result.reference) setReference(result.reference);
         else setError(result.error ?? copy.errors.failed);
       } catch { setError(copy.errors.failed); }
-      finally { submitting.current = false; human.reset(); }
+      finally { submitting.current = false; if (sent) human.reset(); }
     });
   }
 

@@ -38,7 +38,7 @@ export function CheckoutSummary({ quote, failure = null, pending, activeCode, kl
       <dl className="mt-4 flex flex-col gap-2 border-t border-light-3 pt-4 text-sm">
         <div className="flex justify-between"><dt>{checkout.summary.subtotal}</dt><dd>{formatEUR(quote.subtotalCents)}</dd></div>
         {quote.discountCents > 0 ? <div className="flex justify-between text-success" data-discount-line><dt>{promo.discountLabel} ({quote.couponCode})</dt><dd>−{formatEUR(quote.discountCents)}</dd></div> : null}
-        <div className="flex justify-between"><dt>{checkout.summary.shipping}</dt><dd data-checkout-shipping>{formatEUR(quote.shippingCents)}</dd></div>
+        <div className="flex justify-between"><dt>{checkout.summary.shipping}</dt><dd data-checkout-shipping>{quote.shippingCents === 0 ? checkout.shipping.free : formatEUR(quote.shippingCents)}</dd></div>
         <div className="flex justify-between"><dt>{checkout.summary.vat} ({quote.vatRatePercent} %)</dt><dd data-checkout-vat>{formatEUR(quote.vatCents)}</dd></div>
         <div className="flex justify-between text-lg font-medium"><dt>{checkout.summary.total}</dt><dd data-checkout-total>{formatEUR(quote.totalCents)}</dd></div>
       </dl>

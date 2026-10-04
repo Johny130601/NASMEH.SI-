@@ -122,6 +122,7 @@ describe("Dostava fields mirror the schema", () => {
     expect(fieldErrorsFromPaths(["street"])).toEqual({ streetLine: "invalid" });
     expect(fieldErrorsFromPaths(["streetNumber"])).toEqual({ streetLine: "invalid" });
     expect(fieldErrorsFromPaths(["street", "streetNumber", "city"])).toEqual({ streetLine: "invalid", city: "invalid" });
+    expect(fieldErrorsFromPaths(["streetSupplement"])).toEqual({ streetLine: "invalid" });
   });
 });
 
@@ -142,8 +143,8 @@ describe("one street line → the order's street and house number", () => {
     ["Via Roma, 10", { street: "Via Roma", streetNumber: "10" }],
     ["Grajska ulica b. š.", { street: "Grajska ulica", streetNumber: "b. š." }],
     ["Grajska ulica BŠ", { street: "Grajska ulica", streetNumber: "BŠ" }],
-    // the address book's supplement rides with the street, as it always has (QA M12)
-    ["Dunajska cesta 20, 2. nadstropje", { street: "Dunajska cesta, 2. nadstropje", streetNumber: "20" }],
+    // the address book's supplement is kept apart and printed after the number (QA 2026-10-03 T2-04)
+    ["Dunajska cesta 20, 2. nadstropje", { street: "Dunajska cesta", streetNumber: "20", supplement: "2. nadstropje" }],
     ["12 rue de la Paix", { street: "rue de la Paix", streetNumber: "12" }],
   ])("splits %j", (line, expected) => {
     expect(parseStreetLine(line)).toEqual(expected);
@@ -166,13 +167,14 @@ describe("one street line → the order's street and house number", () => {
     expect(validateCheckoutAddress({ ...address, streetLine: "X 12" })).toEqual({ streetLine: "invalid" });
     for (const line of ["Čopova ulica 12", "Tržaška cesta 12 a", "Grajska ulica b. š.", "Dunajska cesta 20, 2. nadstropje", "Via Roma, 10"]) {
       expect(validateCheckoutAddress({ ...address, streetLine: line }), line).toEqual({});
-      const parsed = checkoutFormSchema.safeParse({ ...form, ...parseStreetLine(line) });
+      const parts = parseStreetLine(line)!;
+      const parsed = checkoutFormSchema.safeParse({ ...form, street: parts.street, streetNumber: parts.streetNumber, streetSupplement: parts.supplement ?? "" });
       expect(parsed.success, line).toBe(true);
     }
   });
 
-  it("the input's limit holds a street and a house number at their limits", () => {
-    const line = `${"x".repeat(CHECKOUT_LIMITS.street)}, ${"1".repeat(CHECKOUT_LIMITS.streetNumber)}`;
+  it("the input's limit holds a street, a house number and a supplement at their limits", () => {
+    const line = `${"x".repeat(CHECKOUT_LIMITS.street)} ${"1".repeat(CHECKOUT_LIMITS.streetNumber)}, ${"y".repeat(CHECKOUT_LIMITS.streetSupplement)}`;
     expect(line.length).toBe(CHECKOUT_LIMITS.streetLine);
     expect(validateCheckoutAddress({ ...address, streetLine: line })).toEqual({});
   });

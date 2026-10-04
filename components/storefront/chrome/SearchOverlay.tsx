@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { formatEUR } from "@/lib/pricing";
 import { search as copy } from "@/lib/copy/search";
+import { searchHints } from "@/lib/copy/search-hints";
+import { SEARCH_MAX_CHARS, SEARCH_MIN_CHARS } from "@/lib/search-limits";
 import { UiIcon } from "../ui/UiIcon";
 import { useDialogFocus } from "../ui/useDialogFocus";
 
@@ -73,9 +75,14 @@ function Overlay({ onClose, returnTo }: { onClose: () => void; returnTo: RefObje
     };
   }, []);
 
+  // One character or so is not searched: say so rather than show nothing (QA 2026-10-03 T1-06).
+  const tooShort = query.trim().length > 0 && query.trim().length < SEARCH_MIN_CHARS;
+  // the field stops at the limit (typing or pasting): say so rather than drop the rest silently
+  const atMax = Array.from(query).length >= SEARCH_MAX_CHARS;
+
   useEffect(() => {
     const trimmed = query.trim();
-    if (trimmed.length < 2) {
+    if (trimmed.length < SEARCH_MIN_CHARS) {
       setResults(null);
       setLoading(false);
       return;
@@ -119,6 +126,7 @@ function Overlay({ onClose, returnTo }: { onClose: () => void; returnTo: RefObje
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
+              maxLength={SEARCH_MAX_CHARS}
               placeholder={copy.placeholder}
               className="h-[3.25rem] w-full rounded-input border border-light-1 bg-white px-4 text-base text-dark-1 outline-none transition-colors focus:border-brand"
             />
@@ -134,7 +142,16 @@ function Overlay({ onClose, returnTo }: { onClose: () => void; returnTo: RefObje
         </div>
 
         <div className="mt-6" aria-live="polite">
-          {loading ? (
+          {atMax ? (
+            <p className="mb-4 text-sm text-mid-1" data-search-hint="max">
+              {searchHints.maxChars(SEARCH_MAX_CHARS)}
+            </p>
+          ) : null}
+          {tooShort ? (
+            <p className="text-sm text-mid-1" data-search-hint>
+              {searchHints.minChars(SEARCH_MIN_CHARS)}
+            </p>
+          ) : loading ? (
             <ul className="flex flex-col gap-3" aria-hidden="true">
               {[0, 1, 2].map((n) => (
                 <li key={n} className="flex animate-pulse items-center gap-4">

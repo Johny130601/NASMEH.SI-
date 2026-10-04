@@ -13,7 +13,7 @@ const orderIdSchema = z.string().min(1).max(64);
 
 export type OrderActionResult =
   | { ok: true; message: "processing" | "shipped" | "delivered" | "cancelled" | "refunded" | "settled" | "resent" | "resendQueued" | "noteSaved" }
-  | { ok: false; message: "invalid" | "not_found" | "invalid_transition" | "missing_tracking" | "unknown_carrier" | RefundError };
+  | { ok: false; message: "invalid" | "not_found" | "invalid_transition" | "missing_tracking" | "unknown_carrier" | "note_not_visible" | RefundError };
 
 /**
  * Appends one entry to the order's activity log in a single statement, so a
@@ -120,8 +120,11 @@ export async function addOrderNoteAction(input: { orderId: string; body: string;
     orderId: orderIdSchema, body: z.string().trim().min(1).max(4000), visibleToCustomer: z.boolean(),
   }).safeParse(input);
   if (!parsed.success) return { ok: false, message: "invalid" };
-  const order = await db.order.findUnique({ where: { id: parsed.data.orderId }, select: { id: true } });
+  const order = await db.order.findUnique({ where: { id: parsed.data.orderId }, select: { id: true, userId: true, anonymizedAt: true } });
   if (!order) return { ok: false, message: "not_found" };
+  // A customer-visible note is read only on the account's order page (/racun/narocilo): a guest
+  // order has no reader, nor has an erased buyer's, so "visible" would promise what never happens (QA 2026-10-03 T4-04).
+  if (parsed.data.visibleToCustomer && (!order.userId || order.anonymizedAt)) return { ok: false, message: "note_not_visible" };
   await db.orderNote.create({
     data: {
       orderId: order.id, authorId: staff.id, authorName: staff.name ?? staff.email,
