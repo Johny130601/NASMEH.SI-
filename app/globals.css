@@ -419,6 +419,14 @@ main[tabindex="-1"] {
     radial-gradient(45% 40% at 12% 90%, rgba(var(--brand), 0.08), transparent 70%);
 }
 
+/* Shop title band (2026-10-10): two static white highlights on the brand band —
+   paint only, it sits in the first viewport. */
+.ui-band-bg {
+  background-image:
+    radial-gradient(42% 90% at 84% 28%, rgba(var(--white), 0.2), transparent 70%),
+    radial-gradient(30% 70% at 8% 110%, rgba(var(--white), 0.1), transparent 70%);
+}
+
 /* Primary CTA shine: a highlight sweeps across the pill on hover — a translated
    pseudo-element, .55 s, nothing on leave (the sweep resets instantly). */
 .ui-shine {

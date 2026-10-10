@@ -16,10 +16,6 @@ type SearchParams = Promise<{ kolekcija?: string | string[]; razvrsti?: string |
 
 const ALL = "all";
 
-/** Committed placeholders (public/uploads) for the all-products view and any collection without a banner. */
-const PLACEHOLDER_BANNER = "/uploads/placeholder-trgovina-wide.svg";
-const PLACEHOLDER_BANNER_MOBILE = "/uploads/placeholder-trgovina-mobile.svg";
-
 // One collections query per request, shared by generateMetadata and the page.
 const loadCollections = cache(getCatalogCollections);
 
@@ -49,7 +45,20 @@ export async function generateMetadata({ searchParams }: { searchParams: SearchP
   });
 }
 
-/** /trgovina (§5): collection banner, deep-linkable tabs, sort in URL, grid, SEO block. */
+/**
+ * /trgovina (§5): title band or the collection's own banner, deep-linkable
+ * tabs and the sort in a slim bar, the grid, the SEO panel.
+ *
+ * 2026-10-10 redesign (reference: the HiSmile "All products" page, layout
+ * only): the placeholder artwork gave way to a brand-colour band carrying the
+ * live heading, a claim-free subline on the all view and the product count;
+ * a collection with its own uploaded banner keeps the image and the heading
+ * under it. The grid runs three columns on desktop with the bundle as a
+ * double-wide card (spec §5 "double-wide feature cards", built at the owner's
+ * request), dense-packed so a single card fills the cell a wide one leaves.
+ * The first card's image is the LCP candidate and loads eagerly; nothing in
+ * the first viewport animates on load (AGENTS §8.23).
+ */
 export default async function ShopPage({ searchParams }: { searchParams: SearchParams }) {
   const [params, collections] = await Promise.all([searchParams, loadCollections()]);
   const collection = selectCollection(collections, params.kolekcija);
@@ -76,39 +85,59 @@ export default async function ShopPage({ searchParams }: { searchParams: SearchP
   const heading = collection?.title ?? catalog.title;
   const headingHidden = collection?.hideBannerText ?? false;
 
-  // The collection's own crops when it has them; a desktop banner alone serves
-  // both sizes rather than a placeholder that does not belong to it.
-  const banner = collection?.bannerImage ?? PLACEHOLDER_BANNER;
-  const bannerMobile = collection?.bannerImageMobile ?? collection?.bannerImage ?? PLACEHOLDER_BANNER_MOBILE;
+  // Only an operator's own artwork is an image band; a desktop banner alone
+  // serves both sizes. Without one the band below carries the heading.
+  const bannerImage = collection?.bannerImage ?? null;
+  const bannerMobile = collection?.bannerImageMobile ?? bannerImage;
   const bannerAlt = collection ? catalog.collectionBannerAlt(collection.title) : catalog.bannerAlt;
 
   return (
     <>
-      {/* full-width promo banner (separate mobile crop) */}
-      {/* fixed aspect boxes reserve the banner's space before the artwork arrives (no layout shift),
-          whatever size the operator uploaded; object-cover crops to the box */}
-      <picture>
-        <source srcSet={bannerMobile} media="(width < 768px)" width={800} height={500} />
-        <img
-          src={banner}
-          alt={bannerAlt}
-          width={1600}
-          height={500}
-          fetchPriority="high"
-          className="aspect-[8/5] w-full bg-light-3 object-cover md:aspect-[16/5]"
-          data-collection-banner={activeKey}
-        />
-      </picture>
+      {bannerImage ? (
+        // fixed aspect boxes reserve the banner's space before the artwork arrives (no layout shift),
+        // whatever size the operator uploaded; object-cover crops to the box
+        <picture>
+          <source srcSet={bannerMobile ?? bannerImage} media="(width < 768px)" width={800} height={500} />
+          <img
+            src={bannerImage}
+            alt={bannerAlt}
+            width={1600}
+            height={500}
+            fetchPriority="high"
+            className="aspect-[8/5] w-full bg-light-3 object-cover md:aspect-[16/5]"
+            data-collection-banner={activeKey}
+          />
+        </picture>
+      ) : null}
 
-      <div className="mx-auto max-w-(--container-wide) px-(--padding) py-10">
-        <h1
-          className={headingHidden ? "sr-only" : "text-[2rem] md:text-[2.5rem]"}
-          data-collection-heading={headingHidden ? "hidden" : "visible"}
-        >
-          {heading}
-        </h1>
+      {bannerImage || headingHidden ? (
+        <div className="mx-auto max-w-(--container-wide) px-(--padding) pt-10">
+          <h1
+            className={headingHidden ? "sr-only" : "text-[2rem] md:text-[2.5rem]"}
+            data-collection-heading={headingHidden ? "hidden" : "visible"}
+          >
+            {heading}
+          </h1>
+        </div>
+      ) : (
+        <section className="ui-band-bg bg-brand" data-collection-band={activeKey}>
+          <div className="mx-auto max-w-(--container-wide) px-(--padding) py-12 md:py-16">
+            <h1
+              className="text-[2.5rem] font-bold leading-[1.05] tracking-[-0.03em] text-white md:text-[3.5rem]"
+              data-collection-heading="visible"
+            >
+              {heading}
+            </h1>
+            {collection ? null : (
+              <p className="mt-4 max-w-lg text-base text-white/85 md:text-lg">{catalog.subtitle}</p>
+            )}
+          </div>
+        </section>
+      )}
 
-        <div className={`flex flex-wrap items-center justify-between gap-4 ${headingHidden ? "" : "mt-6"}`}>
+      {/* slim filter bar: tabs left, count and sort right */}
+      <div className="border-b border-light-2 bg-white">
+        <div className="mx-auto flex max-w-(--container-wide) flex-wrap items-center justify-between gap-3 px-(--padding) py-3">
           {/* collection tabs — deep-linkable, one per collection that has products */}
           <nav aria-label={catalog.title}>
             <ul className="flex flex-wrap gap-2" data-collection-tabs>
@@ -131,48 +160,56 @@ export default async function ShopPage({ searchParams }: { searchParams: SearchP
             </ul>
           </nav>
 
-          {/* sort dropdown: SSR details of links (sort in URL), folding on choice/Escape/outside click after mount */}
-          <SortMenu label={catalog.sort.label} current={catalog.sort.options[sort]}>
-            <ul className="absolute right-0 z-30 mt-2 w-56 rounded-card border border-light-2 bg-white p-2 shadow-xl">
-              {SORT_KEYS.map((key) => (
-                <li key={key}>
-                  <Link
-                    href={hrefFor(activeKey, key)}
-                    aria-current={sort === key ? "true" : undefined}
-                    className={`block rounded-input px-3 py-2 text-sm transition-colors ${
-                      sort === key
-                        ? "bg-light-3 font-medium text-dark-1"
-                        : "text-mid-1 hover:bg-light-4"
-                    }`}
-                  >
-                    {catalog.sort.options[key]}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </SortMenu>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-mid-2" data-product-count>{catalog.count(products.length)}</span>
+            {/* sort dropdown: SSR details of links (sort in URL), folding on choice/Escape/outside click after mount */}
+            <SortMenu label={catalog.sort.label} current={catalog.sort.options[sort]}>
+              <ul className="absolute right-0 z-30 mt-2 w-56 rounded-card border border-light-2 bg-white p-2 shadow-xl">
+                {SORT_KEYS.map((key) => (
+                  <li key={key}>
+                    <Link
+                      href={hrefFor(activeKey, key)}
+                      aria-current={sort === key ? "true" : undefined}
+                      className={`block rounded-input px-3 py-2 text-sm transition-colors ${
+                        sort === key
+                          ? "bg-light-3 font-medium text-dark-1"
+                          : "text-mid-1 hover:bg-light-4"
+                      }`}
+                    >
+                      {catalog.sort.options[key]}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </SortMenu>
+          </div>
         </div>
+      </div>
 
-        {/* product grid */}
+      <div className="mx-auto max-w-(--container-wide) px-(--padding) py-8 md:py-10">
+        {/* product grid: two columns on a phone, three on desktop; the bundle spans two (dense, so a
+            single card fills the cell a wide one leaves); the chips need the row gap above a card */}
         {products.length === 0 ? (
-          <p className="mt-12 text-mid-2">{catalog.empty}</p>
+          <p className="mt-4 text-mid-2">{catalog.empty}</p>
         ) : (
-          <ul className="mt-8 grid grid-cols-2 gap-x-2 gap-y-8 md:grid-cols-4 md:gap-x-5">
-            {products.map((product) => (
-              <li key={product.slug}>
+          <ul className="mt-2 grid grid-flow-dense grid-cols-2 gap-x-3 gap-y-6 md:grid-cols-3 md:gap-x-5 md:gap-y-8" data-product-grid>
+            {products.map((product, index) => (
+              <li key={product.slug} className={product.isBundle ? "col-span-2" : undefined}>
                 <CatalogCard
                   product={product}
                   testToken={testToken}
+                  layout={product.isBundle ? "wide" : "default"}
+                  priority={index === 0}
                 />
               </li>
             ))}
           </ul>
         )}
 
-        {/* SEO text block with expander below grid */}
-        <section className="mt-16 max-w-(--container-narrow)">
+        {/* SEO text block with expander below the grid, as a light panel */}
+        <section className="ui-reveal mt-14 rounded-panel bg-light-3 p-6 md:mt-16 md:p-10">
           <h2 className="text-xl">{catalog.seoBlock.title}</h2>
-          <p className="mt-3 text-sm leading-6 text-mid-1">
+          <p className="mt-3 max-w-(--container-narrow) text-sm leading-6 text-mid-1">
             {catalog.seoBlock.teaser}
           </p>
           <details className="group mt-2">
@@ -182,7 +219,7 @@ export default async function ShopPage({ searchParams }: { searchParams: SearchP
                 {catalog.seoBlock.collapse}
               </span>
             </summary>
-            <p className="mt-3 text-sm leading-6 text-mid-1">
+            <p className="mt-3 max-w-(--container-narrow) text-sm leading-6 text-mid-1">
               {catalog.seoBlock.more}
             </p>
           </details>

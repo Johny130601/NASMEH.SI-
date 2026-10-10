@@ -9,8 +9,7 @@ import {
   hasCaretClaim,
   lowStockUnits,
   plainTextFromHtml,
-  toCatalogProduct,
-} from "@/lib/catalog";
+  toCatalogProduct, listableBundleComponents } from "@/lib/catalog";
 import { catalog, kosForm, lowStockLine } from "@/lib/copy/catalog";
 import { trust } from "@/lib/copy/pdp";
 import { cart } from "@/lib/copy/cart";
@@ -164,9 +163,9 @@ describe("toCatalogProduct", () => {
         priceCents: 4999,
         active: true,
         items: [
-          { quantity: 1, variant: { priceCents: 3499, stock: 100, allowBackorder: false } },
-          { quantity: 1, variant: { priceCents: 1999, stock: 100, allowBackorder: false } },
-          { quantity: 1, variant: { priceCents: 1999, stock: 100, allowBackorder: false } },
+          { quantity: 1, variant: { priceCents: 3499, stock: 100, allowBackorder: false, product: { title: "Komponenta", status: "ACTIVE", hiddenDeal: false } } },
+          { quantity: 1, variant: { priceCents: 1999, stock: 100, allowBackorder: false, product: { title: "Komponenta", status: "ACTIVE", hiddenDeal: false } } },
+          { quantity: 1, variant: { priceCents: 1999, stock: 100, allowBackorder: false, product: { title: "Komponenta", status: "ACTIVE", hiddenDeal: false } } },
         ],
       },
     } as Partial<Row>);
@@ -183,6 +182,30 @@ describe("toCatalogProduct", () => {
   });
 });
 
+describe("a bundle card lists its components only when every one of them is listable (2026-10-10)", () => {
+  const component = (title: string, status = "ACTIVE", hiddenDeal = false) => ({ quantity: 1, variant: { priceCents: 1999, stock: 10, allowBackorder: false, product: { title, status, hiddenDeal } } });
+
+  it("names every component, with its quantity, when all are active and shown", () => {
+    const items = [component("Trakci"), { ...component("Ustna voda"), quantity: 2 }];
+    expect(listableBundleComponents({ items })).toEqual([{ title: "Trakci", quantity: 1 }, { title: "Ustna voda", quantity: 2 }]);
+  });
+
+  it("names none of them when a component is a draft or a hidden deal — never a partial list, never a hidden name", () => {
+    expect(listableBundleComponents({ items: [component("Trakci"), component("Ustna voda", "DRAFT")] })).toEqual([]);
+    expect(listableBundleComponents({ items: [component("Trakci"), component("Skriti", "ACTIVE", true)] })).toEqual([]);
+    expect(listableBundleComponents({ items: [] })).toEqual([]);
+    expect(listableBundleComponents(null)).toEqual([]);
+  });
+
+  it("rides on the card shape", () => {
+    const card = toCatalogProduct(row({
+      bundle: { id: "b1", priceCents: 4999, active: true, items: [component("Trakci"), component("Ustna voda")] },
+    } as Partial<Row>), noRatings, noReductions, 5)!;
+    expect(card.bundleComponents.map((line) => line.title)).toEqual(["Trakci", "Ustna voda"]);
+    expect(toCatalogProduct(row(), noRatings, noReductions, 5)!.bundleComponents).toEqual([]);
+  });
+});
+
 describe("a bundle card states its components' availability (QA M6)", () => {
   const bundleRow = (serumStock: number, rowStock = 100) =>
     row({
@@ -192,8 +215,8 @@ describe("a bundle card states its components' availability (QA M6)", () => {
         priceCents: 4999,
         active: true,
         items: [
-          { quantity: 1, variant: { priceCents: 3499, stock: 40, allowBackorder: false } },
-          { quantity: 2, variant: { priceCents: 1999, stock: serumStock, allowBackorder: false } },
+          { quantity: 1, variant: { priceCents: 3499, stock: 40, allowBackorder: false, product: { title: "Komponenta", status: "ACTIVE", hiddenDeal: false } } },
+          { quantity: 2, variant: { priceCents: 1999, stock: serumStock, allowBackorder: false, product: { title: "Serum", status: "ACTIVE", hiddenDeal: false } } },
         ],
       },
     } as Partial<Row>);

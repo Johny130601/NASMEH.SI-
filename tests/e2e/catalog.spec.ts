@@ -352,7 +352,9 @@ test("SSR: grid + banner + tabs in initial HTML", async ({ request }) => {
   const html = await (await request.get("/trgovina")).text();
   expect(html).toContain("Belilni trakci za zobe");
   expect(html).toContain("Vsi izdelki");
-  expect(html).toContain("placeholder-trgovina-wide.svg");
+  // the all view is a title band since 2026-10-10 (the retired placeholder banner is gone)
+  expect(html).toContain('data-collection-band="all"');
+  expect(html).not.toContain("placeholder-trgovina-wide.svg");
   expect(html).toContain("kolekcija=paketi");
   expect(html).toContain("<h1");
   expect(html).toContain("Najnižja cena v 30 dneh pred znižanjem");

@@ -164,15 +164,15 @@ Overlays: GDPR consent banner `[P1-core]`; welcome discount modal `[P1-core]`; b
 
 With 3 SKUs + 1 bundle, one strong shop page beats a collection tree [ADAPT: 02 §3.5].
 
-- **"/trgovina" all-products page** with full-width promo banner image (separate mobile crop) [BASE: 02 §3.2]. `[P1-core]`
+- **"/trgovina" all-products page** with a brand-colour title band (live heading, claim-free subline, product count) since 2026-10-10; a collection with its own uploaded banner keeps the full-width image (separate mobile crop) with the heading under it [BASE: 02 §3.2]. `[P1-core]`
 - **Collection tabs** (pill switcher): Vsi izdelki / Beljenje / Paketi — deep-linkable handles [ADAPT: 02 §3.2]. `[P1-core]`
 - **Sort dropdown**: Priporočeno (manual merchandising order) / Najnovejše / Cena ↑ / Cena ↓ / Naziv A–Ž / Naziv Ž–A; sort in URL path [BASE: 02 §3.2]. `[P1-core]`
 - **No facet filters** — deliberately omitted (3 SKUs; merchandising order does the work) [BASE: 02 §3.2]. Re-evaluate `[P3-later]` if catalog grows.
 - **Product card anatomy**: promo pill badge → packshot on light tile → title → **star rating + review count** [NEW] → price (VAT incl., Omnibus-compliant compare-at when on sale) → unit price where relevant → variant swatches with "+N" overflow → full-width CTA by state: "Dodaj v košarico" / "Sestavi paket" / "Obvestite me" (sold out) [ADAPT: 02 §3.3, 01 §2.5]. `[P1-core]`
-- **Badge system** (admin-driven): NOVO (outline), Uspešnica, Hitro se prodaja, Razprodano (grey), promo pill (campaign color) [BASE: 02 §3.4]. `[P1-core]`
+- **Badge system** (admin-driven): NOVO (outline), Uspešnica, Hitro se prodaja, Razprodano (grey), promo pill (campaign color) [BASE: 02 §3.4]. `[P1-core]` Since 2026-10-10 the badge and the sold-out pill float centred on the tile's top edge; the computed "−X %" pill stays inside the tile.
 - **Computed hooks on every card** (2026-09-16): a "−X %" pill from the Omnibus-backed reduction (the same figure as the strikethrough and the 30-day line), the bundle's value line "Vrednost €Y · prihranite Z %" from its components' current prices (§6.6 math, no strikethrough), the real "Samo še N kosov na zalogi" line while the stock is at or under the admin's low-stock threshold (§14.2), and a hover cross-fade to the first gallery image with a lift and shadow; at most one admin badge and one computed pill on the image; no typed figure anywhere [ADAPT: 02 §3.3–3.4, 04 §8, 06 §7.3; UCPD Annex I(7)]. `[P1-core]`
 - **Image sticker overlays** (gift starburst PNG on card corners when GWP campaign active) [BASE: 02 §3.3]. `[P2-growth]`
-- **Double-wide feature cards** spanning 2 grid columns for editorial rhythm [BASE: 02 §3.2]. `[P2-growth]`
+- **Double-wide feature cards** spanning 2 grid columns for editorial rhythm [BASE: 02 §3.2]. `[P2-growth]` Built 2026-10-10 at the owner's request: the shop grid runs three columns on desktop, the bundle is the wide card (`CatalogCard layout="wide"`: 2:1 tile, text and CTA side by side, the computed component list "V paketu: …"), dense-packed so five products fill two rows.
 - Sold-out products **stay published** with "Obvestite me" email capture (card + PDP), never hidden [BASE: 02 §5.9]. `[P1-core]`
 - **SEO text block below grid**: short brand/mission paragraph + "Preberi več +" expander (indexable copy off the shopping path) [BASE: 02 §3.2]. `[P1-core]`
 - Lazy-rendered grid with skeletons; "load more" if needed [BASE: 07 §5.11]. `[P1-core]`

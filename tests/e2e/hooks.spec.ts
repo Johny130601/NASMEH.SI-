@@ -112,6 +112,8 @@ test("cards: −X % on the reduced serum, the value line on the bundle, nothing 
   const hover = strips.locator("[data-hover-image]");
   await expect(hover).toHaveAttribute("src", "/uploads/placeholder-gallery-detail.svg");
   await expect(hover).toHaveAttribute("aria-hidden", "true");
+  // the pointer rests where the cookie button was, which the redesigned grid puts over the first card
+  await page.mouse.move(0, 0);
   await expect(hover).toHaveCSS("opacity", "0");
   await strips.hover();
   await expect(hover).toHaveCSS("opacity", "1");

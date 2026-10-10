@@ -17,8 +17,13 @@ test("fonts are preloaded and served immutable; the hero and the catalog banner 
   const placeholder = await request.get("/uploads/placeholder-hero.svg");
   expect(placeholder.headers()["cache-control"]).toBe("public, max-age=86400");
 
+  // the all-products view is a text band since 2026-10-10 (nothing to reserve, nothing to shift); a
+  // collection's own banner keeps its sized box (catalog.spec checks that path)
   const catalog = await (await request.get("/trgovina")).text();
-  expect(catalog).toMatch(/<img[^>]*src="\/uploads\/placeholder-trgovina-wide\.svg"[^>]*width="1600"[^>]*height="500"/);
+  expect(catalog).toContain('data-collection-band="all"');
+  expect(catalog).not.toContain("placeholder-trgovina-wide.svg");
+  // the first card's image is the LCP candidate and must not be lazy
+  expect(catalog).toMatch(/<img[^>]*src="\/uploads\/placeholder-trakci\.svg"[^>]*loading="eager"/);
 });
 
 test("the product JSON-LD carries the SKU next to the offer", async ({ request }) => {

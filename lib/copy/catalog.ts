@@ -14,8 +14,21 @@ export function lowStockLine(units: number): string {
   return `Samo še ${units} ${kosForm(units)} na zalogi`;
 }
 
+/** Slovenian count form of "izdelek" (1 izdelek, 2 izdelka, 3–4 izdelki, 5+ izdelkov). */
+export function izdelekForm(count: number): string {
+  const mod100 = Math.abs(count) % 100;
+  if (mod100 === 1) return "izdelek";
+  if (mod100 === 2) return "izdelka";
+  if (mod100 === 3 || mod100 === 4) return "izdelki";
+  return "izdelkov";
+}
+
 export const catalog = {
   title: "Trgovina",
+  /** The all-products band's subline (2026-10-10): what the shop sells and the VAT rule, no sales claim. */
+  subtitle: "Trakci, ustna voda, serum in paket za domačo nego nasmeha. Vse cene vključujejo DDV.",
+  /** "5 izdelkov" in the filter bar — the real count of the list shown. */
+  count: (count: number) => `${count} ${izdelekForm(count)}`,
   /** The placeholder banner (all products). A collection's own banner is described by its title. */
   bannerAlt: "Nasmeh.si trgovina — promocijski pas",
   collectionBannerAlt: (title: string) => `Kolekcija ${title} — promocijski pas`,
@@ -58,6 +71,8 @@ export const catalog = {
     percentOff: (percent: number) => `−${percent} %`,
     /** Fixed-bundle value math from the components' current prices (§6.6). */
     bundleValue: (value: string, percent: number) => `Vrednost ${value} · prihranite ${percent} %`,
+    /** Prefix of the wide bundle card's component list ("V paketu: trakci, ustna voda, serum"). */
+    bundleIncludes: "V paketu",
     lowStock: lowStockLine,
   },
   seoBlock: {

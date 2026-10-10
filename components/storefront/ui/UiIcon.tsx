@@ -14,7 +14,8 @@ export type UiIconName =
   | "shield"
   | "arrow-right"
   | "clock"
-  | "box";
+  | "box"
+  | "bell";
 
 export function UiIcon({
   name,
@@ -76,6 +77,12 @@ export function UiIcon({
       <>
         <path d="M12 3 4 7v10l8 4 8-4V7l-8-4Z" />
         <path d="m4 7 8 4 8-4M12 11v10" />
+      </>
+    ),
+    bell: (
+      <>
+        <path d="M6.5 16.5V11a5.5 5.5 0 0 1 11 0v5.5l1.5 1.7V19H5v-.8l1.5-1.7Z" />
+        <path d="M10 20.5a2 2 0 0 0 4 0" />
       </>
     ),
   };

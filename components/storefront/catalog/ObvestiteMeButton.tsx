@@ -8,6 +8,7 @@ import {
 import { backInStock as copy } from "@/lib/copy/backInStock";
 import { ChallengeStatus, useLazyChallenge } from "../chrome/useLazyChallenge";
 import { UiButton } from "../ui/UiButton";
+import { UiIcon } from "../ui/UiIcon";
 import { UiInput } from "../ui/UiInput";
 import { UiModal } from "../ui/UiModal";
 
@@ -36,6 +37,7 @@ export function ObvestiteMeButton({
         onClick={() => setOpen(true)}
         data-notify-button={productSlug}
       >
+        <UiIcon name="bell" className="h-4 w-4" />
         {copy.button}
       </UiButton>
       <UiModal open={open} onClose={() => setOpen(false)} title={copy.modalTitle}>

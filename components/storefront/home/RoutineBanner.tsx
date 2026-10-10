@@ -9,18 +9,6 @@ import { AddToCartButton } from "../catalog/AddToCartButton";
 import { ObvestiteMeButton } from "../catalog/ObvestiteMeButton";
 import { UiIcon } from "../ui/UiIcon";
 
-/** One component line of the bundle card: the component product's title and its quantity in the bundle. */
-export interface BundleComponentLine {
-  title: string;
-  quantity: number;
-}
-
-/** The bundle the banner links to, as the catalog lists it, with its components. */
-export interface RoutineBundle {
-  product: CatalogProduct;
-  components: BundleComponentLine[];
-}
-
 const CTA_CLASSES = "!h-12 px-6 text-sm md:!h-[3.25rem] md:px-8 md:text-base";
 
 /**
@@ -42,7 +30,8 @@ export function RoutineBanner({
   testToken = null,
 }: {
   banner: RoutineBannerSetting;
-  bundle?: RoutineBundle | null;
+  /** The bundle the banner links to, as the catalog lists it (its components ride on the card shape). */
+  bundle?: CatalogProduct | null;
   testToken?: string | null;
 }) {
   const footnote = banner.footnote ? (
@@ -72,7 +61,8 @@ export function RoutineBanner({
     );
   }
 
-  const { product, components } = bundle;
+  const product = bundle;
+  const components = bundle.bundleComponents;
   const reduction = product.reduction;
 
   return (

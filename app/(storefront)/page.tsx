@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getBundleComponentTitles, getCatalogProducts } from "@/lib/catalog";
+import { getCatalogProducts } from "@/lib/catalog";
 import { getSetting, getShippingSettings, SETTING_KEYS, type BundleBannerSetting, type HeroSlotSetting, type RoutineBannerSetting } from "@/lib/settings";
 import { bundleBannerWithDefaults, normaliseHomeSections, routineBannerWithDefaults } from "@/lib/admin/cms";
 import { heroWithAvailableLinks, linkIsAvailable, linkedProductSlug, productSlugsIn, purchasableSlugs } from "@/lib/content-links";
@@ -61,8 +61,7 @@ export default async function HomePage() {
   // The routine block is a bundle card when its link is a bundle the catalog lists (components, price
   // and value line computed), otherwise the clickable image banner.
   const routineProduct = products.find((product) => product.isBundle && product.slug === linkedProductSlug(routineBanner.href)) ?? null;
-  const routineComponents = routineProduct ? await getBundleComponentTitles(routineProduct.slug) : [];
-  const routineBundle = routineProduct && routineComponents.length > 0 ? { product: routineProduct, components: routineComponents } : null;
+  const routineBundle = routineProduct && routineProduct.bundleComponents.length > 0 ? routineProduct : null;
 
   const env = getEnv();
   const testToken = isTestMode() ? (env.TURNSTILE_TEST_TOKEN ?? null) : null;

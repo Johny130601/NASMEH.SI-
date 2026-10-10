@@ -47,7 +47,20 @@ export interface CatalogProduct {
    * reduction — the card renders it as a value line, never as a strikethrough.
    */
   bundleSavings: BundleSavings | null;
+  /**
+   * A fixed bundle's components (title and quantity, stored order) for the cards that list them.
+   * Empty for a plain product — and for a bundle with a component the catalog may not name (a
+   * draft or a hidden deal SKU): the list is all or nothing, never a partial "V paketu" claim, and
+   * a hidden product's name leaks through no card (cart.spec visibility, 2026-10-10 run 1).
+   */
+  bundleComponents: BundleComponentTitle[];
   createdAt: Date;
+}
+
+/** One component of a fixed bundle as a card lists it. */
+export interface BundleComponentTitle {
+  title: string;
+  quantity: number;
 }
 
 export interface Badge {
@@ -246,6 +259,15 @@ export function hasCaretClaim(product: Parameters<typeof productSearchText>[0]):
 
 type ProductRow = Awaited<ReturnType<typeof fetchProducts>>[number];
 
+/** The component lines a card may print: every component, or none when one of them is not listable itself. */
+export function listableBundleComponents(
+  bundle: { items: Array<{ quantity: number; variant: { product: { title: string; status: string; hiddenDeal: boolean } } }> } | null,
+): BundleComponentTitle[] {
+  if (!bundle || bundle.items.length === 0) return [];
+  if (bundle.items.some((item) => item.variant.product.status !== "ACTIVE" || item.variant.product.hiddenDeal)) return [];
+  return bundle.items.map((item) => ({ title: item.variant.product.title, quantity: item.quantity }));
+}
+
 async function fetchProducts(where: object, orderBy: object) {
   return db.product.findMany({
     where,
@@ -263,7 +285,8 @@ async function fetchProducts(where: object, orderBy: object) {
           id: true,
           priceCents: true,
           active: true,
-          items: { select: { quantity: true, variant: { select: { priceCents: true, stock: true, allowBackorder: true } } } },
+          // the component product's title names the line on a wide or home bundle card (a variant title names a size or flavour)
+          items: { orderBy: { id: "asc" as const }, select: { quantity: true, variant: { select: { priceCents: true, stock: true, allowBackorder: true, product: { select: { title: true, status: true, hiddenDeal: true } } } } } },
         },
       },
     },
@@ -324,28 +347,9 @@ export function toCatalogProduct(
     unitPrice: parseUnitPrice(product.customFields),
     isBundle: product.bundle !== null,
     bundleSavings: bundleSavingsFor(product.bundle, variant.priceCents, reduction),
+    bundleComponents: listableBundleComponents(product.bundle),
     createdAt: product.createdAt,
   };
-}
-
-/** One component of a fixed bundle as the home bundle card lists it. */
-export interface BundleComponentTitle {
-  title: string;
-  quantity: number;
-}
-
-/**
- * The component products of the bundle sold under `slug`, in the bundle's
- * stored order, for the home bundle card's checklist; empty for anything that
- * is not an active bundle. Titles come from the component products (a
- * variant's own title names a size or flavour, which the card does not list).
- */
-export async function getBundleComponentTitles(slug: string): Promise<BundleComponentTitle[]> {
-  const bundle = await db.bundle.findFirst({
-    where: { active: true, product: { slug, ...PURCHASABLE_PRODUCT_WHERE } },
-    select: { items: { orderBy: { id: "asc" }, select: { quantity: true, variant: { select: { product: { select: { title: true } } } } } } },
-  });
-  return bundle?.items.map((item) => ({ title: item.variant.product.title, quantity: item.quantity })) ?? [];
 }
 
 /** Which visibility flag the list honours (§14.2): the catalog's or the search's. */
