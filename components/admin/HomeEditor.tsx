@@ -104,9 +104,10 @@ export function HeroEditor({ initial, media, unavailableLinks = [] }: { initial:
       <Section title={c.hero.title}>
         <datalist id="media-urls">{images.map((item) => <option key={item.url} value={item.url}>{item.alt || item.url}</option>)}</datalist>
         <datalist id="media-videos">{videos.map((item) => <option key={item.url} value={item.url}>{item.alt || item.url}</option>)}</datalist>
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-3">
           <UiInput label={c.hero.fields.kicker} name="kicker" maxLength={40} {...field("kicker")} />
           <UiInput label={c.hero.fields.title} name="title" required maxLength={120} {...field("title")} />
+          <UiInput label={c.hero.fields.titleAccent} name="titleAccent" maxLength={60} {...field("titleAccent")} />
         </div>
         <label className="flex flex-col gap-1.5 text-sm font-medium">
           {c.hero.fields.subtitle}

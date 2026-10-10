@@ -48,7 +48,7 @@ const assetId = "cmf0asset000000000000001";
 const p2002 = new Prisma.PrismaClientKnownRequestError("unique", { code: "P2002", clientVersion: "6", meta: { target: ["slug"] } });
 
 const hero = { kicker: "NOVO", title: "Naslov", subtitle: "Pod", ctaLabel: "Kupi", ctaHref: "/trgovina", videoDesktop: "", videoMobile: "", poster: "", imageAlt: "", promoOverlayText: "", promoOverlayHref: "" };
-const sections = [{ id: "hero" as const, visible: true }, { id: "rail" as const, visible: true }, { id: "bundleBanner" as const, visible: false }, { id: "routineBanner" as const, visible: true }];
+const sections = [{ id: "hero" as const, visible: true }, { id: "rail" as const, visible: true }, { id: "bundleBanner" as const, visible: false }, { id: "routineBanner" as const, visible: true }, { id: "reviews" as const, visible: true }];
 const popup = { active: true, delaySeconds: 30, couponCode: "welcome10", title: "T", body: "B", cta: "C", thankYouTitle: "TT", thankYouBody: "TB" };
 const bundleBuilder = { enabled: true, offerUnits: [1, 2, 3], addOnSlugs: [], couponCode: "", subscriptionRow: true };
 const page = { title: "Stran", slug: "moja-stran", template: "DEFAULT" as const, body: "<p>x</p>", seoTitle: "", seoDescription: "", published: true, reviewed: false };

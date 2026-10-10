@@ -60,6 +60,8 @@ export interface CompanySetting {
 export interface HeroSlotSetting {
   kicker?: string;
   title: string;
+  /** Optional second line of the headline, rendered in the brand colour under the title (home redesign 2026-10-10). */
+  titleAccent?: string;
   subtitle: string;
   /** Plain-text qualifier for a claim in the subtitle, rendered as small live text (§12.6); absent = none. */
   footnote?: string;
@@ -73,8 +75,8 @@ export interface HeroSlotSetting {
   promoOverlayHref?: string;
 }
 
-/** Homepage composition (§14.10): order and visibility of the four P1 sections. */
-export type HomeSectionId = "hero" | "rail" | "bundleBanner" | "routineBanner";
+/** Homepage composition (§14.10): order and visibility of the five sections (reviews added 2026-10-10). */
+export type HomeSectionId = "hero" | "rail" | "bundleBanner" | "routineBanner" | "reviews";
 export interface HomeSectionSetting {
   id: HomeSectionId;
   visible: boolean;

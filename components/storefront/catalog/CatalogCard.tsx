@@ -53,7 +53,8 @@ export function CatalogCard({
     // translate-*/scale-* utilities set the individual `translate`/`scale` properties, so the
     // transition lists name those; `transform` alone would let the lift and the zoom snap.
     <article
-      className="group relative flex h-full w-full min-w-0 flex-col rounded-card border border-light-2 bg-white p-3 shadow-card transition-[translate,border-color] duration-300 ease-out-quart after:pointer-events-none after:absolute after:inset-0 after:rounded-card after:opacity-0 after:shadow-card-hover after:transition-opacity after:duration-300 after:ease-out-quart hover:-translate-y-1 hover:border-light-1 hover:after:opacity-100 md:p-4"
+      // Borderless since the 2026-10-10 redesign: the soft shadow and the panel radius carry the card.
+      className="group relative flex h-full w-full min-w-0 flex-col rounded-panel bg-white p-3 shadow-card transition-[translate] duration-300 ease-out-quart after:pointer-events-none after:absolute after:inset-0 after:rounded-panel after:opacity-0 after:shadow-card-hover after:transition-opacity after:duration-300 after:ease-out-quart hover:-translate-y-1 hover:after:opacity-100 md:p-4"
       data-product-card={product.slug}
     >
       <Link href={href} className="block">
@@ -104,14 +105,14 @@ export function CatalogCard({
 
       <RatingStars rating={product.rating} className="mt-1" />
 
-      <p className="mt-2 text-brand">
+      <p className="mt-2 text-base font-semibold text-brand md:text-lg">
         {reduction ? (
-          <span className="mr-2 text-mid-2 line-through">
+          <span className="mr-2 text-sm font-normal text-mid-2 line-through">
             {formatEUR(reduction.priorPriceCents)}
           </span>
         ) : null}
         {formatEUR(product.priceCents)}{" "}
-        <span className="text-xs text-mid-2">{home.vatIncluded}</span>
+        <span className="text-xs font-normal text-mid-2">{home.vatIncluded}</span>
       </p>
       {reduction ? (
         <p className="mt-0.5 text-xs text-mid-2" data-omnibus-line>

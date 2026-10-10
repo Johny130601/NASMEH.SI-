@@ -460,6 +460,8 @@ async function seedSettings() {
         { id: "rail", visible: true },
         { id: "bundleBanner", visible: true },
         { id: "routineBanner", visible: true },
+        // real published reviews, shown from three onwards (home redesign 2026-10-10)
+        { id: "reviews", visible: true },
       ],
     },
     { key: "home.bundleBanner", value: { title: "Naši paketi", cta: "Nakupuj zdaj", href: "/trgovina?kolekcija=paketi" } },
@@ -470,7 +472,8 @@ async function seedSettings() {
         // so the footnote is a plain qualifier. 20260913120000_phase9_claims_copy updates unedited rows.
         title: "Trakci, ustna voda in serum v enem paketu.",
         href: "/izdelek/paket-popolna-rutina",
-        image: "/uploads/placeholder-rutina-wide.svg",
+        // the split bundle card (2026-10-10) crops its artwork to a 4:3 panel, so the seed ships a card-shaped placeholder
+        image: "/uploads/placeholder-rutina-card.svg",
         imageAlt: "Paket popolna rutina — trakci, ustna voda in serum",
         footnote: "Rezultati se lahko razlikujejo od osebe do osebe. Izdelki niso nadomestilo ustne higiene pri zobozdravniku.",
       },
@@ -492,6 +495,8 @@ async function seedSettings() {
       value: {
         kicker: "NOVO",
         title: "Nasmeh, ki ga opazite",
+        // Second headline line in the brand colour: a composition fact the subtitle also states, no claim marker.
+        titleAccent: "Brez peroksida.",
         // The subtitle claim carries a marker that the footnote resolves as live text (§12.6).
         subtitle:
           "Belilni trakci s formulo brez peroksida za svetlejši nasmeh* — 30 minut na dan, 14 zaporednih dni.",

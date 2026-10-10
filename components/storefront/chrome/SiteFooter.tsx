@@ -58,13 +58,13 @@ export async function SiteFooter() {
 
   return (
     <footer className="border-t border-light-2 bg-white">
-      {/* Email capture block */}
+      {/* Email capture block: a dark rounded band inside the page width (2026-10-10 redesign) */}
       <div className="border-b border-light-3">
-        <div className="mx-auto max-w-(--container-narrow) px-(--padding) py-12">
-          <h2 className="text-2xl md:text-[2rem]">{copy.newsletter.title}</h2>
-          <p className="mt-2 max-w-lg text-sm text-mid-1">{copy.newsletter.hook}</p>
-          <div className="mt-6 max-w-xl">
-            <NewsletterForm siteKey={siteKey} testToken={testToken} privacyHref={legalLinks.privacy} />
+        <div className="mx-auto max-w-(--container-wide) px-(--padding) py-10 md:py-14">
+          <div className="grid gap-6 rounded-panel bg-dark-1 px-6 py-8 md:grid-cols-[1fr_1fr_1.25fr] md:items-start md:gap-10 md:px-10 md:py-10" data-newsletter-band>
+            <h2 className="text-2xl font-semibold text-white md:text-[1.75rem]">{copy.newsletter.title}</h2>
+            <p className="text-sm leading-6 text-mid-3 md:pt-1">{copy.newsletter.hook}</p>
+            <NewsletterForm siteKey={siteKey} testToken={testToken} privacyHref={legalLinks.privacy} tone="dark" />
           </div>
         </div>
       </div>

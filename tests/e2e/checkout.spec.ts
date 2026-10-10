@@ -261,20 +261,25 @@ test("stock-out at payment confirm → CANCELLED with clear error, no decrement"
     data: { stock: 0 },
   });
 
-  await page.locator("[data-test-pay-success]").click();
-  await page.waitForURL(/\/potrditev\/NS-/, { timeout: 20_000 });
-  await expect(page.getByText("Naročilo je preklicano")).toBeVisible();
+  try {
+    await page.locator("[data-test-pay-success]").click();
+    await page.waitForURL(/\/potrditev\/NS-/, { timeout: 20_000 });
+    // the heading, not Next's route announcer, which repeats the page title after the client navigation
+    // (2026-10-10: the announcer won the race and the strict locator matched both)
+    await expect(page.getByRole("heading", { name: "Naročilo je preklicano" })).toBeVisible();
 
-  const number = await page.locator("[data-order-number]").innerText();
-  const order = await prisma.order.findUniqueOrThrow({ where: { number } });
-  expect(order.status).toBe("CANCELLED");
-  expect(order.stockDeducted).toBe(false);
-
-  // restore stock
-  await prisma.variant.update({
-    where: { id: variant.id },
-    data: { stock: stockBefore },
-  });
+    const number = await page.locator("[data-order-number]").innerText();
+    const order = await prisma.order.findUniqueOrThrow({ where: { number } });
+    expect(order.status).toBe("CANCELLED");
+    expect(order.stockDeducted).toBe(false);
+  } finally {
+    // restore stock even when an assertion fails: the suite runs serially on one database, and a
+    // mouthwash left at zero sold out the bundle for every later spec (2026-10-10 run)
+    await prisma.variant.update({
+      where: { id: variant.id },
+      data: { stock: stockBefore },
+    });
+  }
 });
 
 test("paypal webhook path: signed CAPTURE.COMPLETED → PAID; duplicate → already_processed", async ({

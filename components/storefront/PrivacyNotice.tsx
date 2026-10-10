@@ -10,16 +10,19 @@ export function PrivacyNotice({
   link,
   href,
   className = "text-xs text-mid-2",
+  tone = "light",
 }: {
   lead: string;
   link: string;
   href: string;
   className?: string;
+  /** "dark": the notice sits on a dark surface, so the link brightens on hover instead of darkening. */
+  tone?: "light" | "dark";
 }) {
   return (
     <p className={className} data-privacy-notice>
       {lead}{" "}
-      <Link href={href} className="underline underline-offset-2 transition-colors hover:text-dark-1">
+      <Link href={href} className={`underline underline-offset-2 transition-colors ${tone === "dark" ? "hover:text-white" : "hover:text-dark-1"}`}>
         {link}
       </Link>
       .

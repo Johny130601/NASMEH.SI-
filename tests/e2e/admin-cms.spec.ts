@@ -97,11 +97,12 @@ test("manager edits the homepage, marquee, header menu, a page, the media librar
     await page.locator("[data-sections-save]").click();
     await expect(page.getByText("Vrstni red je shranjen.")).toBeVisible();
     expect(await prisma.setting.findUniqueOrThrow({ where: { key: "home.sections" } }).then((row) => row.value)).toEqual([
-      { id: "hero", visible: true }, { id: "routineBanner", visible: true }, { id: "rail", visible: true }, { id: "bundleBanner", visible: false },
+      { id: "hero", visible: true }, { id: "routineBanner", visible: true }, { id: "rail", visible: true }, { id: "bundleBanner", visible: false }, { id: "reviews", visible: true },
     ]);
     await front.goto("/");
     await dismissCookieBanner(front);
-    await expect(front.getByRole("heading", { level: 1 })).toHaveText(`Nasmeh E2E ${key}`);
+    // the seeded accent line stays in the heading, so the edited title is checked as its first line
+    await expect(front.getByRole("heading", { level: 1 })).toContainText(`Nasmeh E2E ${key}`);
     await expect(front.getByRole("heading", { name: "Naši paketi" })).toHaveCount(0);
     expect(await front.evaluate(() => {
       const rail = document.querySelector("#izdelki");

@@ -25,11 +25,16 @@ export function NewsletterForm({
   siteKey,
   testToken,
   privacyHref,
+  tone = "light",
 }: {
   siteKey: string | null;
   testToken: string | null;
   privacyHref: string;
+  /** "dark": the form sits on the footer's dark band (2026-10-10), so its notes and button read on dark-1. */
+  tone?: "light" | "dark";
 }) {
+  const dark = tone === "dark";
+  const noteClass = dark ? "text-xs text-mid-3" : "text-xs text-mid-2";
   const human = useLazyChallenge({ siteKey, testToken });
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -79,7 +84,7 @@ export function NewsletterForm({
             onChange={(event) => setEmail(event.target.value)}
           />
         </div>
-        <UiButton type="submit" variant="primary" disabled={pending || human.waiting}>
+        <UiButton type="submit" variant={dark ? "light" : "primary"} disabled={pending || human.waiting}>
           {copy.newsletter.submit}
         </UiButton>
       </div>
@@ -87,12 +92,13 @@ export function NewsletterForm({
       <div className={human.widgetShown ? "mt-3" : undefined}>{human.field}</div>
       <ChallengeStatus challenge={human} className="mt-3 text-sm" />
 
-      <p className="mt-3 text-xs text-mid-2">{copy.newsletter.note}</p>
+      <p className={`mt-3 ${noteClass}`}>{copy.newsletter.note}</p>
       <PrivacyNotice
         lead={copy.newsletter.privacyLead}
         link={copy.newsletter.privacyLink}
         href={privacyHref}
-        className="mt-1 text-xs text-mid-2"
+        className={`mt-1 ${noteClass}`}
+        tone={tone}
       />
 
       {message ? (

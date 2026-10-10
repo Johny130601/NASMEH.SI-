@@ -31,7 +31,7 @@ export function normaliseHomeSections(value: unknown): HomeSectionSetting[] {
 
 export function heroToInput(hero: HeroSlotSetting | null): HeroInput {
   return {
-    kicker: text(hero?.kicker, home.hero.kicker), title: text(hero?.title, home.hero.title), subtitle: text(hero?.subtitle, home.hero.subtitle),
+    kicker: text(hero?.kicker, home.hero.kicker), title: text(hero?.title, home.hero.title), titleAccent: text(hero?.titleAccent), subtitle: text(hero?.subtitle, home.hero.subtitle),
     footnote: text(hero?.footnote), ctaLabel: text(hero?.ctaLabel, home.hero.cta), ctaHref: text(hero?.ctaHref, "#izdelki"), videoDesktop: text(hero?.videoDesktop), videoMobile: text(hero?.videoMobile),
     poster: text(hero?.poster), imageAlt: text(hero?.imageAlt), promoOverlayText: text(hero?.promoOverlayText), promoOverlayHref: text(hero?.promoOverlayHref),
   };

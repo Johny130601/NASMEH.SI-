@@ -34,7 +34,7 @@ export const MEDIA_UPLOAD_LIMITS = { imageBytes: 4 * 1024 * 1024, videoBytes: 9 
 
 // ---------- homepage ----------
 
-export const HOME_SECTION_IDS = ["hero", "rail", "bundleBanner", "routineBanner"] as const;
+export const HOME_SECTION_IDS = ["hero", "rail", "bundleBanner", "routineBanner", "reviews"] as const;
 
 export const homeSectionsSchema = z.array(z.object({ id: z.enum(HOME_SECTION_IDS), visible: z.boolean() }))
   .length(HOME_SECTION_IDS.length)
@@ -42,7 +42,7 @@ export const homeSectionsSchema = z.array(z.object({ id: z.enum(HOME_SECTION_IDS
 export type HomeSectionsInput = z.input<typeof homeSectionsSchema>;
 
 /** Hero fields HeroSection renders as visible text; a claim can sit in any of them. */
-export const HERO_CLAIM_FIELDS = ["kicker", "title", "subtitle", "ctaLabel", "promoOverlayText"] as const;
+export const HERO_CLAIM_FIELDS = ["kicker", "title", "titleAccent", "subtitle", "ctaLabel", "promoOverlayText"] as const;
 
 /**
  * A `*` or `^` claim marker in any visible hero text has nothing to resolve to without a footnote
@@ -57,6 +57,8 @@ export function heroClaimLacksFootnote(
 export const heroSchema = z.object({
   kicker: text(40),
   title: required(120),
+  /** The headline's brand-coloured second line; empty = none (the save drops empty strings). */
+  titleAccent: text(60).default(""),
   subtitle: text(400),
   /** Plain-text qualifier rendered as small live text under the subtitle; optional unless a visible hero text carries a claim marker. */
   footnote: text(300).default(""),

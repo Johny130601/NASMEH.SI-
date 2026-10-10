@@ -1,0 +1,338 @@
+[
+  {
+    "url": "http://127.0.0.1:4317/",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\-2026_10_10_10_29_07.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\-2026_10_10_10_29_07.json",
+    "summary": {
+      "performance": 0.96,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\-2026_10_10_10_29_27.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\-2026_10_10_10_29_27.json",
+    "summary": {
+      "performance": 0.95,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\-2026_10_10_10_30_04.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\-2026_10_10_10_30_04.json",
+    "summary": {
+      "performance": 0.92,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\-2026_10_10_10_30_23.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\-2026_10_10_10_30_23.json",
+    "summary": {
+      "performance": 0.92,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\-2026_10_10_10_30_43.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\-2026_10_10_10_30_43.json",
+    "summary": {
+      "performance": 0.89,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\-2026_10_10_10_31_07.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\-2026_10_10_10_31_07.json",
+    "summary": {
+      "performance": 0.82,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/izdelek/belilni-trakci-za-zobe",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\izdelek_belilni_trakci_za_zobe-2026_10_10_10_31_51.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\izdelek_belilni_trakci_za_zobe-2026_10_10_10_31_51.json",
+    "summary": {
+      "performance": 0.92,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/izdelek/belilni-trakci-za-zobe",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\izdelek_belilni_trakci_za_zobe-2026_10_10_10_32_14.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\izdelek_belilni_trakci_za_zobe-2026_10_10_10_32_14.json",
+    "summary": {
+      "performance": 0.9,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/izdelek/belilni-trakci-za-zobe",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\izdelek_belilni_trakci_za_zobe-2026_10_10_10_32_36.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\izdelek_belilni_trakci_za_zobe-2026_10_10_10_32_36.json",
+    "summary": {
+      "performance": 0.88,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/izdelek/belilni-trakci-za-zobe",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\izdelek_belilni_trakci_za_zobe-2026_10_10_10_32_58.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\izdelek_belilni_trakci_za_zobe-2026_10_10_10_32_58.json",
+    "summary": {
+      "performance": 0.82,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/izdelek/belilni-trakci-za-zobe",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\izdelek_belilni_trakci_za_zobe-2026_10_10_10_33_21.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\izdelek_belilni_trakci_za_zobe-2026_10_10_10_33_21.json",
+    "summary": {
+      "performance": 0.81,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/izdelek/belilni-trakci-za-zobe",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\izdelek_belilni_trakci_za_zobe-2026_10_10_10_33_44.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\izdelek_belilni_trakci_za_zobe-2026_10_10_10_33_44.json",
+    "summary": {
+      "performance": 0.85,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/cart",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\cart-2026_10_10_10_34_10.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\cart-2026_10_10_10_34_10.json",
+    "summary": {
+      "performance": 0.84,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.69
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/cart",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\cart-2026_10_10_10_34_33.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\cart-2026_10_10_10_34_33.json",
+    "summary": {
+      "performance": 0.79,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.69
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/cart",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\cart-2026_10_10_10_34_51.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\cart-2026_10_10_10_34_51.json",
+    "summary": {
+      "performance": 0.96,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.69
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/cart",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\cart-2026_10_10_10_35_25.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\cart-2026_10_10_10_35_25.json",
+    "summary": {
+      "performance": 0.93,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.69
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/cart",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\cart-2026_10_10_10_35_42.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\cart-2026_10_10_10_35_42.json",
+    "summary": {
+      "performance": 0.95,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.69
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/cart",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\cart-2026_10_10_10_35_59.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\cart-2026_10_10_10_35_59.json",
+    "summary": {
+      "performance": 0.87,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.69
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/checkout",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\checkout-2026_10_10_10_36_18.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\checkout-2026_10_10_10_36_18.json",
+    "summary": {
+      "performance": 0.9,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.66
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/checkout",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\checkout-2026_10_10_10_36_36.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\checkout-2026_10_10_10_36_36.json",
+    "summary": {
+      "performance": 0.92,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.66
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/checkout",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\checkout-2026_10_10_10_36_54.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\checkout-2026_10_10_10_36_54.json",
+    "summary": {
+      "performance": 0.81,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.66
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/checkout",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\checkout-2026_10_10_10_37_12.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\checkout-2026_10_10_10_37_12.json",
+    "summary": {
+      "performance": 0.93,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.66
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/checkout",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\checkout-2026_10_10_10_37_48.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\checkout-2026_10_10_10_37_48.json",
+    "summary": {
+      "performance": 0.9,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.66
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/checkout",
+    "isRepresentativeRun": false,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\checkout-2026_10_10_10_38_08.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\checkout-2026_10_10_10_38_08.json",
+    "summary": {
+      "performance": 0.87,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.66
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/",
+    "isRepresentativeRun": true,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\-2026_10_10_10_29_46.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\-2026_10_10_10_29_46.json",
+    "summary": {
+      "performance": 0.94,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/izdelek/belilni-trakci-za-zobe",
+    "isRepresentativeRun": true,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\izdelek_belilni_trakci_za_zobe-2026_10_10_10_31_29.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\izdelek_belilni_trakci_za_zobe-2026_10_10_10_31_29.json",
+    "summary": {
+      "performance": 0.83,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 1
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/cart",
+    "isRepresentativeRun": true,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\cart-2026_10_10_10_35_08.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\cart-2026_10_10_10_35_08.json",
+    "summary": {
+      "performance": 0.93,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.69
+    }
+  },
+  {
+    "url": "http://127.0.0.1:4317/checkout",
+    "isRepresentativeRun": true,
+    "htmlPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\checkout-2026_10_10_10_37_30.html",
+    "jsonPath": "C:\\Users\\Luka\\Desktop\\nasmeh.si-main\\docs\\testing\\lighthouse\\2026-10-10\\mobile\\checkout-2026_10_10_10_37_30.json",
+    "summary": {
+      "performance": 0.91,
+      "accessibility": 0.97,
+      "best-practices": 1,
+      "seo": 0.66
+    }
+  }
+]

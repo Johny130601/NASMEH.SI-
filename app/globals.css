@@ -269,6 +269,38 @@ main[tabindex="-1"] {
       animation-timeline: view();
       animation-range: entry 0% entry 35%;
     }
+
+    /* Staggered reveal (2026-10-10 home redesign): each child of a grid or list
+       rises on its own view() timeline, and the later children finish later, so
+       a row cascades instead of appearing as one block. A scroll-driven
+       animation ignores animation-delay, so the offset lives in the range end.
+       The ranges are `cover` percentages: cover spans the viewport height plus
+       the element, so a 20 px list item and a 250 px card both fade over a
+       similar scroll distance (about 70–90 px for the first child at 900 px
+       tall), where an `entry` percentage of a small item would be a few pixels.
+       Children past the sixth share the last offset. The parent must not be a
+       scroll container (a carousel track, an overflow: hidden box — use clip),
+       or the timeline is inactive and the children simply show. */
+    .ui-reveal-stagger > * {
+      animation: ui-fade-up linear both;
+      animation-timeline: view();
+      animation-range: cover 0% cover 8%;
+    }
+    .ui-reveal-stagger > :nth-child(2) {
+      animation-range: cover 0% cover 12%;
+    }
+    .ui-reveal-stagger > :nth-child(3) {
+      animation-range: cover 0% cover 16%;
+    }
+    .ui-reveal-stagger > :nth-child(4) {
+      animation-range: cover 0% cover 20%;
+    }
+    .ui-reveal-stagger > :nth-child(5) {
+      animation-range: cover 0% cover 24%;
+    }
+    .ui-reveal-stagger > :nth-child(n + 6) {
+      animation-range: cover 0% cover 28%;
+    }
   }
 }
 
@@ -375,6 +407,53 @@ main[tabindex="-1"] {
   to {
     transform: translate(28%, 16%);
   }
+}
+
+/* Hero backdrop (2026-10-10 home redesign): a static brand tint behind the
+   first viewport — paint only, no animation (the poster is the LCP element and
+   nothing in the first viewport animates on load, AGENTS §8.20/§8.23). */
+.ui-hero-bg {
+  background-color: rgb(var(--light-4));
+  background-image:
+    radial-gradient(60% 55% at 78% 42%, rgba(var(--brand), 0.14), transparent 70%),
+    radial-gradient(45% 40% at 12% 90%, rgba(var(--brand), 0.08), transparent 70%);
+}
+
+/* Primary CTA shine: a highlight sweeps across the pill on hover — a translated
+   pseudo-element, .55 s, nothing on leave (the sweep resets instantly). */
+.ui-shine {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.ui-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 38%, rgba(var(--white), 0.22) 50%, transparent 62%);
+  transform: translateX(-110%);
+}
+.ui-shine:hover::after,
+.ui-shine:focus-visible::after {
+  transform: translateX(110%);
+  transition: transform 0.55s var(--ease-out-quart);
+}
+
+/* Floating media: a soft brand halo sits behind the hero poster and the bundle
+   card's artwork (static), and the frame lifts a touch on hover. */
+.ui-halo {
+  position: relative;
+}
+.ui-halo::before {
+  content: "";
+  position: absolute;
+  inset: 8% -4% -2% -4%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(var(--brand), 0.18), transparent 72%);
+  pointer-events: none;
 }
 
 /* Reduced motion: every animation and transition finishes at once, so a

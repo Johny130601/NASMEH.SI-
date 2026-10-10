@@ -328,6 +328,26 @@ export function toCatalogProduct(
   };
 }
 
+/** One component of a fixed bundle as the home bundle card lists it. */
+export interface BundleComponentTitle {
+  title: string;
+  quantity: number;
+}
+
+/**
+ * The component products of the bundle sold under `slug`, in the bundle's
+ * stored order, for the home bundle card's checklist; empty for anything that
+ * is not an active bundle. Titles come from the component products (a
+ * variant's own title names a size or flavour, which the card does not list).
+ */
+export async function getBundleComponentTitles(slug: string): Promise<BundleComponentTitle[]> {
+  const bundle = await db.bundle.findFirst({
+    where: { active: true, product: { slug, ...PURCHASABLE_PRODUCT_WHERE } },
+    select: { items: { orderBy: { id: "asc" }, select: { quantity: true, variant: { select: { product: { select: { title: true } } } } } } },
+  });
+  return bundle?.items.map((item) => ({ title: item.variant.product.title, quantity: item.quantity })) ?? [];
+}
+
 /** Which visibility flag the list honours (§14.2): the catalog's or the search's. */
 export type CatalogSurface = "catalog" | "search";
 

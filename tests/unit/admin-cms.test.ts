@@ -36,7 +36,7 @@ describe("homepage schemas", () => {
   it("normalises stored sections: order kept, unknown ids dropped, missing ones appended visible", () => {
     expect(normaliseHomeSections(null).map((section) => section.id)).toEqual([...HOME_SECTION_IDS]);
     expect(normaliseHomeSections([{ id: "routineBanner", visible: false }, { id: "quiz" }, { id: "routineBanner", visible: true }, { id: "rail" }])).toEqual([
-      { id: "routineBanner", visible: false }, { id: "rail", visible: true }, { id: "hero", visible: true }, { id: "bundleBanner", visible: true },
+      { id: "routineBanner", visible: false }, { id: "rail", visible: true }, { id: "hero", visible: true }, { id: "bundleBanner", visible: true }, { id: "reviews", visible: true },
     ]);
   });
 
@@ -84,7 +84,8 @@ describe("homepage schemas", () => {
 
   it("hero footnote: a claim marker in any visible hero text needs the footnote, not only in the subtitle", () => {
     const base = { kicker: "NOVO", title: "Naslov", subtitle: "Za svetlejši nasmeh", ctaLabel: "Kupi", ctaHref: "#izdelki", videoDesktop: "", videoMobile: "", poster: "", imageAlt: "", promoOverlayText: "Dostava", promoOverlayHref: "" };
-    expect(HERO_CLAIM_FIELDS).toEqual(["kicker", "title", "subtitle", "ctaLabel", "promoOverlayText"]);
+    // the brand-coloured accent line (2026-10-10) is visible hero text too, so a marker in it needs the footnote
+    expect(HERO_CLAIM_FIELDS).toEqual(["kicker", "title", "titleAccent", "subtitle", "ctaLabel", "promoOverlayText"]);
     for (const [key, value] of [["kicker", "NOVO*"], ["title", "Belejši zobje v 14 dneh*"], ["subtitle", "Nasmeh^"], ["ctaLabel", "Kupi*"], ["promoOverlayText", "Dostava^"]] as const) {
       const missing = heroSchema.safeParse({ ...base, [key]: value, footnote: "" });
       expect(missing.success, key).toBe(false);

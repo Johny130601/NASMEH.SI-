@@ -888,7 +888,7 @@ export const admin = {
       sections: {
         title: "Odseki",
         hint: "Vrstni red tukaj je vrstni red na strani; skriti odseki se ne izpišejo.",
-        names: { hero: "Hero (uvodni odsek)", rail: "Naše uspešnice", bundleBanner: "Pasica paketov", routineBanner: "Pasica rutine" },
+        names: { hero: "Hero (uvodni odsek)", rail: "Naše uspešnice", bundleBanner: "Pasica paketov", routineBanner: "Kartica paketa (rutina)", reviews: "Mnenja strank (samo objavljena, od treh naprej)" },
         visible: "Viden",
         up: "Gor",
         down: "Dol",
@@ -898,7 +898,7 @@ export const admin = {
       hero: {
         title: "Hero",
         fields: {
-          kicker: "Oznaka nad naslovom", title: "Naslov", subtitle: "Podnaslov", footnote: "Opomba pod podnaslovom (živo besedilo)", ctaLabel: "Gumb — napis", ctaHref: "Gumb — povezava",
+          kicker: "Oznaka nad naslovom", title: "Naslov", titleAccent: "Naslov — poudarjena druga vrstica (neobvezno)", subtitle: "Podnaslov", footnote: "Opomba pod podnaslovom (živo besedilo)", ctaLabel: "Gumb — napis", ctaHref: "Gumb — povezava",
           videoDesktop: "Video (namizje) — pot ali URL", videoMobile: "Video (mobilno) — pot ali URL", poster: "Slika / poster",
           imageAlt: "Nadomestno besedilo slike", promoOverlayText: "Promocijska vrstica — besedilo", promoOverlayHref: "Promocijska vrstica — povezava",
         },
